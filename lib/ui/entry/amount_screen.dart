@@ -16,9 +16,14 @@ class AmountScreen extends ConsumerWidget {
     final entryState = ref.watch(entryFlowControllerProvider);
     final controller = ref.read(entryFlowControllerProvider.notifier);
 
-    final formattedAmount = entryState.amount > 0
-        ? formatCurrency(entryState.amount)
-        : formatCurrency(0);
+    final previewResult = entryState.previewResult;
+    final result = entryState.result;
+    final amountValue = result ?? previewResult ?? 0;
+    final formattedAmount = formatCurrency(amountValue);
+    final expression = entryState.expression;
+    final expressionDisplay = expression.isEmpty
+        ? '0'
+        : expression.replaceAll('*', '×').replaceAll('/', '÷');
 
     return Scaffold(
       appBar: AppBar(
@@ -57,6 +62,12 @@ class AmountScreen extends ConsumerWidget {
               child: Column(
                 children: [
                   Text(
+                    expressionDisplay,
+                    style: Theme.of(context).textTheme.titleLarge,
+                    textAlign: TextAlign.center,
+                  ),
+                  const SizedBox(height: 12),
+                  Text(
                     formattedAmount,
                     style: Theme.of(context)
                         .textTheme
@@ -90,13 +101,27 @@ class AmountScreen extends ConsumerWidget {
               ],
             ),
             const SizedBox(height: 24),
+            if (expression.isNotEmpty && previewResult != null && result == null)
+              Padding(
+                padding: const EdgeInsets.only(bottom: 12),
+                child: Text(
+                  '= ${formatCurrency(previewResult)}',
+                  textAlign: TextAlign.right,
+                  style: Theme.of(context)
+                      .textTheme
+                      .bodyMedium
+                      ?.copyWith(color: Theme.of(context).hintColor),
+                ),
+              ),
             Expanded(
               child: SingleChildScrollView(
                 child: AmountKeypad(
                   onDigitPressed: controller.appendDigit,
+                  onOperatorPressed: controller.appendOperator,
+                  onDecimal: controller.appendDecimal,
+                  onAllClear: controller.clear,
                   onBackspace: controller.backspace,
-                  onDecimal: controller.appendSeparator,
-                  onClear: controller.clear,
+                  onEvaluate: controller.evaluateExpression,
                 ),
               ),
             ),

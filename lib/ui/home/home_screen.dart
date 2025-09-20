@@ -44,24 +44,30 @@ class HomeScreen extends ConsumerWidget {
             CalloutCard(
               title: 'Запланировано',
               subtitle: 'Быстрый доступ к будущим операциям',
-              child: Wrap(
-                spacing: 12,
-                runSpacing: 12,
+              child: Column(
                 children: [
-                  FilledButton.tonalIcon(
-                    onPressed: () => context.pushNamed(RouteNames.plannedIncome),
-                    icon: const Icon(Icons.trending_up),
-                    label: const Text('Доходы'),
+                  ListTile(
+                    contentPadding: EdgeInsets.zero,
+                    leading: const Icon(Icons.trending_up),
+                    title: const Text('Доходы'),
+                    trailing: const Icon(Icons.chevron_right),
+                    onTap: () => context.pushNamed(RouteNames.plannedIncome),
                   ),
-                  FilledButton.tonalIcon(
-                    onPressed: () => context.pushNamed(RouteNames.plannedExpense),
-                    icon: const Icon(Icons.trending_down),
-                    label: const Text('Расходы'),
+                  const Divider(height: 0),
+                  ListTile(
+                    contentPadding: EdgeInsets.zero,
+                    leading: const Icon(Icons.trending_down),
+                    title: const Text('Расходы'),
+                    trailing: const Icon(Icons.chevron_right),
+                    onTap: () => context.pushNamed(RouteNames.plannedExpense),
                   ),
-                  FilledButton.tonalIcon(
-                    onPressed: () => context.pushNamed(RouteNames.plannedSavings),
-                    icon: const Icon(Icons.savings),
-                    label: const Text('Сбережения'),
+                  const Divider(height: 0),
+                  ListTile(
+                    contentPadding: EdgeInsets.zero,
+                    leading: const Icon(Icons.savings),
+                    title: const Text('Сбережения'),
+                    trailing: const Icon(Icons.chevron_right),
+                    onTap: () => context.pushNamed(RouteNames.plannedSavings),
                   ),
                 ],
               ),
@@ -152,11 +158,15 @@ class HomeScreen extends ConsumerWidget {
         CalloutCard(
           title: 'Осталось в этом бюджете',
           subtitle: formatCurrency(summary.remainingBudget),
+          borderless: true,
+          centered: true,
         ),
         const SizedBox(height: 12),
         CalloutCard(
           title: 'Осталось на день',
           subtitle: formatCurrency(summary.remainingPerDay),
+          borderless: true,
+          centered: true,
         ),
       ],
     );

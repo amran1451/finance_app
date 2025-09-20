@@ -8,6 +8,8 @@ class CalloutCard extends StatelessWidget {
     this.trailing,
     this.onTap,
     this.child,
+    this.borderless = false,
+    this.centered = false,
   });
 
   final String title;
@@ -15,39 +17,49 @@ class CalloutCard extends StatelessWidget {
   final Widget? trailing;
   final VoidCallback? onTap;
   final Widget? child;
+  final bool borderless;
+  final bool centered;
 
   @override
   Widget build(BuildContext context) {
-    final content = Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
+    final textAlign = centered ? TextAlign.center : TextAlign.start;
+    final crossAxisAlignment =
+        centered ? CrossAxisAlignment.center : CrossAxisAlignment.start;
+    final headerContent = Column(
+      crossAxisAlignment: crossAxisAlignment,
       children: [
-        Row(
-          crossAxisAlignment: CrossAxisAlignment.center,
-          children: [
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    title,
-                    style: Theme.of(context)
-                        .textTheme
-                        .titleMedium
-                        ?.copyWith(fontWeight: FontWeight.w600),
-                  ),
-                  if (subtitle != null) ...[
-                    const SizedBox(height: 4),
-                    Text(
-                      subtitle!,
-                      style: Theme.of(context).textTheme.bodyMedium,
-                    ),
-                  ],
-                ],
-              ),
-            ),
-            if (trailing != null) trailing!,
-          ],
+        Text(
+          title,
+          textAlign: textAlign,
+          style: Theme.of(context)
+              .textTheme
+              .titleMedium
+              ?.copyWith(fontWeight: FontWeight.w600),
         ),
+        if (subtitle != null) ...[
+          const SizedBox(height: 4),
+          Text(
+            subtitle!,
+            textAlign: textAlign,
+            style: Theme.of(context).textTheme.bodyMedium,
+          ),
+        ],
+      ],
+    );
+
+    final content = Column(
+      crossAxisAlignment: crossAxisAlignment,
+      children: [
+        if (trailing != null)
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.center,
+            children: [
+              Expanded(child: headerContent),
+              trailing!,
+            ],
+          )
+        else
+          headerContent,
         if (child != null) ...[
           const SizedBox(height: 16),
           child!,
@@ -55,10 +67,19 @@ class CalloutCard extends StatelessWidget {
       ],
     );
 
+    final borderRadius = BorderRadius.circular(20);
+    final cardColor = borderless
+        ? Theme.of(context).colorScheme.surfaceVariant.withOpacity(0.4)
+        : null;
+
     return Card(
+      elevation: borderless ? 0 : null,
+      color: cardColor,
+      shape: RoundedRectangleBorder(borderRadius: borderRadius),
+      surfaceTintColor: borderless ? Colors.transparent : null,
       child: InkWell(
         onTap: onTap,
-        borderRadius: BorderRadius.circular(20),
+        borderRadius: borderRadius,
         child: Padding(
           padding: const EdgeInsets.all(20),
           child: content,

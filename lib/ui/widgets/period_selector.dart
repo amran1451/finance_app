@@ -12,43 +12,37 @@ class PeriodSelector extends ConsumerWidget {
     final activePeriod = ref.watch(activePeriodProvider);
     final controller = ref.read(activePeriodProvider.notifier);
 
-    return Row(
-      children: [
-        Expanded(
-          child: DropdownButtonFormField<String>(
-            value: activePeriod.id,
-            borderRadius: BorderRadius.circular(16),
-            decoration: const InputDecoration(
-              labelText: 'Период бюджета',
-            ),
-            items: [
-              for (final period in periods)
-                DropdownMenuItem(
-                  value: period.id,
-                  child: Text(period.title),
-                ),
-              const DropdownMenuItem(
-                value: 'custom',
-                child: Text('Пользовательский'),
-              ),
-            ],
-            onChanged: (value) {
-              if (value == null) {
-                return;
-              }
-              if (value == 'custom') {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(
-                    content: Text('TODO: Добавить выбор пользовательского периода'),
-                  ),
-                );
-              } else {
-                controller.setActive(value);
-              }
-            },
-          ),
+    final labels = ['1–15', '15–31'];
+    final segments = <ButtonSegment<String>>[];
+
+    for (var i = 0; i < periods.length && i < labels.length; i++) {
+      segments.add(
+        ButtonSegment(
+          value: periods[i].id,
+          label: Text(labels[i]),
         ),
-      ],
+      );
+    }
+
+    if (segments.isEmpty) {
+      return const SizedBox.shrink();
+    }
+
+    return SegmentedButton<String>(
+      segments: segments,
+      selected: {activePeriod.id},
+      showSelectedIcon: false,
+      style: SegmentedButton.styleFrom(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+        visualDensity: VisualDensity.compact,
+        textStyle: Theme.of(context).textTheme.bodyMedium,
+      ),
+      onSelectionChanged: (selection) {
+        if (selection.isEmpty) {
+          return;
+        }
+        controller.setActive(selection.first);
+      },
     );
   }
 }

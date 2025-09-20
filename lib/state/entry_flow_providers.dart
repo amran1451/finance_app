@@ -4,9 +4,13 @@ import '../data/mock/mock_models.dart';
 
 const bool kReturnToOperationsAfterSave = true;
 
+const Object _entryFlowUnset = Object();
+
 class EntryFlowState {
   EntryFlowState({
-    this.amountInput = '',
+    this.expression = '',
+    this.result,
+    this.previewResult,
     this.type = OperationType.expense,
     this.category,
     DateTime? selectedDate,
@@ -14,7 +18,9 @@ class EntryFlowState {
     this.attachToPlanned = false,
   }) : selectedDate = selectedDate ?? _today;
 
-  final String amountInput;
+  final String expression;
+  final double? result;
+  final double? previewResult;
   final OperationType type;
   final Category? category;
   final DateTime selectedDate;
@@ -26,32 +32,35 @@ class EntryFlowState {
     return DateTime(now.year, now.month, now.day);
   }
 
-  double get amount {
-    if (amountInput.isEmpty) {
-      return 0;
-    }
-    return double.tryParse(amountInput.replaceAll(',', '.')) ?? 0;
-  }
+  double get amount => result ?? 0;
 
-  bool get canProceedToCategory => amount > 0;
+  bool get canProceedToCategory => result != null && result! > 0;
 
-  bool get canSave => amount > 0 && category != null;
+  bool get canSave => canProceedToCategory && category != null;
 
   EntryFlowState copyWith({
-    String? amountInput,
+    Object? expression = _entryFlowUnset,
     OperationType? type,
-    Category? category,
+    Object? category = _entryFlowUnset,
     DateTime? selectedDate,
     String? note,
     bool? attachToPlanned,
+    Object? result = _entryFlowUnset,
+    Object? previewResult = _entryFlowUnset,
   }) {
     return EntryFlowState(
-      amountInput: amountInput ?? this.amountInput,
+      expression:
+          expression == _entryFlowUnset ? this.expression : expression as String,
       type: type ?? this.type,
-      category: category ?? this.category,
+      category:
+          category == _entryFlowUnset ? this.category : category as Category?,
       selectedDate: selectedDate ?? this.selectedDate,
       note: note ?? this.note,
       attachToPlanned: attachToPlanned ?? this.attachToPlanned,
+      result: result == _entryFlowUnset ? this.result : result as double?,
+      previewResult: previewResult == _entryFlowUnset
+          ? this.previewResult
+          : previewResult as double?,
     );
   }
 
@@ -68,40 +77,130 @@ class EntryFlowController extends StateNotifier<EntryFlowState> {
   }
 
   void appendDigit(String digit) {
-    if (digit == '.' && state.amountInput.contains('.')) {
+    final expression = state.expression;
+    final segment = _currentNumberSegment(expression);
+
+    if (expression == '0') {
+      _updateExpression(digit);
       return;
     }
-    state = state.copyWith(amountInput: state.amountInput + digit);
+
+    if (segment == '0' && expression.isNotEmpty) {
+      _updateExpression(
+        expression.substring(0, expression.length - 1) + digit,
+      );
+      return;
+    }
+
+    if (segment == '-0' && expression.length >= 2) {
+      _updateExpression(
+        expression.substring(0, expression.length - 1) + digit,
+      );
+      return;
+    }
+
+    _updateExpression(expression + digit);
   }
 
-  void appendSeparator() {
-    if (state.amountInput.contains('.')) {
+  void appendDecimal() {
+    final expression = state.expression;
+    final segment = _currentNumberSegment(expression);
+
+    if (segment.contains('.')) {
       return;
     }
-    if (state.amountInput.isEmpty) {
-      state = state.copyWith(amountInput: '0.');
-    } else {
-      state = state.copyWith(amountInput: state.amountInput + '.');
+
+    if (segment.isEmpty) {
+      if (expression.isEmpty) {
+        _updateExpression('0.');
+      } else {
+        _updateExpression('${expression}0.');
+      }
+      return;
     }
+
+    if (segment == '-') {
+      _updateExpression('${expression}0.');
+      return;
+    }
+
+    _updateExpression('$expression.');
   }
 
   void backspace() {
-    if (state.amountInput.isEmpty) {
+    if (state.expression.isEmpty) {
       return;
     }
-    state = state.copyWith(
-      amountInput: state.amountInput.substring(0, state.amountInput.length - 1),
-    );
+    final updated = state.expression.substring(0, state.expression.length - 1);
+    if (updated.isEmpty) {
+      state = state.copyWith(
+        expression: '',
+        previewResult: null,
+        result: null,
+      );
+      return;
+    }
+
+    _updateExpression(updated);
+  }
+
+  void appendOperator(String operator) {
+    final expression = state.expression;
+    if (expression.isEmpty) {
+      if (operator == '-') {
+        _updateExpression('-');
+      }
+      return;
+    }
+
+    final lastChar = expression[expression.length - 1];
+    if (_isOperator(lastChar) || lastChar == '.') {
+      return;
+    }
+
+    _updateExpression('$expression$operator');
   }
 
   void clear() {
-    state = state.copyWith(amountInput: '');
+    state = state.copyWith(
+      expression: '',
+      previewResult: null,
+      result: null,
+    );
   }
 
   void addQuickAmount(double value) {
-    final current = state.amount;
-    final newAmount = current + value;
-    state = state.copyWith(amountInput: newAmount.toStringAsFixed(0));
+    final base = state.result ??
+        state.previewResult ??
+        ExpressionEvaluator.tryEvaluate(state.expression) ??
+        0;
+    final newAmount = base + value;
+    final normalized = _formatExpressionValue(newAmount);
+
+    state = state.copyWith(
+      expression: normalized,
+      result: newAmount,
+      previewResult: newAmount,
+    );
+  }
+
+  void evaluateExpression() {
+    final expression = state.expression;
+    if (expression.isEmpty) {
+      return;
+    }
+
+    final evaluation = ExpressionEvaluator.tryEvaluate(expression);
+    if (evaluation == null) {
+      return;
+    }
+
+    final normalized = _formatExpressionValue(evaluation);
+    state = state.copyWith(
+      expression: normalized,
+      result: evaluation,
+      previewResult: evaluation,
+    );
   }
 
   void setType(OperationType type) {
@@ -110,7 +209,9 @@ class EntryFlowController extends StateNotifier<EntryFlowState> {
     }
     state = EntryFlowState(
       type: type,
-      amountInput: state.amountInput,
+      expression: state.expression,
+      result: state.result,
+      previewResult: state.previewResult,
       selectedDate: state.selectedDate,
       note: state.note,
     );
@@ -135,6 +236,231 @@ class EntryFlowController extends StateNotifier<EntryFlowState> {
   void reset() {
     state = EntryFlowState();
   }
+
+  void _updateExpression(String expression) {
+    final preview = ExpressionEvaluator.tryEvaluate(expression);
+    state = state.copyWith(
+      expression: expression,
+      previewResult: preview,
+      result: null,
+    );
+  }
+}
+
+bool _isOperator(String value) {
+  return value == '+' || value == '-' || value == '*' || value == '/';
+}
+
+String _currentNumberSegment(String expression) {
+  if (expression.isEmpty) {
+    return '';
+  }
+
+  final index = _lastOperatorIndex(expression);
+  if (index == -1) {
+    return expression;
+  }
+
+  return expression.substring(index + 1);
+}
+
+int _lastOperatorIndex(String expression) {
+  for (var i = expression.length - 1; i >= 0; i--) {
+    final char = expression[i];
+    if (_isOperator(char)) {
+      if (char == '-' && i == 0) {
+        continue;
+      }
+      return i;
+    }
+  }
+  return -1;
+}
+
+String _formatExpressionValue(double value) {
+  if (value == value.roundToDouble()) {
+    return value.toStringAsFixed(0);
+  }
+
+  var text = value.toStringAsFixed(2);
+  text = text.replaceAll(RegExp(r'0+$'), '');
+  if (text.endsWith('.')) {
+    text = text.substring(0, text.length - 1);
+  }
+  return text;
+}
+
+class ExpressionEvaluator {
+  static double? tryEvaluate(String expression) {
+    if (expression.trim().isEmpty) {
+      return null;
+    }
+
+    final normalized =
+        expression.replaceAll('×', '*').replaceAll('÷', '/').replaceAll(' ', '');
+    final tokens = _tokenize(normalized);
+    if (tokens == null || tokens.isEmpty) {
+      return null;
+    }
+
+    final rpn = _toRpn(tokens);
+    if (rpn == null) {
+      return null;
+    }
+
+    return _evaluateRpn(rpn);
+  }
+
+  static List<_Token>? _tokenize(String expression) {
+    final tokens = <_Token>[];
+    final buffer = StringBuffer();
+    var expectingNumber = true;
+
+    for (var i = 0; i < expression.length; i++) {
+      final char = expression[i];
+      if (_isDigit(char) || char == '.') {
+        buffer.write(char);
+        expectingNumber = false;
+        continue;
+      }
+
+      if (_isOperator(char)) {
+        if (char == '-' && expectingNumber) {
+          buffer.write(char);
+          expectingNumber = true;
+          continue;
+        }
+
+        if (buffer.isEmpty) {
+          return null;
+        }
+
+        final number = double.tryParse(buffer.toString());
+        if (number == null) {
+          return null;
+        }
+
+        tokens.add(_Token.number(number));
+        buffer.clear();
+        tokens.add(_Token.operator(char));
+        expectingNumber = true;
+        continue;
+      }
+
+      return null;
+    }
+
+    if (buffer.isEmpty) {
+      return null;
+    }
+
+    final number = double.tryParse(buffer.toString());
+    if (number == null) {
+      return null;
+    }
+    tokens.add(_Token.number(number));
+    return tokens;
+  }
+
+  static List<_Token>? _toRpn(List<_Token> tokens) {
+    final output = <_Token>[];
+    final operators = <_Token>[];
+
+    for (final token in tokens) {
+      if (token.type == _TokenType.number) {
+        output.add(token);
+      } else {
+        while (operators.isNotEmpty &&
+            _precedence(operators.last.operator) >=
+                _precedence(token.operator)) {
+          output.add(operators.removeLast());
+        }
+        operators.add(token);
+      }
+    }
+
+    while (operators.isNotEmpty) {
+      output.add(operators.removeLast());
+    }
+
+    return output;
+  }
+
+  static double? _evaluateRpn(List<_Token> tokens) {
+    final stack = <double>[];
+
+    for (final token in tokens) {
+      if (token.type == _TokenType.number) {
+        stack.add(token.value);
+      } else {
+        if (stack.length < 2) {
+          return null;
+        }
+        final right = stack.removeLast();
+        final left = stack.removeLast();
+        switch (token.operator) {
+          case '+':
+            stack.add(left + right);
+            break;
+          case '-':
+            stack.add(left - right);
+            break;
+          case '*':
+            stack.add(left * right);
+            break;
+          case '/':
+            if (right == 0) {
+              return null;
+            }
+            stack.add(left / right);
+            break;
+          default:
+            return null;
+        }
+      }
+    }
+
+    if (stack.length != 1) {
+      return null;
+    }
+
+    final result = stack.single;
+    if (result.isNaN || result.isInfinite) {
+      return null;
+    }
+
+    return result;
+  }
+
+  static int _precedence(String operator) {
+    if (operator == '+' || operator == '-') {
+      return 1;
+    }
+    if (operator == '*' || operator == '/') {
+      return 2;
+    }
+    return 0;
+  }
+
+  static bool _isDigit(String char) {
+    return char.compareTo('0') >= 0 && char.compareTo('9') <= 0;
+  }
+}
+
+enum _TokenType { number, operator }
+
+class _Token {
+  _Token.number(this.value)
+      : type = _TokenType.number,
+        operator = '';
+
+  _Token.operator(this.operator)
+      : type = _TokenType.operator,
+        value = 0;
+
+  final _TokenType type;
+  final double value;
+  final String operator;
 }
 
 final entryFlowControllerProvider =

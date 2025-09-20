@@ -156,6 +156,7 @@ class ScaffoldWithNavigationShell extends ConsumerWidget {
 
     return Scaffold(
       body: navigationShell,
+      floatingActionButtonLocation: FloatingActionButtonLocation.centerFloat,
       floatingActionButton: isHomeTab
           ? Semantics(
               button: true,
