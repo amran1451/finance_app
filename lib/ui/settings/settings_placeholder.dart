@@ -75,7 +75,7 @@ class _SettingsPlaceholderState extends ConsumerState<SettingsPlaceholder> {
                     items: const [
                       DropdownMenuItem(value: '₽', child: Text('Российский рубль (₽)')),
                       DropdownMenuItem(value: '€', child: Text('Евро (€)')),
-                      DropdownMenuItem(value: '$', child: Text('Доллар США ($)')),
+                      DropdownMenuItem(value: r'$', child: Text(r'Доллар США ($)')),
                     ],
                     onChanged: (value) {
                       if (value != null) {

@@ -5,7 +5,7 @@ import '../data/mock/mock_models.dart';
 const bool kReturnToOperationsAfterSave = true;
 
 class EntryFlowState {
-  const EntryFlowState({
+  EntryFlowState({
     this.amountInput = '',
     this.type = OperationType.expense,
     this.category,
@@ -61,7 +61,7 @@ class EntryFlowState {
 }
 
 class EntryFlowController extends StateNotifier<EntryFlowState> {
-  EntryFlowController() : super(const EntryFlowState());
+  EntryFlowController() : super(EntryFlowState());
 
   void startNew({OperationType type = OperationType.expense}) {
     state = EntryFlowState(type: type);
@@ -133,7 +133,7 @@ class EntryFlowController extends StateNotifier<EntryFlowState> {
   }
 
   void reset() {
-    state = const EntryFlowState();
+    state = EntryFlowState();
   }
 }
 

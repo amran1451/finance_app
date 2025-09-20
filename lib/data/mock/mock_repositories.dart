@@ -248,7 +248,7 @@ class OperationsRepository {
       ),
       Operation(
         id: 'operation-${_idCounter++}',
-        amount: 2500 + random.nextInt(500),
+        amount: 2500.0 + random.nextInt(500).toDouble(),
         type: OperationType.expense,
         category: fun,
         date: now.subtract(const Duration(days: 3)),
