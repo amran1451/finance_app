@@ -82,7 +82,7 @@ class AccountsRepository {
   List<Account> getAccounts() => List.unmodifiable(_accounts);
 }
 
-class CategoriesRepository {
+class CategoriesRepository extends ChangeNotifier {
   CategoriesRepository() {
     _categories = [
       Category(
@@ -128,9 +128,11 @@ class CategoriesRepository {
         icon: Icons.security,
       ),
     ];
+    _idCounter = _categories.length;
   }
 
   late final List<Category> _categories;
+  int _idCounter = 0;
 
   List<Category> getByType(OperationType type) {
     return _categories.where((category) => category.type == type).toList();
@@ -141,6 +143,58 @@ class CategoriesRepository {
       (category) => category.id == id,
       orElse: () => _categories.first,
     );
+  }
+
+  void addCategory({
+    required OperationType type,
+    required String name,
+  }) {
+    final category = Category(
+      id: 'cat-custom-${_idCounter++}',
+      name: name,
+      type: type,
+      icon: _defaultIconForType(type),
+    );
+    _categories.add(category);
+    notifyListeners();
+  }
+
+  void updateCategory(
+    String id, {
+    String? name,
+  }) {
+    final index = _categories.indexWhere((element) => element.id == id);
+    if (index == -1) {
+      return;
+    }
+    final current = _categories[index];
+    _categories[index] = Category(
+      id: current.id,
+      name: name ?? current.name,
+      type: current.type,
+      icon: current.icon,
+      subcategory: current.subcategory,
+    );
+    notifyListeners();
+  }
+
+  void removeCategory(String id) {
+    final initialLength = _categories.length;
+    _categories.removeWhere((category) => category.id == id);
+    if (_categories.length != initialLength) {
+      notifyListeners();
+    }
+  }
+
+  IconData _defaultIconForType(OperationType type) {
+    switch (type) {
+      case OperationType.income:
+        return Icons.trending_up;
+      case OperationType.expense:
+        return Icons.trending_down;
+      case OperationType.savings:
+        return Icons.savings;
+    }
   }
 }
 

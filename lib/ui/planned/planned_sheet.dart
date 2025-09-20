@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../state/app_providers.dart';
 import '../../state/planned_providers.dart';
 import '../../utils/formatting.dart';
 import 'planned_add_form.dart';
@@ -10,6 +11,7 @@ Future<void> showPlannedSheet(
   WidgetRef ref, {
   required PlannedType type,
 }) {
+  ref.read(isSheetOpenProvider.notifier).state = true;
   return showModalBottomSheet(
     context: context,
     isScrollControlled: true,
@@ -207,7 +209,9 @@ Future<void> showPlannedSheet(
         ),
       );
     },
-  );
+  ).whenComplete(() {
+    ref.read(isSheetOpenProvider.notifier).state = false;
+  });
 }
 
 class _SheetHeader extends StatelessWidget {
