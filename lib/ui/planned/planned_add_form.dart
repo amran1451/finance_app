@@ -7,19 +7,35 @@ Future<void> showPlannedAddForm(
   BuildContext context,
   WidgetRef ref, {
   required PlannedType type,
+  String? initialTitle,
+  double? initialAmount,
+  String? editId,
 }) {
   return showModalBottomSheet(
     context: context,
     isScrollControlled: true,
     useSafeArea: true,
+    clipBehavior: Clip.antiAlias,
     shape: const RoundedRectangleBorder(
-      borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      borderRadius: BorderRadius.vertical(top: Radius.circular(40)),
     ),
-    builder: (_) => _PlannedAddForm(
-      type: type,
-      ref: ref,
-      rootContext: context,
-    ),
+    builder: (modalContext) {
+      final bottomInset = MediaQuery.of(modalContext).viewInsets.bottom;
+      return SafeArea(
+        bottom: true,
+        child: Padding(
+          padding: EdgeInsets.only(bottom: 16 + bottomInset),
+          child: _PlannedAddForm(
+            type: type,
+            ref: ref,
+            rootContext: context,
+            initialTitle: initialTitle,
+            initialAmount: initialAmount,
+            editId: editId,
+          ),
+        ),
+      );
+    },
   );
 }
 
@@ -28,11 +44,17 @@ class _PlannedAddForm extends StatefulWidget {
     required this.type,
     required this.ref,
     required this.rootContext,
+    this.initialTitle,
+    this.initialAmount,
+    this.editId,
   });
 
   final PlannedType type;
   final WidgetRef ref;
   final BuildContext rootContext;
+  final String? initialTitle;
+  final double? initialAmount;
+  final String? editId;
 
   @override
   State<_PlannedAddForm> createState() => _PlannedAddFormState();
@@ -44,6 +66,18 @@ class _PlannedAddFormState extends State<_PlannedAddForm> {
   final _amountController = TextEditingController();
 
   @override
+  void initState() {
+    super.initState();
+    _nameController.text = widget.initialTitle ?? '';
+    if (widget.initialAmount != null) {
+      final amount = widget.initialAmount!;
+      _amountController.text = amount == amount.roundToDouble()
+          ? amount.toStringAsFixed(0)
+          : amount.toString();
+    }
+  }
+
+  @override
   void dispose() {
     _nameController.dispose();
     _amountController.dispose();
@@ -52,90 +86,83 @@ class _PlannedAddFormState extends State<_PlannedAddForm> {
 
   @override
   Widget build(BuildContext context) {
-    return Padding(
-      padding: EdgeInsets.only(
-        left: 16,
-        right: 16,
-        top: 16,
-        bottom: MediaQuery.of(context).viewInsets.bottom + 16,
-      ),
-      child: SingleChildScrollView(
-        child: Form(
-          key: _formKey,
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              Center(
-                child: Container(
-                  width: 36,
-                  height: 4,
-                  decoration: BoxDecoration(
-                    color: Theme.of(context).colorScheme.outlineVariant,
-                    borderRadius: BorderRadius.circular(2),
-                  ),
+    return SingleChildScrollView(
+      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 24),
+      child: Form(
+        key: _formKey,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Center(
+              child: Container(
+                width: 36,
+                height: 4,
+                decoration: BoxDecoration(
+                  color: Theme.of(context).colorScheme.outlineVariant,
+                  borderRadius: BorderRadius.circular(2),
                 ),
               ),
-              const SizedBox(height: 16),
-              Text(
-                _titleForType(widget.type),
-                style: Theme.of(context).textTheme.titleMedium,
-                textAlign: TextAlign.center,
+            ),
+            const SizedBox(height: 16),
+            Text(
+              _titleForType(widget.type),
+              style: Theme.of(context).textTheme.titleMedium,
+              textAlign: TextAlign.center,
+            ),
+            const SizedBox(height: 16),
+            TextFormField(
+              controller: _nameController,
+              decoration: const InputDecoration(
+                labelText: 'Наименование',
               ),
-              const SizedBox(height: 16),
-              TextFormField(
-                controller: _nameController,
-                decoration: const InputDecoration(
-                  labelText: 'Наименование',
-                ),
-                validator: (value) {
-                  if (value == null || value.trim().isEmpty) {
-                    return 'Введите наименование';
-                  }
-                  return null;
-                },
+              validator: (value) {
+                if (value == null || value.trim().isEmpty) {
+                  return 'Введите наименование';
+                }
+                return null;
+              },
+            ),
+            const SizedBox(height: 12),
+            TextFormField(
+              controller: _amountController,
+              decoration: const InputDecoration(
+                labelText: 'Сумма',
               ),
-              const SizedBox(height: 12),
-              TextFormField(
-                controller: _amountController,
-                decoration: const InputDecoration(
-                  labelText: 'Сумма',
-                ),
-                keyboardType:
-                    const TextInputType.numberWithOptions(decimal: true),
-                validator: (value) {
-                  final text = value?.trim();
-                  if (text == null || text.isEmpty) {
-                    return 'Введите сумму';
-                  }
-                  final normalized = text.replaceAll(',', '.');
-                  final parsed = double.tryParse(normalized);
-                  if (parsed == null || parsed <= 0) {
-                    return 'Сумма должна быть больше 0';
-                  }
-                  return null;
-                },
-              ),
-              const SizedBox(height: 24),
-              Row(
-                children: [
-                  Expanded(
-                    child: OutlinedButton(
-                      onPressed: () => Navigator.of(context).pop(),
-                      child: const Text('Отмена'),
-                    ),
+              keyboardType:
+                  const TextInputType.numberWithOptions(decimal: true),
+              validator: (value) {
+                final text = value?.trim();
+                if (text == null || text.isEmpty) {
+                  return 'Введите сумму';
+                }
+                final normalized = text.replaceAll(',', '.');
+                final parsed = double.tryParse(normalized);
+                if (parsed == null || parsed <= 0) {
+                  return 'Сумма должна быть больше 0';
+                }
+                return null;
+              },
+            ),
+            const SizedBox(height: 24),
+            Row(
+              children: [
+                Expanded(
+                  child: OutlinedButton(
+                    onPressed: () => Navigator.of(context).pop(),
+                    child: const Text('Отмена'),
                   ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: FilledButton(
-                      onPressed: _submit,
-                      child: const Text('Сохранить'),
-                    ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: FilledButton(
+                    onPressed: _submit,
+                    child: const Text('Сохранить'),
                   ),
-                ],
-              ),
-            ],
-          ),
+                ),
+              ],
+            ),
+          ],
         ),
       ),
     );
@@ -150,25 +177,39 @@ class _PlannedAddFormState extends State<_PlannedAddForm> {
     final amountText = _amountController.text.trim().replaceAll(',', '.');
     final amount = double.parse(amountText);
 
-    widget.ref.read(plannedProvider.notifier).add(
-          type: widget.type,
-          title: title,
-          amount: amount,
-        );
+    final notifier = widget.ref.read(plannedProvider.notifier);
+    if (widget.editId == null) {
+      notifier.add(
+        type: widget.type,
+        title: title,
+        amount: amount,
+      );
+    } else {
+      notifier.update(
+        widget.editId!,
+        title: title,
+        amount: amount,
+      );
+    }
 
     final navigator = Navigator.of(context);
     final messenger = ScaffoldMessenger.of(widget.rootContext);
     navigator.pop();
     messenger.showSnackBar(
-      const SnackBar(content: Text('Добавлено')),
+      SnackBar(
+        content: Text(widget.editId == null ? 'Добавлено' : 'Изменено'),
+      ),
     );
   }
 
   String _titleForType(PlannedType type) {
-    return switch (type) {
-      PlannedType.income => 'Добавить доход',
-      PlannedType.expense => 'Добавить расход',
-      PlannedType.saving => 'Добавить сбережение',
+    final base = switch (type) {
+      PlannedType.income => 'доход',
+      PlannedType.expense => 'расход',
+      PlannedType.saving => 'сбережение',
     };
+    return widget.editId == null
+        ? 'Добавить $base'
+        : 'Редактировать $base';
   }
 }

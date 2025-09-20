@@ -14,116 +14,199 @@ Future<void> showPlannedSheet(
     context: context,
     isScrollControlled: true,
     useSafeArea: true,
+    clipBehavior: Clip.antiAlias,
     shape: const RoundedRectangleBorder(
-      borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      borderRadius: BorderRadius.vertical(top: Radius.circular(40)),
     ),
-    builder: (_) => Consumer(
-      builder: (sheetContext, sheetRef, __) {
-        return DraggableScrollableSheet(
-          expand: false,
-          initialChildSize: 0.9,
-          minChildSize: 0.5,
-          maxChildSize: 0.95,
-          builder: (ctx, scroll) {
-            final items = sheetRef
-                .watch(plannedProvider)
-                .where((item) => item.type == type)
-                .toList(growable: false);
-            final notifier = sheetRef.read(plannedProvider.notifier);
+    builder: (modalContext) {
+      final bottomInset = MediaQuery.of(modalContext).viewInsets.bottom;
+      return SafeArea(
+        bottom: true,
+        child: Padding(
+          padding: EdgeInsets.only(bottom: 16 + bottomInset),
+          child: Consumer(
+            builder: (sheetContext, sheetRef, __) {
+              return DraggableScrollableSheet(
+                expand: false,
+                initialChildSize: 0.9,
+                maxChildSize: 0.95,
+                builder: (ctx, scroll) {
+                  final items = sheetRef
+                      .watch(plannedProvider)
+                      .where((item) => item.type == type)
+                      .toList(growable: false);
+                  final notifier = sheetRef.read(plannedProvider.notifier);
 
-            return Stack(
-              children: [
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(16, 12, 16, 96),
-                  child: Column(
-                    children: [
-                      Container(
-                        width: 36,
-                        height: 4,
-                        decoration: BoxDecoration(
-                          color: Theme.of(ctx).colorScheme.outlineVariant,
-                          borderRadius: BorderRadius.circular(2),
+                  Future<void> handleLongPress(PlannedItem item) async {
+                    final action = await showModalBottomSheet<_PlannedItemAction>(
+                      context: ctx,
+                      useSafeArea: true,
+                      clipBehavior: Clip.antiAlias,
+                      shape: const RoundedRectangleBorder(
+                        borderRadius: BorderRadius.vertical(
+                          top: Radius.circular(24),
                         ),
                       ),
-                      const SizedBox(height: 16),
-                      _SheetHeader(
-                        type: type,
-                        onClose: () => Navigator.of(ctx).pop(),
-                      ),
-                      const SizedBox(height: 16),
-                      Expanded(
-                        child: items.isEmpty
-                            ? Center(
-                                child: Text(
-                                  'Нет запланированных записей',
-                                  style: Theme.of(ctx).textTheme.bodyMedium,
-                                ),
-                              )
-                            : ListView.separated(
-                                controller: scroll,
-                                itemBuilder: (context, index) {
-                                  final item = items[index];
-                                  return _PlannedItemTile(
-                                    item: item,
-                                    onToggle: (value) => notifier.toggle(
-                                      item.id,
-                                      value ?? false,
+                      builder: (actionContext) {
+                        final scheme = Theme.of(actionContext).colorScheme;
+                        return SafeArea(
+                          bottom: true,
+                          child: Padding(
+                            padding: EdgeInsets.only(
+                              top: 12,
+                              left: 24,
+                              right: 24,
+                              bottom:
+                                  16 + MediaQuery.of(actionContext).viewInsets.bottom,
+                            ),
+                            child: Column(
+                              mainAxisSize: MainAxisSize.min,
+                              crossAxisAlignment: CrossAxisAlignment.stretch,
+                              children: [
+                                Center(
+                                  child: Container(
+                                    width: 36,
+                                    height: 4,
+                                    decoration: BoxDecoration(
+                                      color: scheme.outlineVariant,
+                                      borderRadius: BorderRadius.circular(2),
                                     ),
-                                    onRemove: () async {
-                                      final confirm = await showDialog<bool>(
-                                        context: context,
-                                        builder: (dialogContext) => AlertDialog(
-                                          title: const Text('Удалить запись?'),
-                                          content: const Text(
-                                              'Это действие нельзя отменить.'),
-                                          actions: [
-                                            TextButton(
-                                              onPressed: () =>
-                                                  Navigator.of(dialogContext)
-                                                      .pop(false),
-                                              child: const Text('Отмена'),
-                                            ),
-                                            TextButton(
-                                              onPressed: () =>
-                                                  Navigator.of(dialogContext)
-                                                      .pop(true),
-                                              child: const Text('Удалить'),
-                                            ),
-                                          ],
-                                        ),
-                                      );
-                                      if (confirm == true) {
-                                        notifier.remove(item.id);
-                                      }
-                                    },
-                                  );
-                                },
-                                separatorBuilder: (_, __) =>
-                                    const SizedBox(height: 12),
-                                itemCount: items.length,
-                              ),
-                      ),
-                    ],
-                  ),
-                ),
-                Align(
-                  alignment: Alignment.bottomCenter,
-                  child: SafeArea(
-                    minimum: const EdgeInsets.all(16),
-                    child: FilledButton.icon(
-                      onPressed: () =>
-                          showPlannedAddForm(ctx, ref, type: type),
-                      icon: const Icon(Icons.add),
-                      label: const Text('Добавить'),
+                                  ),
+                                ),
+                                const SizedBox(height: 16),
+                                ListTile(
+                                  leading: const Icon(Icons.edit_outlined),
+                                  title: const Text('Редактировать'),
+                                  onTap: () => Navigator.of(actionContext)
+                                      .pop(_PlannedItemAction.edit),
+                                ),
+                                ListTile(
+                                  leading: const Icon(Icons.delete_outline),
+                                  title: const Text('Удалить'),
+                                  onTap: () => Navigator.of(actionContext)
+                                      .pop(_PlannedItemAction.delete),
+                                ),
+                                ListTile(
+                                  leading: const Icon(Icons.close),
+                                  title: const Text('Отмена'),
+                                  onTap: () => Navigator.of(actionContext).pop(),
+                                ),
+                              ],
+                            ),
+                          ),
+                        );
+                      },
+                    );
+
+                    if (action == _PlannedItemAction.delete) {
+                      final confirm = await showDialog<bool>(
+                        context: ctx,
+                        builder: (dialogContext) => AlertDialog(
+                          title: const Text('Удалить запись?'),
+                          content:
+                              const Text('Это действие нельзя отменить.'),
+                          actions: [
+                            TextButton(
+                              onPressed: () =>
+                                  Navigator.of(dialogContext).pop(false),
+                              child: const Text('Отмена'),
+                            ),
+                            TextButton(
+                              onPressed: () =>
+                                  Navigator.of(dialogContext).pop(true),
+                              child: const Text('Удалить'),
+                            ),
+                          ],
+                        ),
+                      );
+                      if (confirm == true) {
+                        notifier.remove(item.id);
+                      }
+                    } else if (action == _PlannedItemAction.edit) {
+                      await showPlannedAddForm(
+                        ctx,
+                        sheetRef,
+                        type: type,
+                        initialTitle: item.title,
+                        initialAmount: item.amount,
+                        editId: item.id,
+                      );
+                    }
+                  }
+
+                  return Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 24),
+                    child: Column(
+                      children: [
+                        Container(
+                          width: 36,
+                          height: 4,
+                          decoration: BoxDecoration(
+                            color: Theme.of(ctx).colorScheme.outlineVariant,
+                            borderRadius: BorderRadius.circular(2),
+                          ),
+                        ),
+                        const SizedBox(height: 16),
+                        _SheetHeader(
+                          type: type,
+                          onClose: () => Navigator.of(ctx).pop(),
+                        ),
+                        const SizedBox(height: 16),
+                        Expanded(
+                          child: items.isEmpty
+                              ? ListView(
+                                  controller: scroll,
+                                  children: [
+                                    const SizedBox(height: 48),
+                                    Center(
+                                      child: Text(
+                                        'Нет запланированных записей',
+                                        style: Theme.of(ctx)
+                                            .textTheme
+                                            .bodyMedium,
+                                      ),
+                                    ),
+                                  ],
+                                )
+                              : ListView.separated(
+                                  controller: scroll,
+                                  padding: EdgeInsets.zero,
+                                  itemBuilder: (context, index) {
+                                    final item = items[index];
+                                    return _PlannedItemTile(
+                                      item: item,
+                                      onToggle: (value) => notifier.toggle(
+                                        item.id,
+                                        value ?? false,
+                                      ),
+                                      onLongPress: () => handleLongPress(item),
+                                    );
+                                  },
+                                  separatorBuilder: (_, __) =>
+                                      const SizedBox(height: 12),
+                                  itemCount: items.length,
+                                ),
+                        ),
+                        const SizedBox(height: 16),
+                        FilledButton.icon(
+                          onPressed: () => showPlannedAddForm(
+                            ctx,
+                            sheetRef,
+                            type: type,
+                          ),
+                          icon: const Icon(Icons.add),
+                          label: const Text('Добавить'),
+                        ),
+                      ],
                     ),
-                  ),
-                ),
-              ],
-            );
-          },
-        );
-      },
-    ),
+                  );
+                },
+              );
+            },
+          ),
+        ),
+      );
+    },
   );
 }
 
@@ -165,18 +248,18 @@ class _PlannedItemTile extends StatelessWidget {
   const _PlannedItemTile({
     required this.item,
     required this.onToggle,
-    required this.onRemove,
+    required this.onLongPress,
   });
 
   final PlannedItem item;
   final ValueChanged<bool?> onToggle;
-  final VoidCallback onRemove;
+  final VoidCallback onLongPress;
 
   @override
   Widget build(BuildContext context) {
     return InkWell(
       borderRadius: BorderRadius.circular(12),
-      onLongPress: onRemove,
+      onLongPress: onLongPress,
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 8),
         child: Column(
@@ -213,3 +296,5 @@ class _PlannedItemTile extends StatelessWidget {
     );
   }
 }
+
+enum _PlannedItemAction { edit, delete }

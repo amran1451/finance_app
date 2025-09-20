@@ -129,20 +129,22 @@ class HomeScreen extends ConsumerWidget {
       );
     }
 
-    return Column(
+    return Row(
       children: [
-        CalloutCard(
-          title: 'Осталось в этом бюджете',
-          subtitle: formatCurrency(summary.remainingBudget),
-          borderless: true,
-          centered: true,
+        Expanded(
+          child: _RemainingInfoCard(
+            label: 'Осталось на день',
+            value: formatCurrency(summary.remainingPerDay),
+            alignment: TextAlign.left,
+          ),
         ),
-        const SizedBox(height: 12),
-        CalloutCard(
-          title: 'Осталось на день',
-          subtitle: formatCurrency(summary.remainingPerDay),
-          borderless: true,
-          centered: true,
+        const SizedBox(width: 12),
+        Expanded(
+          child: _RemainingInfoCard(
+            label: 'Осталось в этом бюджете',
+            value: formatCurrency(summary.remainingBudget),
+            alignment: TextAlign.right,
+          ),
         ),
       ],
     );
@@ -191,6 +193,55 @@ class _PlannedOverview extends StatelessWidget {
               showPlannedSheet(context, ref, type: PlannedType.saving),
         ),
       ],
+    );
+  }
+}
+
+class _RemainingInfoCard extends StatelessWidget {
+  const _RemainingInfoCard({
+    required this.label,
+    required this.value,
+    required this.alignment,
+  });
+
+  final String label;
+  final String value;
+  final TextAlign alignment;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final isEnd = alignment == TextAlign.right || alignment == TextAlign.end;
+    final crossAxis = isEnd ? CrossAxisAlignment.end : CrossAxisAlignment.start;
+
+    return Card(
+      elevation: 0,
+      color: scheme.surfaceVariant.withOpacity(0.4),
+      surfaceTintColor: Colors.transparent,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(28),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 24),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          mainAxisAlignment: MainAxisAlignment.center,
+          crossAxisAlignment: crossAxis,
+          children: [
+            Text(
+              label,
+              textAlign: alignment,
+              style: Theme.of(context).textTheme.labelSmall,
+            ),
+            const SizedBox(height: 8),
+            Text(
+              value,
+              textAlign: alignment,
+              style: Theme.of(context).textTheme.headlineSmall,
+            ),
+          ],
+        ),
+      ),
     );
   }
 }

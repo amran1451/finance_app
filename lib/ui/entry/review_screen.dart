@@ -17,6 +17,8 @@ class ReviewScreen extends ConsumerWidget {
     final controller = ref.read(entryFlowControllerProvider.notifier);
     final period = ref.watch(activePeriodProvider);
     final operationsRepository = ref.watch(operationsRepositoryProvider);
+    final necessityLabels = ref.watch(necessityLabelsProvider);
+    final selectedNecessity = entryState.necessityIndex;
 
     final upcomingDates = List.generate(7, (index) {
       final date = DateTime.now().add(Duration(days: index));
@@ -94,6 +96,24 @@ class ReviewScreen extends ConsumerWidget {
                     _SummaryRow(
                       label: 'Период',
                       value: period.title,
+                    ),
+                    const SizedBox(height: 16),
+                    Text(
+                      'Критичность/необходимость',
+                      style: Theme.of(context).textTheme.titleSmall,
+                    ),
+                    const SizedBox(height: 8),
+                    Wrap(
+                      spacing: 8,
+                      runSpacing: 8,
+                      children: [
+                        for (var i = 0; i < necessityLabels.length; i++)
+                          ChoiceChip(
+                            label: Text(necessityLabels[i]),
+                            selected: selectedNecessity == i,
+                            onSelected: (_) => controller.setNecessityIndex(i),
+                          ),
+                      ],
                     ),
                   ],
                 ),

@@ -25,6 +25,26 @@ class AmountScreen extends ConsumerWidget {
         ? '0'
         : expression.replaceAll('*', '×').replaceAll('/', '÷');
 
+    void handleNext() {
+      final success = controller.tryFinalizeExpression();
+      if (!success) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Невалидное выражение')),
+        );
+        return;
+      }
+
+      final updatedState = ref.read(entryFlowControllerProvider);
+      if (!updatedState.canProceedToCategory) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Сумма должна быть больше 0')),
+        );
+        return;
+      }
+
+      context.pushNamed(RouteNames.entryCategory);
+    }
+
     return Scaffold(
       appBar: AppBar(
         leading: IconButton(
@@ -127,9 +147,7 @@ class AmountScreen extends ConsumerWidget {
             ),
             const SizedBox(height: 16),
             FilledButton(
-              onPressed: entryState.canProceedToCategory
-                  ? () => context.pushNamed(RouteNames.entryCategory)
-                  : null,
+              onPressed: handleNext,
               child: const Text('Далее'),
             ),
           ],
