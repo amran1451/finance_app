@@ -37,7 +37,7 @@ final accountsRepositoryProvider = Provider<AccountsRepository>((ref) {
 });
 
 final categoriesRepositoryProvider =
-    ChangeNotifierProvider<CategoriesRepository>((ref) {
+    Provider<CategoriesRepository>((ref) {
   return CategoriesRepository();
 });
 
