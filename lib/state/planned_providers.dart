@@ -59,6 +59,25 @@ class PlannedController extends StateNotifier<List<PlannedItem>> {
     ];
   }
 
+  void update(
+    String id, {
+    String? title,
+    double? amount,
+    bool? isDone,
+  }) {
+    state = [
+      for (final item in state)
+        if (item.id == id)
+          item.copyWith(
+            title: title ?? item.title,
+            amount: amount ?? item.amount,
+            isDone: isDone ?? item.isDone,
+          )
+        else
+          item,
+    ];
+  }
+
   void remove(String id) {
     state = state.where((item) => item.id != id).toList(growable: false);
   }

@@ -1,3 +1,4 @@
+import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../data/mock/mock_models.dart';
@@ -6,6 +7,8 @@ import '../data/mock/mock_repositories.dart';
 final budgetPeriodRepositoryProvider = Provider<BudgetPeriodRepository>((ref) {
   return BudgetPeriodRepository();
 });
+
+final themeModeProvider = StateProvider<ThemeMode>((ref) => ThemeMode.system);
 
 class ActivePeriodNotifier extends StateNotifier<BudgetPeriod> {
   ActivePeriodNotifier(this._repository) : super(_repository.activePeriod);
@@ -120,3 +123,9 @@ final hasOperationsProvider = Provider<bool>((ref) {
   final operations = ref.watch(activePeriodOperationsProvider);
   return operations.isNotEmpty;
 });
+
+final necessityLabelsProvider = StateProvider<List<String>>((ref) => const [
+      'Необходимо',
+      'Вынуждено',
+      'Эмоции',
+    ]);

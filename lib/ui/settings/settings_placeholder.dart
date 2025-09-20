@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../state/app_providers.dart';
+import 'categories_settings_stub.dart';
+import 'necessity_settings_stub.dart';
 
 class SettingsPlaceholder extends ConsumerStatefulWidget {
   const SettingsPlaceholder({super.key});
@@ -18,6 +20,8 @@ class _SettingsPlaceholderState extends ConsumerState<SettingsPlaceholder> {
     final periods = ref.watch(periodsProvider);
     final activePeriod = ref.watch(activePeriodProvider);
     final controller = ref.read(activePeriodProvider.notifier);
+    final themeMode = ref.watch(themeModeProvider);
+    final themeModeNotifier = ref.read(themeModeProvider.notifier);
 
     return Scaffold(
       appBar: AppBar(title: const Text('Настройки')),
@@ -89,6 +93,75 @@ class _SettingsPlaceholderState extends ConsumerState<SettingsPlaceholder> {
                   ),
                 ],
               ),
+            ),
+          ),
+          const SizedBox(height: 24),
+          Card(
+            child: Padding(
+              padding: const EdgeInsets.all(20),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Тема',
+                    style: Theme.of(context).textTheme.titleMedium,
+                  ),
+                  const SizedBox(height: 12),
+                  SegmentedButton<ThemeMode>(
+                    segments: const [
+                      ButtonSegment(
+                        value: ThemeMode.system,
+                        label: Text('Системная'),
+                      ),
+                      ButtonSegment(
+                        value: ThemeMode.light,
+                        label: Text('Светлая'),
+                      ),
+                      ButtonSegment(
+                        value: ThemeMode.dark,
+                        label: Text('Тёмная'),
+                      ),
+                    ],
+                    selected: {themeMode},
+                    onSelectionChanged: (modes) {
+                      if (modes.isNotEmpty) {
+                        themeModeNotifier.state = modes.first;
+                      }
+                    },
+                  ),
+                ],
+              ),
+            ),
+          ),
+          const SizedBox(height: 24),
+          Card(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                ListTile(
+                  title: const Text('Настройки категорий'),
+                  trailing: const Icon(Icons.chevron_right),
+                  onTap: () {
+                    Navigator.of(context).push(
+                      MaterialPageRoute(
+                        builder: (_) => const CategoriesSettingsStub(),
+                      ),
+                    );
+                  },
+                ),
+                const Divider(height: 0),
+                ListTile(
+                  title: const Text('Критичность/Необходимость'),
+                  trailing: const Icon(Icons.chevron_right),
+                  onTap: () {
+                    Navigator.of(context).push(
+                      MaterialPageRoute(
+                        builder: (_) => const NecessitySettingsStub(),
+                      ),
+                    );
+                  },
+                ),
+              ],
             ),
           ),
         ],

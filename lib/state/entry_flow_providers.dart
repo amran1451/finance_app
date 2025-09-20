@@ -16,6 +16,7 @@ class EntryFlowState {
     DateTime? selectedDate,
     this.note = '',
     this.attachToPlanned = false,
+    this.necessityIndex = 0,
   }) : selectedDate = selectedDate ?? _today;
 
   final String expression;
@@ -26,6 +27,7 @@ class EntryFlowState {
   final DateTime selectedDate;
   final String note;
   final bool attachToPlanned;
+  final int necessityIndex;
 
   static DateTime get _today {
     final now = DateTime.now();
@@ -47,6 +49,7 @@ class EntryFlowState {
     bool? attachToPlanned,
     Object? result = _entryFlowUnset,
     Object? previewResult = _entryFlowUnset,
+    Object? necessityIndex = _entryFlowUnset,
   }) {
     return EntryFlowState(
       expression:
@@ -61,6 +64,9 @@ class EntryFlowState {
       previewResult: previewResult == _entryFlowUnset
           ? this.previewResult
           : previewResult as double?,
+      necessityIndex: necessityIndex == _entryFlowUnset
+          ? this.necessityIndex
+          : necessityIndex as int,
     );
   }
 
@@ -184,15 +190,15 @@ class EntryFlowController extends StateNotifier<EntryFlowState> {
     );
   }
 
-  void evaluateExpression() {
+  bool tryFinalizeExpression() {
     final expression = state.expression;
     if (expression.isEmpty) {
-      return;
+      return false;
     }
 
     final evaluation = ExpressionEvaluator.tryEvaluate(expression);
     if (evaluation == null) {
-      return;
+      return false;
     }
 
     final normalized = _formatExpressionValue(evaluation);
@@ -201,6 +207,11 @@ class EntryFlowController extends StateNotifier<EntryFlowState> {
       result: evaluation,
       previewResult: evaluation,
     );
+    return true;
+  }
+
+  void evaluateExpression() {
+    tryFinalizeExpression();
   }
 
   void setType(OperationType type) {
@@ -214,6 +225,7 @@ class EntryFlowController extends StateNotifier<EntryFlowState> {
       previewResult: state.previewResult,
       selectedDate: state.selectedDate,
       note: state.note,
+      necessityIndex: state.necessityIndex,
     );
   }
 
@@ -231,6 +243,10 @@ class EntryFlowController extends StateNotifier<EntryFlowState> {
 
   void setAttachToPlanned(bool value) {
     state = state.copyWith(attachToPlanned: value);
+  }
+
+  void setNecessityIndex(int index) {
+    state = state.copyWith(necessityIndex: index);
   }
 
   void reset() {
