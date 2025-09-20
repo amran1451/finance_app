@@ -3,11 +3,13 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../state/app_providers.dart';
+import '../../state/planned_providers.dart';
 import '../../utils/formatting.dart';
 import '../widgets/callout_card.dart';
 import '../widgets/period_selector.dart';
 import '../widgets/progress_line.dart';
 import '../../routing/app_router.dart';
+import '../planned/planned_sheet.dart';
 
 class HomeScreen extends ConsumerWidget {
   const HomeScreen({super.key});
@@ -44,33 +46,7 @@ class HomeScreen extends ConsumerWidget {
             CalloutCard(
               title: 'Запланировано',
               subtitle: 'Быстрый доступ к будущим операциям',
-              child: Column(
-                children: [
-                  ListTile(
-                    contentPadding: EdgeInsets.zero,
-                    leading: const Icon(Icons.trending_up),
-                    title: const Text('Доходы'),
-                    trailing: const Icon(Icons.chevron_right),
-                    onTap: () => context.pushNamed(RouteNames.plannedIncome),
-                  ),
-                  const Divider(height: 0),
-                  ListTile(
-                    contentPadding: EdgeInsets.zero,
-                    leading: const Icon(Icons.trending_down),
-                    title: const Text('Расходы'),
-                    trailing: const Icon(Icons.chevron_right),
-                    onTap: () => context.pushNamed(RouteNames.plannedExpense),
-                  ),
-                  const Divider(height: 0),
-                  ListTile(
-                    contentPadding: EdgeInsets.zero,
-                    leading: const Icon(Icons.savings),
-                    title: const Text('Сбережения'),
-                    trailing: const Icon(Icons.chevron_right),
-                    onTap: () => context.pushNamed(RouteNames.plannedSavings),
-                  ),
-                ],
-              ),
+              child: _PlannedOverview(ref: ref),
             ),
             const SizedBox(height: 16),
             CalloutCard(
@@ -167,6 +143,52 @@ class HomeScreen extends ConsumerWidget {
           subtitle: formatCurrency(summary.remainingPerDay),
           borderless: true,
           centered: true,
+        ),
+      ],
+    );
+  }
+}
+
+class _PlannedOverview extends StatelessWidget {
+  const _PlannedOverview({
+    required this.ref,
+  });
+
+  final WidgetRef ref;
+
+  @override
+  Widget build(BuildContext context) {
+    final incomeTotal =
+        ref.watch(plannedTotalByTypeProvider(PlannedType.income));
+    final expenseTotal =
+        ref.watch(plannedTotalByTypeProvider(PlannedType.expense));
+    final savingTotal =
+        ref.watch(plannedTotalByTypeProvider(PlannedType.saving));
+
+    return Column(
+      children: [
+        ListTile(
+          contentPadding: EdgeInsets.zero,
+          title: const Text('Доходы'),
+          subtitle: Text(formatCurrency(incomeTotal)),
+          onTap: () =>
+              showPlannedSheet(context, ref, type: PlannedType.income),
+        ),
+        const Divider(height: 0),
+        ListTile(
+          contentPadding: EdgeInsets.zero,
+          title: const Text('Расходы'),
+          subtitle: Text(formatCurrency(expenseTotal)),
+          onTap: () =>
+              showPlannedSheet(context, ref, type: PlannedType.expense),
+        ),
+        const Divider(height: 0),
+        ListTile(
+          contentPadding: EdgeInsets.zero,
+          title: const Text('Сбережения'),
+          subtitle: Text(formatCurrency(savingTotal)),
+          onTap: () =>
+              showPlannedSheet(context, ref, type: PlannedType.saving),
         ),
       ],
     );
