@@ -3,7 +3,9 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../data/mock/mock_models.dart';
 import '../../state/app_providers.dart';
+import '../categories/category_actions.dart';
 import '../categories/category_edit_form.dart';
+import '../categories/category_tree_view.dart';
 
 class CategoriesManageScreen extends ConsumerStatefulWidget {
   const CategoriesManageScreen({super.key});
@@ -17,10 +19,57 @@ class _CategoriesManageScreenState
     extends ConsumerState<CategoriesManageScreen> {
   OperationType _selectedType = OperationType.income;
 
+  Future<void> _showAddMenu() async {
+    final option = await showAddCategoryOptions(context);
+    if (option == null) {
+      return;
+    }
+    if (!mounted) {
+      return;
+    }
+    await showCategoryEditForm(
+      context,
+      ref,
+      type: _selectedType,
+      isGroup: option == AddCategoryOption.group,
+    );
+  }
+
+  Future<void> _editCategory(Category category) {
+    return showCategoryEditForm(
+      context,
+      ref,
+      type: category.type,
+      isGroup: category.isGroup,
+      initial: category,
+    );
+  }
+
+  Future<void> _onLongPress(Category category) async {
+    final action = await showCategoryActions(
+      context,
+      isGroup: category.isGroup,
+    );
+    if (action == null) {
+      return;
+    }
+    if (action == CategoryAction.rename) {
+      await _editCategory(category);
+    } else {
+      ref.read(categoriesRepositoryProvider).removeCategory(category.id);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final repository = ref.watch(categoriesRepositoryProvider);
+    final groups = repository.groupsByType(_selectedType);
     final categories = repository.getByType(_selectedType);
+    final ungrouped =
+        categories.where((category) => category.parentId == null).toList();
+    final childrenByGroup = {
+      for (final group in groups) group.id: repository.childrenOf(group.id)
+    };
 
     return Scaffold(
       appBar: AppBar(
@@ -28,11 +77,7 @@ class _CategoriesManageScreenState
       ),
       floatingActionButtonLocation: FloatingActionButtonLocation.centerFloat,
       floatingActionButton: FilledButton.icon(
-        onPressed: () => showCategoryEditForm(
-          context,
-          ref,
-          type: _selectedType,
-        ),
+        onPressed: _showAddMenu,
         icon: const Icon(Icons.add),
         label: const Text('Добавить'),
       ),
@@ -66,73 +111,15 @@ class _CategoriesManageScreenState
             ),
             const SizedBox(height: 24),
             Expanded(
-              child: categories.isEmpty
-                  ? Center(
-                      child: Text(
-                        'Категории не найдены',
-                        style: Theme.of(context).textTheme.bodyMedium,
-                      ),
-                    )
-                  : ListView.separated(
-                      itemCount: categories.length,
-                      separatorBuilder: (_, __) => const SizedBox(height: 12),
-                      itemBuilder: (context, index) {
-                        final category = categories[index];
-                        return Card(
-                          child: ListTile(
-                            leading: CircleAvatar(
-                              backgroundColor:
-                                  category.type.color.withOpacity(0.15),
-                              child: Icon(
-                                category.icon,
-                                color: category.type.color,
-                              ),
-                            ),
-                            title: Text(category.name),
-                            subtitle: category.subcategory != null
-                                ? Text(category.subcategory!)
-                                : null,
-                            onTap: () => showCategoryEditForm(
-                              context,
-                              ref,
-                              type: category.type,
-                              initial: category,
-                            ),
-                            trailing: Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                IconButton(
-                                  tooltip: 'Редактировать',
-                                  onPressed: () => showCategoryEditForm(
-                                    context,
-                                    ref,
-                                    type: category.type,
-                                    initial: category,
-                                  ),
-                                  icon: const Icon(Icons.edit_outlined),
-                                ),
-                                PopupMenuButton<_CategoryAction>(
-                                  onSelected: (action) {
-                                    if (action == _CategoryAction.delete) {
-                                      ref
-                                          .read(categoriesRepositoryProvider)
-                                          .removeCategory(category.id);
-                                    }
-                                  },
-                                  itemBuilder: (context) => const [
-                                    PopupMenuItem(
-                                      value: _CategoryAction.delete,
-                                      child: Text('Удалить'),
-                                    ),
-                                  ],
-                                  icon: const Icon(Icons.more_vert),
-                                ),
-                              ],
-                            ),
-                          ),
-                        );
-                      },
-                    ),
+              child: CategoryTreeView(
+                groups: groups,
+                childrenByGroup: childrenByGroup,
+                ungrouped: ungrouped,
+                onCategoryTap: _editCategory,
+                onCategoryLongPress: _onLongPress,
+                onGroupTap: _editCategory,
+                onGroupLongPress: _onLongPress,
+              ),
             ),
           ],
         ),
@@ -140,5 +127,3 @@ class _CategoriesManageScreenState
     );
   }
 }
-
-enum _CategoryAction { delete }

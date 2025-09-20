@@ -6,6 +6,8 @@ enum OperationType {
   savings,
 }
 
+typedef CategoryType = OperationType;
+
 extension OperationTypeX on OperationType {
   String get label {
     switch (this) {
@@ -68,17 +70,19 @@ class Account {
 class Category {
   Category({
     required this.id,
-    required this.name,
     required this.type,
+    required this.name,
     required this.icon,
-    this.subcategory,
+    this.parentId,
+    required this.isGroup,
   });
 
   final String id;
+  final CategoryType type;
   final String name;
-  final OperationType type;
   final IconData icon;
-  final String? subcategory;
+  final String? parentId;
+  final bool isGroup;
 }
 
 class Operation {

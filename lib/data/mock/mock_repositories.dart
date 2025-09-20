@@ -84,76 +84,55 @@ class AccountsRepository {
 
 class CategoriesRepository extends ChangeNotifier {
   CategoriesRepository() {
-    _categories = [
-      Category(
-        id: 'cat-salary',
-        name: 'Зарплата',
-        type: OperationType.income,
-        icon: Icons.work,
-      ),
-      Category(
-        id: 'cat-freelance',
-        name: 'Фриланс',
-        type: OperationType.income,
-        icon: Icons.laptop_mac,
-      ),
-      Category(
-        id: 'cat-groceries',
-        name: 'Продукты',
-        type: OperationType.expense,
-        icon: Icons.shopping_basket,
-      ),
-      Category(
-        id: 'cat-transport',
-        name: 'Транспорт',
-        type: OperationType.expense,
-        icon: Icons.directions_bus,
-      ),
-      Category(
-        id: 'cat-fun',
-        name: 'Развлечения',
-        type: OperationType.expense,
-        icon: Icons.celebration,
-      ),
-      Category(
-        id: 'cat-education',
-        name: 'Обучение',
-        type: OperationType.savings,
-        icon: Icons.school,
-      ),
-      Category(
-        id: 'cat-emergency',
-        name: 'Резерв',
-        type: OperationType.savings,
-        icon: Icons.security,
-      ),
-    ];
-    _idCounter = _categories.length;
+    _categories = [];
+    _seedDefaultTree();
   }
 
   late final List<Category> _categories;
   int _idCounter = 0;
 
-  List<Category> getByType(OperationType type) {
-    return _categories.where((category) => category.type == type).toList();
+  List<Category> getByType(CategoryType type) {
+    return _categories
+        .where((category) => category.type == type && !category.isGroup)
+        .toList();
   }
 
   Category? getById(String id) {
-    return _categories.firstWhere(
-      (category) => category.id == id,
-      orElse: () => _categories.first,
-    );
+    try {
+      return _categories.firstWhere((category) => category.id == id);
+    } catch (_) {
+      return null;
+    }
   }
 
-  void addCategory({
-    required OperationType type,
+  void addGroup({
+    required CategoryType type,
     required String name,
   }) {
     final category = Category(
-      id: 'cat-custom-${_idCounter++}',
-      name: name,
+      id: 'group-${_idCounter++}',
       type: type,
+      name: name,
+      icon: Icons.folder,
+      parentId: null,
+      isGroup: true,
+    );
+    _categories.add(category);
+    notifyListeners();
+  }
+
+  void addCategory({
+    required CategoryType type,
+    required String name,
+    String? parentId,
+  }) {
+    final category = Category(
+      id: 'cat-custom-${_idCounter++}',
+      type: type,
+      name: name,
       icon: _defaultIconForType(type),
+      parentId: parentId,
+      isGroup: false,
     );
     _categories.add(category);
     notifyListeners();
@@ -162,6 +141,7 @@ class CategoriesRepository extends ChangeNotifier {
   void updateCategory(
     String id, {
     String? name,
+    String? parentId,
   }) {
     final index = _categories.indexWhere((element) => element.id == id);
     if (index == -1) {
@@ -170,23 +150,44 @@ class CategoriesRepository extends ChangeNotifier {
     final current = _categories[index];
     _categories[index] = Category(
       id: current.id,
-      name: name ?? current.name,
       type: current.type,
+      name: name ?? current.name,
       icon: current.icon,
-      subcategory: current.subcategory,
+      parentId: parentId ?? current.parentId,
+      isGroup: current.isGroup,
     );
     notifyListeners();
   }
 
   void removeCategory(String id) {
-    final initialLength = _categories.length;
-    _categories.removeWhere((category) => category.id == id);
-    if (_categories.length != initialLength) {
-      notifyListeners();
+    final target = getById(id);
+    if (target == null) {
+      return;
     }
+
+    if (target.isGroup) {
+      _categories.removeWhere(
+        (category) => category.id == id || category.parentId == id,
+      );
+    } else {
+      _categories.removeWhere((category) => category.id == id);
+    }
+    notifyListeners();
   }
 
-  IconData _defaultIconForType(OperationType type) {
+  List<Category> groupsByType(CategoryType type) {
+    return _categories
+        .where((category) => category.type == type && category.isGroup)
+        .toList();
+  }
+
+  List<Category> childrenOf(String groupId) {
+    return _categories
+        .where((category) => category.parentId == groupId && !category.isGroup)
+        .toList();
+  }
+
+  IconData _defaultIconForType(CategoryType type) {
     switch (type) {
       case OperationType.income:
         return Icons.trending_up;
@@ -195,6 +196,134 @@ class CategoriesRepository extends ChangeNotifier {
       case OperationType.savings:
         return Icons.savings;
     }
+  }
+
+  void _seedDefaultTree() {
+    if (_categories.isNotEmpty) {
+      return;
+    }
+
+    var seedCounter = 0;
+    String nextId(String prefix) => '$prefix-${seedCounter++}';
+
+    void addGroupWithChildren(
+      CategoryType type,
+      String name,
+      List<String> children,
+    ) {
+      final groupId = nextId('grp-${type.name}');
+      _categories.add(
+        Category(
+          id: groupId,
+          type: type,
+          name: name,
+          icon: Icons.folder,
+          parentId: null,
+          isGroup: true,
+        ),
+      );
+      for (final child in children) {
+        _categories.add(
+          Category(
+            id: nextId('cat-${type.name}'),
+            type: type,
+            name: child,
+            icon: _defaultIconForType(type),
+            parentId: groupId,
+            isGroup: false,
+          ),
+        );
+      }
+    }
+
+    void addStandalone(
+      CategoryType type,
+      String name,
+    ) {
+      _categories.add(
+        Category(
+          id: nextId('cat-${type.name}'),
+          type: type,
+          name: name,
+          icon: _defaultIconForType(type),
+          parentId: null,
+          isGroup: false,
+        ),
+      );
+    }
+
+    addGroupWithChildren(
+      OperationType.expense,
+      'Еда',
+      const ['Магазины', 'Рестораны', 'Кафе', 'Доставка', 'Перекусы'],
+    );
+    addGroupWithChildren(
+      OperationType.expense,
+      'Транспорт',
+      const ['Общественный', 'Такси', 'Топливо', 'Парковка'],
+    );
+    addGroupWithChildren(
+      OperationType.expense,
+      'Дом',
+      const ['Аренда', 'Коммунальные', 'Интернет/Связь', 'Обслуживание/Ремонт'],
+    );
+    addGroupWithChildren(
+      OperationType.expense,
+      'Здоровье',
+      const ['Аптека', 'Врач/Исследования', 'Страховка'],
+    );
+    addGroupWithChildren(
+      OperationType.expense,
+      'Личное/Уход',
+      const ['Косметика', 'Парикмахер/Салон'],
+    );
+    addGroupWithChildren(
+      OperationType.expense,
+      'Образование',
+      const ['Курсы', 'Книги/Материалы'],
+    );
+    addGroupWithChildren(
+      OperationType.expense,
+      'Развлечения',
+      const ['Кино/Театр', 'Игры', 'Прочее'],
+    );
+
+    const expenseStandalone = [
+      'Подписки',
+      'Одежда/Обувь',
+      'Подарки',
+      'Питомцы',
+      'Электроника',
+      'Налоги/Сборы',
+      'Другое',
+    ];
+    for (final name in expenseStandalone) {
+      addStandalone(OperationType.expense, name);
+    }
+
+    const incomeCategories = [
+      'Зарплата',
+      'Аванс',
+      'Премии/Бонусы',
+      'Фриланс/Подработка',
+      'Подарки',
+      'Проценты/Кэшбэк',
+      'Другое',
+    ];
+    for (final name in incomeCategories) {
+      addStandalone(OperationType.income, name);
+    }
+
+    const savingCategories = [
+      'Резервный фонд',
+      'Крупные цели',
+      'Короткие цели',
+    ];
+    for (final name in savingCategories) {
+      addStandalone(OperationType.savings, name);
+    }
+
+    _idCounter = seedCounter;
   }
 }
 
@@ -270,10 +399,16 @@ class OperationsRepository {
     }
     final now = DateTime.now();
     final random = Random(4);
-    final groceries = categoriesRepository.getByType(OperationType.expense).first;
-    final transport = categoriesRepository.getByType(OperationType.expense)[1];
-    final salary = categoriesRepository.getByType(OperationType.income).first;
-    final fun = categoriesRepository.getByType(OperationType.expense)[2];
+    Category _findCategory(CategoryType type, String name) {
+      return categoriesRepository
+          .getByType(type)
+          .firstWhere((category) => category.name == name);
+    }
+
+    final groceries = _findCategory(OperationType.expense, 'Магазины');
+    final transport = _findCategory(OperationType.expense, 'Такси');
+    final salary = _findCategory(OperationType.income, 'Зарплата');
+    final fun = _findCategory(OperationType.expense, 'Кино/Театр');
 
     seed(periodId, [
       Operation(
