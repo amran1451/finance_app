@@ -6,6 +6,9 @@ import '../../data/mock/mock_models.dart';
 import '../../routing/app_router.dart';
 import '../../state/app_providers.dart';
 import '../../state/entry_flow_providers.dart';
+import '../categories/category_actions.dart';
+import '../categories/category_edit_form.dart';
+import '../categories/category_tree_view.dart';
 
 class CategoryScreen extends ConsumerWidget {
   const CategoryScreen({super.key});
@@ -15,7 +18,72 @@ class CategoryScreen extends ConsumerWidget {
     final entryState = ref.watch(entryFlowControllerProvider);
     final controller = ref.read(entryFlowControllerProvider.notifier);
     final categoriesRepo = ref.watch(categoriesRepositoryProvider);
-    final categories = categoriesRepo.getByType(entryState.type);
+    final type = entryState.type;
+    final groups = categoriesRepo.groupsByType(type);
+    final categories = categoriesRepo.getByType(type);
+    final ungrouped =
+        categories.where((category) => category.parentId == null).toList();
+    final childrenByGroup = {
+      for (final group in groups) group.id: categoriesRepo.childrenOf(group.id)
+    };
+
+    Future<void> showAddMenu() async {
+      final option = await showAddCategoryOptions(context);
+      if (option == null) {
+        return;
+      }
+      if (option == AddCategoryOption.group) {
+        await showCategoryEditForm(
+          context,
+          ref,
+          type: type,
+          isGroup: true,
+        );
+      } else {
+        await showCategoryEditForm(
+          context,
+          ref,
+          type: type,
+          isGroup: false,
+        );
+      }
+    }
+
+    Future<void> handleCategoryLongPress(Category category) async {
+      final action = await showCategoryActions(context, isGroup: false);
+      if (action == null) {
+        return;
+      }
+      if (action == CategoryAction.rename) {
+        await showCategoryEditForm(
+          context,
+          ref,
+          type: category.type,
+          isGroup: false,
+          initial: category,
+        );
+      } else {
+        ref.read(categoriesRepositoryProvider).removeCategory(category.id);
+      }
+    }
+
+    Future<void> handleGroupLongPress(Category group) async {
+      final action = await showCategoryActions(context, isGroup: true);
+      if (action == null) {
+        return;
+      }
+      if (action == CategoryAction.rename) {
+        await showCategoryEditForm(
+          context,
+          ref,
+          type: group.type,
+          isGroup: true,
+          initial: group,
+        );
+      } else {
+        ref.read(categoriesRepositoryProvider).removeCategory(group.id);
+      }
+    }
 
     return Scaffold(
       appBar: AppBar(
@@ -23,9 +91,9 @@ class CategoryScreen extends ConsumerWidget {
         title: const Text('Категория операции'),
         actions: [
           IconButton(
-            onPressed: () => context.pushNamed(RouteNames.categoryCreate),
+            onPressed: showAddMenu,
             icon: const Icon(Icons.add),
-            tooltip: 'Добавить категорию',
+            tooltip: 'Добавить',
           ),
         ],
       ),
@@ -59,28 +127,16 @@ class CategoryScreen extends ConsumerWidget {
             ),
             const SizedBox(height: 24),
             Expanded(
-              child: ListView.separated(
-                itemCount: categories.length,
-                separatorBuilder: (_, __) => const SizedBox(height: 12),
-                itemBuilder: (context, index) {
-                  final category = categories[index];
-                  return Card(
-                    child: ListTile(
-                      leading: CircleAvatar(
-                        backgroundColor: category.type.color.withOpacity(0.15),
-                        child: Icon(category.icon, color: category.type.color),
-                      ),
-                      title: Text(category.name),
-                      subtitle: category.subcategory != null
-                          ? Text(category.subcategory!)
-                          : null,
-                      onTap: () {
-                        controller.setCategory(category);
-                        context.pushNamed(RouteNames.entryReview);
-                      },
-                    ),
-                  );
+              child: CategoryTreeView(
+                groups: groups,
+                childrenByGroup: childrenByGroup,
+                ungrouped: ungrouped,
+                onCategoryTap: (category) {
+                  controller.setCategory(category);
+                  context.pushNamed(RouteNames.entryReview);
                 },
+                onCategoryLongPress: handleCategoryLongPress,
+                onGroupLongPress: handleGroupLongPress,
               ),
             ),
           ],

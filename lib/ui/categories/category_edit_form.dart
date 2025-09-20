@@ -7,102 +7,148 @@ import '../../state/app_providers.dart';
 Future<void> showCategoryEditForm(
   BuildContext context,
   WidgetRef ref, {
-  required OperationType type,
+  required CategoryType type,
+  required bool isGroup,
   Category? initial,
-}) async {
+}) {
   final formKey = GlobalKey<FormState>();
-  final controller = TextEditingController(text: initial?.name ?? '');
+  final repository = ref.read(categoriesRepositoryProvider);
+  String name = initial?.name ?? '';
+  String? parentId = initial?.parentId;
 
-  try {
-    await showModalBottomSheet<void>(
-      context: context,
-      isScrollControlled: true,
-      useSafeArea: true,
-      clipBehavior: Clip.antiAlias,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
-      ),
-      builder: (sheetContext) {
-        final bottomInset = MediaQuery.of(sheetContext).viewInsets.bottom;
-        return Padding(
-          padding: EdgeInsets.only(
-            left: 24,
-            right: 24,
-            top: 24,
-            bottom: 16 + bottomInset,
-          ),
-          child: Form(
-            key: formKey,
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                Center(
-                  child: Container(
-                    width: 36,
-                    height: 4,
-                    decoration: BoxDecoration(
-                      color: Theme.of(sheetContext).colorScheme.outlineVariant,
-                      borderRadius: BorderRadius.circular(2),
+  final availableGroups = repository.groupsByType(type);
+
+  return showModalBottomSheet<void>(
+    context: context,
+    isScrollControlled: true,
+    useSafeArea: true,
+    clipBehavior: Clip.antiAlias,
+    shape: const RoundedRectangleBorder(
+      borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+    ),
+    builder: (sheetContext) {
+      final bottomInset = MediaQuery.of(sheetContext).viewInsets.bottom;
+      return Padding(
+        padding: EdgeInsets.only(
+          left: 24,
+          right: 24,
+          top: 24,
+          bottom: 16 + bottomInset,
+        ),
+        child: StatefulBuilder(
+          builder: (context, setState) {
+            final theme = Theme.of(context);
+            return Form(
+              key: formKey,
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Center(
+                    child: Container(
+                      width: 36,
+                      height: 4,
+                      decoration: BoxDecoration(
+                        color: theme.colorScheme.outlineVariant,
+                        borderRadius: BorderRadius.circular(2),
+                      ),
                     ),
                   ),
-                ),
-                const SizedBox(height: 16),
-                Text(
-                  initial == null
-                      ? 'Новая категория'
-                      : 'Редактирование категории',
-                  style: Theme.of(sheetContext).textTheme.titleMedium,
-                  textAlign: TextAlign.center,
-                ),
-                const SizedBox(height: 24),
-                TextFormField(
-                  controller: controller,
-                  autofocus: true,
-                  decoration: const InputDecoration(
-                    labelText: 'Название',
+                  const SizedBox(height: 16),
+                  Text(
+                    initial == null
+                        ? (isGroup ? 'Новая папка' : 'Новая категория')
+                        : (isGroup
+                            ? 'Редактирование папки'
+                            : 'Редактирование категории'),
+                    style: theme.textTheme.titleMedium,
+                    textAlign: TextAlign.center,
                   ),
-                  validator: (value) {
-                    if (value == null || value.trim().isEmpty) {
-                      return 'Укажите название';
-                    }
-                    return null;
-                  },
-                ),
-                const SizedBox(height: 24),
-                Row(
-                  children: [
-                    TextButton(
-                      onPressed: () => Navigator.of(sheetContext).pop(),
-                      child: const Text('Отмена'),
+                  const SizedBox(height: 24),
+                  TextFormField(
+                    initialValue: name,
+                    autofocus: true,
+                    decoration: const InputDecoration(
+                      labelText: 'Название',
                     ),
-                    const Spacer(),
-                    FilledButton(
-                      onPressed: () {
-                        if (!formKey.currentState!.validate()) {
-                          return;
-                        }
-                        final name = controller.text.trim();
-                        final repository =
-                            ref.read(categoriesRepositoryProvider);
-                        if (initial == null) {
-                          repository.addCategory(type: type, name: name);
-                        } else {
-                          repository.updateCategory(initial.id, name: name);
-                        }
-                        Navigator.of(sheetContext).pop();
+                    onChanged: (value) => name = value,
+                    validator: (value) {
+                      if (value == null || value.trim().isEmpty) {
+                        return 'Укажите название';
+                      }
+                      return null;
+                    },
+                  ),
+                  if (!isGroup) ...[
+                    const SizedBox(height: 16),
+                    DropdownButtonFormField<String?>(
+                      value: availableGroups.any((group) => group.id == parentId)
+                          ? parentId
+                          : null,
+                      items: [
+                        const DropdownMenuItem<String?>(
+                          value: null,
+                          child: Text('Без папки'),
+                        ),
+                        for (final group in availableGroups)
+                          DropdownMenuItem<String?>(
+                            value: group.id,
+                            child: Text(group.name),
+                          ),
+                      ],
+                      onChanged: (value) {
+                        setState(() {
+                          parentId = value;
+                        });
                       },
-                      child: const Text('Сохранить'),
+                      decoration: const InputDecoration(
+                        labelText: 'Папка',
+                      ),
                     ),
                   ],
-                ),
-              ],
-            ),
-          ),
-        );
-      },
-    );
-  } finally {
-    controller.dispose();
-  }
+                  const SizedBox(height: 24),
+                  Row(
+                    children: [
+                      TextButton(
+                        onPressed: () => Navigator.of(sheetContext).pop(),
+                        child: const Text('Отмена'),
+                      ),
+                      const Spacer(),
+                      FilledButton(
+                        onPressed: () {
+                          if (!formKey.currentState!.validate()) {
+                            return;
+                          }
+                          final trimmed = name.trim();
+                          if (initial == null) {
+                            if (isGroup) {
+                              repository.addGroup(type: type, name: trimmed);
+                            } else {
+                              repository.addCategory(
+                                type: type,
+                                name: trimmed,
+                                parentId: parentId,
+                              );
+                            }
+                          } else {
+                            repository.updateCategory(
+                              initial.id,
+                              name: trimmed,
+                              parentId: isGroup ? null : parentId,
+                            );
+                          }
+                          Navigator.of(sheetContext).pop();
+                        },
+                        child: const Text('Сохранить'),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            );
+          },
+        ),
+      );
+    },
+  );
 }

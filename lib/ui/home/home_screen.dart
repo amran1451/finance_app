@@ -269,12 +269,14 @@ class _OvalFab extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return FloatingActionButton.extended(
+    final theme = Theme.of(context);
+    return RawMaterialButton(
       onPressed: onPressed,
-      icon: const Icon(Icons.add),
-      label: const Text(''),
+      fillColor: theme.colorScheme.primary,
+      constraints: const BoxConstraints(minWidth: 72, minHeight: 56),
       shape: const StadiumBorder(),
-      extendedPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 0),
+      elevation: 6,
+      child: Icon(Icons.add, color: theme.colorScheme.onPrimary),
     );
   }
 }
