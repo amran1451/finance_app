@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../state/app_providers.dart';
-import 'categories_settings_stub.dart';
+import 'categories_manage_screen.dart';
 import 'necessity_settings_stub.dart';
 
 class SettingsPlaceholder extends ConsumerStatefulWidget {
@@ -144,7 +144,7 @@ class _SettingsPlaceholderState extends ConsumerState<SettingsPlaceholder> {
                   onTap: () {
                     Navigator.of(context).push(
                       MaterialPageRoute(
-                        builder: (_) => const CategoriesSettingsStub(),
+                        builder: (_) => const CategoriesManageScreen(),
                       ),
                     );
                   },

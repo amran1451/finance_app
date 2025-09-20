@@ -36,13 +36,16 @@ final accountsRepositoryProvider = Provider<AccountsRepository>((ref) {
   return AccountsRepository();
 });
 
-final categoriesRepositoryProvider = Provider<CategoriesRepository>((ref) {
+final categoriesRepositoryProvider =
+    ChangeNotifierProvider<CategoriesRepository>((ref) {
   return CategoriesRepository();
 });
 
 final operationsRepositoryProvider = Provider<OperationsRepository>((ref) {
   return OperationsRepository();
 });
+
+final isSheetOpenProvider = StateProvider<bool>((_) => false);
 
 final accountsProvider = Provider<List<Account>>((ref) {
   final repository = ref.watch(accountsRepositoryProvider);

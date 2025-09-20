@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
-import '../state/entry_flow_providers.dart';
 import '../ui/accounts/account_create_stub.dart';
 import '../ui/accounts/account_edit_stub.dart';
 import '../ui/accounts/accounts_list_stub.dart';
@@ -151,26 +150,8 @@ class ScaffoldWithNavigationShell extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final entryController = ref.read(entryFlowControllerProvider.notifier);
-    final isHomeTab = navigationShell.currentIndex == 0;
-
     return Scaffold(
       body: navigationShell,
-      floatingActionButtonLocation: FloatingActionButtonLocation.centerFloat,
-      floatingActionButton: isHomeTab
-          ? Semantics(
-              button: true,
-              label: 'Добавить операцию',
-              child: FloatingActionButton(
-                onPressed: () {
-                  entryController.startNew();
-                  context.pushNamed(RouteNames.entryAmount);
-                },
-                tooltip: 'Добавить операцию',
-                child: const Icon(Icons.add),
-              ),
-            )
-          : null,
       bottomNavigationBar: NavigationBar(
         selectedIndex: navigationShell.currentIndex,
         onDestinationSelected: (index) => _onItemTapped(context, index),
