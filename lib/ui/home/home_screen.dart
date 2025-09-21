@@ -292,12 +292,12 @@ class HomeScreen extends ConsumerWidget {
     final dailyLimitLabel = dailyLimitAsync.when(
       data: (value) => formatCurrencyMinorNullable(value),
       loading: () => '…',
-      error: (_) => '—',
+      error: (e, st) => '—',
     );
     final periodBudgetLabel = periodBudgetAsync.when(
       data: (value) => formatCurrencyMinor(value),
       loading: () => '…',
-      error: (_) => '—',
+      error: (e, st) => '—',
     );
 
     return Row(
