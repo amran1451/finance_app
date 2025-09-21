@@ -40,10 +40,18 @@ class SqliteSettingsRepository implements SettingsRepository {
   Future<int> getAnchorDay2() => _getInt(_anchorDay2Key, defaultValue: 15);
 
   @override
-  Future<int?> getDailyLimitMinor() => _getNullableInt(_dailyLimitKey);
+  Future<int?> getDailyLimitMinor() async {
+    final value = await _getNullableInt(_dailyLimitKey);
+    if (value != null) {
+      return value;
+    }
+    await _setInt(_dailyLimitKey, 0);
+    return 0;
+  }
 
   @override
-  Future<bool> getSavingPairEnabled() => _getBool(_savingPairKey);
+  Future<bool> getSavingPairEnabled() =>
+      _getBool(_savingPairKey, defaultValue: true);
 
   @override
   Future<void> setAnchorDay1(int value) => _setInt(_anchorDay1Key, value);
@@ -88,7 +96,7 @@ class SqliteSettingsRepository implements SettingsRepository {
     return int.tryParse(rows.first['value'] as String? ?? '');
   }
 
-  Future<bool> _getBool(String key) async {
+  Future<bool> _getBool(String key, {required bool defaultValue}) async {
     final db = await _db;
     final rows = await db.query(
       'settings',
@@ -98,12 +106,12 @@ class SqliteSettingsRepository implements SettingsRepository {
       limit: 1,
     );
     if (rows.isEmpty) {
-      await _setBool(key, false);
-      return false;
+      await _setBool(key, defaultValue);
+      return defaultValue;
     }
     final raw = rows.first['value'] as String?;
     if (raw == null) {
-      return false;
+      return defaultValue;
     }
     return raw == '1' || raw.toLowerCase() == 'true';
   }

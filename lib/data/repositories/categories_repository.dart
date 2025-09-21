@@ -230,7 +230,14 @@ List<_DefaultCategoryGroup> _defaultGroups() {
     _DefaultCategoryGroup(
       CategoryType.expense,
       'Еда',
-      ['Магазины', 'Рестораны', 'Кафе', 'Доставка', 'Перекусы'],
+      [
+        'Продукты',
+        'Перекус',
+        'Сигареты',
+        'Доставка',
+        'Кафе',
+        'Рестораны',
+      ],
     ),
     _DefaultCategoryGroup(
       CategoryType.expense,
@@ -243,29 +250,29 @@ List<_DefaultCategoryGroup> _defaultGroups() {
       [
         'Аренда',
         'Коммунальные',
-        'Интернет/Связь',
-        'Обслуживание/Ремонт',
+        'Интернет',
+        'Ремонт',
       ],
     ),
     _DefaultCategoryGroup(
       CategoryType.expense,
       'Здоровье',
-      ['Аптека', 'Врач/Исследования', 'Страховка'],
+      ['Аптека', 'Врач', 'Страховка'],
     ),
     _DefaultCategoryGroup(
       CategoryType.expense,
       'Личное/Уход',
-      ['Косметика', 'Парикмахер/Салон'],
+      ['Косметика', 'Парикмахер'],
     ),
     _DefaultCategoryGroup(
       CategoryType.expense,
       'Образование',
-      ['Курсы', 'Книги/Материалы'],
+      ['Курсы', 'Книги'],
     ),
     _DefaultCategoryGroup(
       CategoryType.expense,
       'Развлечения',
-      ['Кино/Театр', 'Игры', 'Прочее'],
+      ['Кино', 'Игры', 'Прочее'],
     ),
   ];
 }
@@ -287,7 +294,6 @@ List<_DefaultCategoryEntry> _defaultStandalone() {
     _DefaultCategoryEntry(CategoryType.income, 'Проценты/Кэшбэк'),
     _DefaultCategoryEntry(CategoryType.income, 'Другое'),
     _DefaultCategoryEntry(CategoryType.saving, 'Резервный фонд'),
-    _DefaultCategoryEntry(CategoryType.saving, 'Крупные цели'),
-    _DefaultCategoryEntry(CategoryType.saving, 'Короткие цели'),
+    _DefaultCategoryEntry(CategoryType.saving, 'Цели'),
   ];
 }

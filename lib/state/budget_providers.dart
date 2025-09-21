@@ -91,12 +91,15 @@ class DailyLimitManager {
       final payout = await _ref.read(currentPayoutProvider.future);
       if (payout != null) {
         final period = await _ref.read(currentPeriodProvider.future);
-        final periodDays = period.days;
-        if (periodDays > 0) {
-          final maxDaily = payout.amountMinor ~/ periodDays;
-          if (value > maxDaily) {
-            return 'Лимит не может превышать $maxDaily';
-          }
+        final today = _normalizeDate(DateTime.now());
+        final rawRemaining = period.end.difference(today).inDays;
+        var remainingDays = _clampRemainingDays(rawRemaining, period.days);
+        if (remainingDays <= 0) {
+          remainingDays = 1;
+        }
+        final maxDaily = payout.amountMinor ~/ remainingDays;
+        if (value > maxDaily) {
+          return 'Лимит не может превышать $maxDaily';
         }
       }
     }
@@ -104,6 +107,42 @@ class DailyLimitManager {
     final repository = _ref.read(settingsRepoProvider);
     await repository.setDailyLimitMinor(value);
     return null;
+  }
+}
+
+final anchorDaysManagerProvider = Provider<AnchorDaysManager>((ref) {
+  return AnchorDaysManager(ref);
+});
+
+class AnchorDaysManager {
+  AnchorDaysManager(this._ref);
+
+  final Ref _ref;
+
+  Future<void> saveAnchorDay1(int value) async {
+    final repository = _ref.read(settingsRepoProvider);
+    await repository.setAnchorDay1(value);
+    _refreshPeriod();
+  }
+
+  Future<void> saveAnchorDay2(int value) async {
+    final repository = _ref.read(settingsRepoProvider);
+    await repository.setAnchorDay2(value);
+    _refreshPeriod();
+  }
+
+  Future<void> saveAnchorDays(int first, int second) async {
+    final repository = _ref.read(settingsRepoProvider);
+    await repository.setAnchorDay1(first);
+    await repository.setAnchorDay2(second);
+    _refreshPeriod();
+  }
+
+  void _refreshPeriod() {
+    _ref.invalidate(anchorDaysProvider);
+    _ref.invalidate(currentPeriodProvider);
+    _ref.invalidate(periodBudgetMinorProvider);
+    _ref.invalidate(plannedPoolMinorProvider);
   }
 }
 
