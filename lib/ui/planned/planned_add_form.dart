@@ -86,6 +86,8 @@ class _PlannedAddFormState extends State<_PlannedAddForm> {
   final _nameController = TextEditingController();
   final _amountController = TextEditingController();
 
+  int? get _editingId => widget.initialRecord?.id;
+
   late Future<List<Category>> _categoriesFuture;
   int? _selectedCategoryId;
   int _selectedCriticality = 0;
@@ -346,7 +348,7 @@ class _PlannedAddFormState extends State<_PlannedAddForm> {
       PlannedType.expense => 'расход',
       PlannedType.saving => 'сбережение',
     };
-    return widget.editId == null
+    return _editingId == null
         ? 'Добавить $base'
         : 'Редактировать $base';
   }

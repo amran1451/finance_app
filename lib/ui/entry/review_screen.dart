@@ -63,7 +63,6 @@ class ReviewScreen extends ConsumerWidget {
         asSavingPair: entryState.type == mock.OperationType.savings,
       );
 
-      ref.invalidate(halfPeriodTransactionsProvider);
       ref.invalidate(computedBalanceProvider(accountId));
       controller.reset();
       ScaffoldMessenger.of(context).showSnackBar(

@@ -34,6 +34,8 @@ class PlannedItemView {
 
   bool get isCompleted => record.includedInPeriod;
 
+  bool get isDone => isCompleted;
+
   String get title {
     final note = record.note;
     if (note != null && note.trim().isNotEmpty) {
