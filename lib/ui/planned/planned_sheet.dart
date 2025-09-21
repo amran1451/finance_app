@@ -133,6 +133,7 @@ Future<void> showPlannedSheet(
                     } else if (action == _PlannedItemAction.edit) {
                       await showPlannedAddForm(
                         ctx,
+                        sheetRef,
                         type: type,
                         initialRecord: item.record,
                       );
@@ -224,6 +225,7 @@ Future<void> showPlannedSheet(
                         FilledButton.icon(
                           onPressed: () => showPlannedAddForm(
                             ctx,
+                            sheetRef,
                             type: type,
                           ),
                           icon: const Icon(Icons.add),
