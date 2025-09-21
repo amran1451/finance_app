@@ -3,9 +3,17 @@ import 'dart:math' as math;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../data/models/payout.dart';
+import '../data/models/transaction_record.dart';
+import '../data/repositories/transactions_repository.dart';
 import 'app_providers.dart';
 
 typedef BudgetPeriodInfo = ({DateTime start, DateTime end, int days});
+
+enum HalfPeriod { first, second }
+
+typedef HalfPeriodBounds = ({DateTime start, DateTime endExclusive});
+
+final selectedHalfProvider = StateProvider<HalfPeriod>((_) => HalfPeriod.first);
 
 final anchorDaysProvider = FutureProvider<(int, int)>((ref) async {
   final repository = ref.watch(settingsRepoProvider);
@@ -75,6 +83,52 @@ final plannedPoolMinorProvider = FutureProvider<int>((ref) async {
   final periodBudget = await ref.watch(periodBudgetMinorProvider.future);
   final pool = payout.amountMinor - periodBudget;
   return math.max(pool, 0);
+});
+
+final halfPeriodBoundsProvider = FutureProvider<HalfPeriodBounds>((ref) async {
+  final (anchor1, anchor2) = await ref.watch(anchorDaysProvider.future);
+  final half = ref.watch(selectedHalfProvider);
+  final now = DateTime.now();
+  final baseMonth = DateTime(now.year, now.month, 1);
+  final firstStart = _anchorDate(baseMonth.year, baseMonth.month, anchor1);
+  final secondStart = _anchorDate(baseMonth.year, baseMonth.month, anchor2);
+  final nextMonth = DateTime(baseMonth.year, baseMonth.month + 1, 1);
+  final nextFirst = _anchorDate(nextMonth.year, nextMonth.month, anchor1);
+
+  if (half == HalfPeriod.first) {
+    var endExclusive = _anchorDate(baseMonth.year, baseMonth.month, anchor2);
+    if (!endExclusive.isAfter(firstStart)) {
+      endExclusive = nextFirst;
+    }
+    return (start: firstStart, endExclusive: endExclusive);
+  } else {
+    var start = secondStart;
+    if (!start.isAfter(firstStart)) {
+      start = _anchorDate(nextMonth.year, nextMonth.month, anchor2);
+    }
+    var endExclusive = nextFirst;
+    if (!endExclusive.isAfter(start)) {
+      final followingMonth = DateTime(nextMonth.year, nextMonth.month + 1, 1);
+      endExclusive = _anchorDate(followingMonth.year, followingMonth.month, anchor1);
+    }
+    return (start: start, endExclusive: endExclusive);
+  }
+});
+
+final halfPeriodTransactionsProvider = FutureProvider<List<TransactionRecord>>((ref) async {
+  final bounds = await ref.watch(halfPeriodBoundsProvider.future);
+  final repo = ref.watch(transactionsRepoProvider);
+  final start = bounds.start;
+  final endExclusive = bounds.endExclusive;
+  var endInclusive = endExclusive.subtract(const Duration(days: 1));
+  if (endInclusive.isBefore(start)) {
+    endInclusive = start;
+  }
+  return repo.getByPeriod(
+    start,
+    endInclusive,
+    isPlanned: false,
+  );
 });
 
 final dailyLimitManagerProvider = Provider<DailyLimitManager>((ref) {

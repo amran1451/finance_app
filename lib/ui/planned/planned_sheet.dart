@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../state/app_providers.dart';
+import '../../data/models/transaction_record.dart';
 import '../../state/planned_providers.dart';
 import '../../utils/formatting.dart';
 import 'planned_add_form.dart';
@@ -33,13 +34,11 @@ Future<void> showPlannedSheet(
                 initialChildSize: 0.9,
                 maxChildSize: 0.95,
                 builder: (ctx, scroll) {
-                  final items = sheetRef
-                      .watch(plannedProvider)
-                      .where((item) => item.type == type)
-                      .toList(growable: false);
-                  final notifier = sheetRef.read(plannedProvider.notifier);
+                  final itemsAsync =
+                      sheetRef.watch(plannedItemsByTypeProvider(type));
+                  final actions = sheetRef.read(plannedActionsProvider);
 
-                  Future<void> handleLongPress(PlannedItem item) async {
+                  Future<void> handleLongPress(PlannedItemView item) async {
                     final action = await showModalBottomSheet<_PlannedItemAction>(
                       context: ctx,
                       useSafeArea: true,
@@ -122,16 +121,20 @@ Future<void> showPlannedSheet(
                         ),
                       );
                       if (confirm == true) {
-                        notifier.remove(item.id);
+                        final id = item.record.id;
+                        if (id != null) {
+                          await actions.remove(id);
+                          sheetRef
+                              .invalidate(plannedItemsByTypeProvider(type));
+                          sheetRef
+                              .invalidate(plannedTotalByTypeProvider(type));
+                        }
                       }
                     } else if (action == _PlannedItemAction.edit) {
                       await showPlannedAddForm(
                         ctx,
-                        sheetRef,
                         type: type,
-                        initialTitle: item.title,
-                        initialAmount: item.amount,
-                        editId: item.id,
+                        initialRecord: item.record,
                       );
                     }
                   }
@@ -155,8 +158,10 @@ Future<void> showPlannedSheet(
                         ),
                         const SizedBox(height: 16),
                         Expanded(
-                          child: items.isEmpty
-                              ? ListView(
+                          child: itemsAsync.when(
+                            data: (items) {
+                              if (items.isEmpty) {
+                                return ListView(
                                   controller: scroll,
                                   children: [
                                     const SizedBox(height: 48),
@@ -169,31 +174,56 @@ Future<void> showPlannedSheet(
                                       ),
                                     ),
                                   ],
-                                )
-                              : ListView.separated(
-                                  controller: scroll,
-                                  padding: EdgeInsets.zero,
-                                  itemBuilder: (context, index) {
-                                    final item = items[index];
-                                    return _PlannedItemTile(
-                                      item: item,
-                                      onToggle: (value) => notifier.toggle(
-                                        item.id,
-                                        value ?? false,
-                                      ),
-                                      onLongPress: () => handleLongPress(item),
-                                    );
-                                  },
-                                  separatorBuilder: (_, __) =>
-                                      const SizedBox(height: 12),
-                                  itemCount: items.length,
+                                );
+                              }
+                              return ListView.separated(
+                                controller: scroll,
+                                padding: EdgeInsets.zero,
+                                itemBuilder: (context, index) {
+                                  final item = items[index];
+                                  return _PlannedItemTile(
+                                    item: item,
+                                    onToggle: (value) async {
+                                      final id = item.record.id;
+                                      if (id == null) {
+                                        return;
+                                      }
+                                      await actions.toggle(id, value ?? false);
+                                      sheetRef.invalidate(
+                                          plannedItemsByTypeProvider(type));
+                                      sheetRef.invalidate(
+                                          plannedTotalByTypeProvider(type));
+                                    },
+                                    onLongPress: () => handleLongPress(item),
+                                  );
+                                },
+                                separatorBuilder: (_, __) =>
+                                    const SizedBox(height: 12),
+                                itemCount: items.length,
+                              );
+                            },
+                            loading: () => const Center(
+                              child: CircularProgressIndicator(),
+                            ),
+                            error: (error, _) => ListView(
+                              controller: scroll,
+                              children: [
+                                const SizedBox(height: 48),
+                                Center(
+                                  child: Text(
+                                    'Ошибка загрузки: $error',
+                                    style:
+                                        Theme.of(ctx).textTheme.bodyMedium,
+                                  ),
                                 ),
+                              ],
+                            ),
+                          ),
                         ),
                         const SizedBox(height: 16),
                         FilledButton.icon(
                           onPressed: () => showPlannedAddForm(
                             ctx,
-                            sheetRef,
                             type: type,
                           ),
                           icon: const Icon(Icons.add),
@@ -255,7 +285,7 @@ class _PlannedItemTile extends StatelessWidget {
     required this.onLongPress,
   });
 
-  final PlannedItem item;
+  final PlannedItemView item;
   final ValueChanged<bool?> onToggle;
   final VoidCallback onLongPress;
 
