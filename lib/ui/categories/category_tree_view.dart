@@ -45,7 +45,7 @@ class CategoryTreeView extends StatelessWidget {
         children: childrenByGroup[group.id] ?? const <Category>[],
         onCategoryTap: onCategoryTap,
         onCategoryLongPress: onCategoryLongPress,
-        onGroupTap: onGroupTap,
+        onGroupTap: onGroupTap != null ? () => onGroupTap!(group) : null,
         onGroupLongPress: onGroupLongPress,
       ));
       items.add(const SizedBox(height: 12));
@@ -99,7 +99,7 @@ class _GroupCard extends StatefulWidget {
   final List<Category> children;
   final CategoryCallback? onCategoryTap;
   final CategoryCallback? onCategoryLongPress;
-  final CategoryCallback? onGroupTap;
+  final VoidCallback? onGroupTap;
   final CategoryCallback? onGroupLongPress;
 
   @override
