@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../data/db/app_database.dart';
+import '../data/models/account.dart' as db_models;
 import '../data/mock/mock_models.dart' as mock;
 import '../data/mock/mock_repositories.dart' as mock_repo;
 import '../data/repositories/accounts_repository.dart' as accounts_repo;
@@ -16,6 +17,11 @@ final accountsRepoProvider =
     Provider<accounts_repo.AccountsRepository>((ref) {
   final database = ref.watch(appDatabaseProvider);
   return accounts_repo.SqliteAccountsRepository(database: database);
+});
+
+final accountsDbProvider = FutureProvider<List<db_models.Account>>((ref) {
+  final repository = ref.watch(accountsRepoProvider);
+  return repository.getAll();
 });
 
 final categoriesRepoProvider =

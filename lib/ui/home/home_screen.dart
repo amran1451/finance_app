@@ -2,7 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../data/models/account.dart' as db_models;
 import '../../state/app_providers.dart';
+import '../../state/budget_providers.dart';
 import '../../state/entry_flow_providers.dart';
 import '../../state/planned_providers.dart';
 import '../../utils/formatting.dart';
@@ -19,7 +21,9 @@ class HomeScreen extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final period = ref.watch(activePeriodProvider);
     final summary = ref.watch(periodSummaryProvider);
-    final accounts = ref.watch(accountsProvider);
+    final dailyLimitAsync = ref.watch(dailyLimitProvider);
+    final periodBudgetAsync = ref.watch(periodBudgetMinorProvider);
+    final accountsAsync = ref.watch(accountsDbProvider);
     final hasOperations = ref.watch(hasOperationsProvider);
     final hideFab = ref.watch(isSheetOpenProvider);
     final entryController = ref.read(entryFlowControllerProvider.notifier);
@@ -42,7 +46,13 @@ class HomeScreen extends ConsumerWidget {
             children: [
               const PeriodSelector(),
               const SizedBox(height: 16),
-              _buildRemainingSection(context, summary, hasOperations),
+              _buildRemainingSection(
+                context,
+                ref,
+                hasOperations,
+                dailyLimitAsync,
+                periodBudgetAsync,
+              ),
               const SizedBox(height: 16),
               CalloutCard(
                 title: 'Траты сегодня',
@@ -70,30 +80,29 @@ class HomeScreen extends ConsumerWidget {
                   icon: const Icon(Icons.add),
                   tooltip: 'Добавить счёт',
                 ),
-                child: accounts.isEmpty
-                    ? const Text('Добавьте первый счёт, чтобы видеть баланс здесь.')
-                    : Column(
-                        children: [
-                          for (final account in accounts)
-                            ListTile(
-                              contentPadding: EdgeInsets.zero,
-                              leading: CircleAvatar(
-                                backgroundColor: account.color.withOpacity(0.15),
-                                child: Icon(
-                                  Icons.account_balance_wallet,
-                                  color: account.color,
-                                ),
-                              ),
-                              title: Text(account.name),
-                              subtitle: Text(formatCurrency(account.balance)),
-                              trailing: const Icon(Icons.chevron_right),
-                              onTap: () => context.pushNamed(
-                                RouteNames.accountEdit,
-                                extra: account.name,
-                              ),
-                            ),
-                        ],
-                      ),
+                child: accountsAsync.when(
+                  loading: () => const Padding(
+                    padding: EdgeInsets.all(16),
+                    child: Center(child: CircularProgressIndicator()),
+                  ),
+                  error: (error, _) => Padding(
+                    padding: const EdgeInsets.all(16),
+                    child: Text('Не удалось загрузить счета: $error'),
+                  ),
+                  data: (accounts) {
+                    if (accounts.isEmpty) {
+                      return const Text(
+                        'Добавьте первый счёт, чтобы видеть баланс здесь.',
+                      );
+                    }
+                    return Column(
+                      children: [
+                        for (final account in accounts)
+                          _HomeAccountTile(account: account),
+                      ],
+                    );
+                  },
+                ),
               ),
               const SizedBox(height: 32),
               Text(
@@ -131,10 +140,145 @@ class HomeScreen extends ConsumerWidget {
     );
   }
 
+  Future<void> _showDailyLimitSheet(BuildContext context, WidgetRef ref) async {
+    final currentValue = await ref.read(dailyLimitProvider.future);
+
+    final controller = TextEditingController(
+      text: currentValue != null
+          ? (currentValue / 100).toStringAsFixed(2)
+          : '',
+    );
+    String? errorText;
+    var isSaving = false;
+    var saved = false;
+
+    await showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      builder: (sheetContext) {
+        return Padding(
+          padding: EdgeInsets.only(
+            left: 24,
+            right: 24,
+            top: 24,
+            bottom: MediaQuery.of(sheetContext).viewInsets.bottom + 24,
+          ),
+          child: StatefulBuilder(
+            builder: (context, setState) {
+              Future<void> save() async {
+                if (isSaving) {
+                  return;
+                }
+                setState(() {
+                  errorText = null;
+                  isSaving = true;
+                });
+
+                final raw = controller.text.trim().replaceAll(',', '.');
+                int? minorValue;
+                if (raw.isEmpty) {
+                  minorValue = null;
+                } else {
+                  final parsed = double.tryParse(raw);
+                  if (parsed == null) {
+                    setState(() {
+                      errorText = 'Введите число';
+                      isSaving = false;
+                    });
+                    return;
+                  }
+                  minorValue = (parsed * 100).round();
+                }
+
+                final manager = ref.read(dailyLimitManagerProvider);
+                final message = await manager.saveDailyLimitMinor(minorValue);
+                if (message != null) {
+                  setState(() {
+                    errorText = message;
+                    isSaving = false;
+                  });
+                  return;
+                }
+
+                ref.invalidate(dailyLimitProvider);
+                ref.invalidate(periodBudgetMinorProvider);
+                saved = true;
+                Navigator.of(sheetContext).pop();
+              }
+
+              return Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Text(
+                    'Лимит на день',
+                    style: Theme.of(context).textTheme.titleMedium,
+                  ),
+                  const SizedBox(height: 12),
+                  TextField(
+                    controller: controller,
+                    keyboardType:
+                        const TextInputType.numberWithOptions(decimal: true),
+                    decoration: InputDecoration(
+                      labelText: 'Сумма',
+                      prefixText: '₽ ',
+                      hintText: 'Например, 1500',
+                      errorText: errorText,
+                    ),
+                    onChanged: (_) {
+                      if (errorText != null) {
+                        setState(() {
+                          errorText = null;
+                        });
+                      }
+                    },
+                  ),
+                  const SizedBox(height: 16),
+                  Row(
+                    children: [
+                      TextButton(
+                        onPressed: isSaving
+                            ? null
+                            : () {
+                                controller.clear();
+                                setState(() => errorText = null);
+                              },
+                        child: const Text('Очистить'),
+                      ),
+                      const Spacer(),
+                      FilledButton(
+                        onPressed: isSaving ? null : save,
+                        child: isSaving
+                            ? const SizedBox(
+                                width: 16,
+                                height: 16,
+                                child: CircularProgressIndicator(strokeWidth: 2),
+                              )
+                            : const Text('Сохранить'),
+                      ),
+                    ],
+                  ),
+                ],
+              );
+            },
+          ),
+        );
+      },
+    );
+
+    if (saved) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Лимит сохранён')),
+      );
+    }
+  }
+
   Widget _buildRemainingSection(
     BuildContext context,
-    PeriodSummary summary,
+    WidgetRef ref,
     bool hasOperations,
+    AsyncValue<int?> dailyLimitAsync,
+    AsyncValue<int> periodBudgetAsync,
   ) {
     if (!hasOperations) {
       return CalloutCard(
@@ -143,20 +287,32 @@ class HomeScreen extends ConsumerWidget {
       );
     }
 
+    final dailyLimitLabel = dailyLimitAsync.when(
+      data: (value) => formatCurrencyMinorNullable(value),
+      loading: () => '…',
+      error: (_) => '—',
+    );
+    final periodBudgetLabel = periodBudgetAsync.when(
+      data: (value) => formatCurrencyMinor(value),
+      loading: () => '…',
+      error: (_) => '—',
+    );
+
     return Row(
       children: [
         Expanded(
           child: _RemainingInfoCard(
             label: 'Осталось на день',
-            value: formatCurrency(summary.remainingPerDay),
+            value: dailyLimitLabel,
             alignment: TextAlign.left,
+            onEdit: () => _showDailyLimitSheet(context, ref),
           ),
         ),
         const SizedBox(width: 12),
         Expanded(
           child: _RemainingInfoCard(
             label: 'Осталось в этом бюджете',
-            value: formatCurrency(summary.remainingBudget),
+            value: periodBudgetLabel,
             alignment: TextAlign.right,
           ),
         ),
@@ -180,9 +336,28 @@ class _PlannedOverview extends StatelessWidget {
         ref.watch(plannedTotalByTypeProvider(PlannedType.expense));
     final savingTotal =
         ref.watch(plannedTotalByTypeProvider(PlannedType.saving));
+    final plannedPool = ref.watch(plannedPoolMinorProvider);
 
     return Column(
       children: [
+        plannedPool.when(
+          data: (value) => ListTile(
+            contentPadding: EdgeInsets.zero,
+            title: const Text('Доступно на планы'),
+            subtitle: Text(formatCurrencyMinor(value)),
+          ),
+          loading: () => const ListTile(
+            contentPadding: EdgeInsets.zero,
+            title: Text('Доступно на планы'),
+            subtitle: Text('Загрузка…'),
+          ),
+          error: (_, __) => const ListTile(
+            contentPadding: EdgeInsets.zero,
+            title: Text('Доступно на планы'),
+            subtitle: Text('Не удалось загрузить'),
+          ),
+        ),
+        const Divider(height: 0),
         ListTile(
           contentPadding: EdgeInsets.zero,
           title: const Text('Доходы'),
@@ -211,22 +386,63 @@ class _PlannedOverview extends StatelessWidget {
   }
 }
 
+class _HomeAccountTile extends ConsumerWidget {
+  const _HomeAccountTile({required this.account});
+
+  final db_models.Account account;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final accountId = account.id;
+    if (accountId == null) {
+      return const SizedBox.shrink();
+    }
+    final computedAsync = ref.watch(computedBalanceProvider(accountId));
+
+    return ListTile(
+      contentPadding: EdgeInsets.zero,
+      leading: const CircleAvatar(
+        child: Icon(Icons.account_balance_wallet),
+      ),
+      title: Text(account.name),
+      subtitle: computedAsync.when(
+        data: (computed) {
+          return Text(
+            'Текущий: ${formatCurrencyMinor(account.startBalanceMinor)}\n'
+            'Рассчитанный: ${formatCurrencyMinor(computed)}',
+          );
+        },
+        loading: () => const Text('Загрузка баланса…'),
+        error: (error, _) => Text('Ошибка расчёта: $error'),
+      ),
+      trailing: const Icon(Icons.chevron_right),
+      onTap: () => context.pushNamed(
+        RouteNames.accountEdit,
+        extra: account.name,
+      ),
+    );
+  }
+}
+
 class _RemainingInfoCard extends StatelessWidget {
   const _RemainingInfoCard({
     required this.label,
     required this.value,
     required this.alignment,
+    this.onEdit,
   });
 
   final String label;
   final String value;
   final TextAlign alignment;
+  final VoidCallback? onEdit;
 
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
     final isEnd = alignment == TextAlign.right || alignment == TextAlign.end;
     final crossAxis = isEnd ? CrossAxisAlignment.end : CrossAxisAlignment.start;
+    final hasEdit = onEdit != null;
 
     return Card(
       elevation: 0,
@@ -242,10 +458,27 @@ class _RemainingInfoCard extends StatelessWidget {
           mainAxisAlignment: MainAxisAlignment.center,
           crossAxisAlignment: crossAxis,
           children: [
-            Text(
-              label,
-              textAlign: alignment,
-              style: Theme.of(context).textTheme.labelSmall,
+            Row(
+              mainAxisSize: MainAxisSize.max,
+              mainAxisAlignment:
+                  isEnd ? MainAxisAlignment.end : MainAxisAlignment.start,
+              children: [
+                Expanded(
+                  child: Text(
+                    label,
+                    textAlign: alignment,
+                    style: Theme.of(context).textTheme.labelSmall,
+                  ),
+                ),
+                if (hasEdit)
+                  IconButton(
+                    onPressed: onEdit,
+                    icon: const Icon(Icons.edit),
+                    tooltip: 'Изменить лимит',
+                    visualDensity: VisualDensity.compact,
+                    iconSize: 18,
+                  ),
+              ],
             ),
             const SizedBox(height: 8),
             Text(
