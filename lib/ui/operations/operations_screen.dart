@@ -117,7 +117,9 @@ class _OperationsSection extends ConsumerWidget {
                       context: context,
                       builder: (context) => AlertDialog(
                         title: const Text('Удалить операцию?'),
-                        content: const Text('Это действие нельзя отменить.'),
+                        content: const Text(
+                          'Это действие нельзя отменить. Итоги периода будут пересчитаны.',
+                        ),
                         actions: [
                           TextButton(
                             onPressed: () => Navigator.of(context).pop(false),
