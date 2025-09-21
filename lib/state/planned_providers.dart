@@ -1,95 +1,107 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../data/models/category.dart';
+import '../data/models/transaction_record.dart';
+import '../data/repositories/categories_repository.dart';
+import '../data/repositories/transactions_repository.dart';
+import 'app_providers.dart';
+
 enum PlannedType { income, expense, saving }
 
-class PlannedItem {
-  final String id;
-  final PlannedType type;
-  final String title;
-  final double amount;
-  final bool isDone;
+extension on PlannedType {
+  TransactionType toTransactionType() {
+    switch (this) {
+      case PlannedType.income:
+        return TransactionType.income;
+      case PlannedType.expense:
+        return TransactionType.expense;
+      case PlannedType.saving:
+        return TransactionType.saving;
+    }
+  }
+}
 
-  const PlannedItem({
-    required this.id,
-    required this.type,
-    required this.title,
-    required this.amount,
-    this.isDone = false,
+class PlannedItemView {
+  const PlannedItemView({
+    required this.record,
+    this.category,
   });
 
-  PlannedItem copyWith({
-    String? id,
-    PlannedType? type,
-    String? title,
-    double? amount,
-    bool? isDone,
-  }) {
-    return PlannedItem(
-      id: id ?? this.id,
-      type: type ?? this.type,
-      title: title ?? this.title,
-      amount: amount ?? this.amount,
-      isDone: isDone ?? this.isDone,
-    );
+  final TransactionRecord record;
+  final Category? category;
+
+  double get amount => record.amountMinor / 100;
+
+  bool get isCompleted => record.includedInPeriod;
+
+  String get title {
+    final note = record.note;
+    if (note != null && note.trim().isNotEmpty) {
+      return note.trim();
+    }
+    return category?.name ?? 'Без названия';
   }
+
+  String? get necessityLabel => record.necessityLabel;
+
+  int get criticality => record.criticality;
 }
 
-class PlannedController extends StateNotifier<List<PlannedItem>> {
-  PlannedController() : super(const []);
+final plannedItemsByTypeProvider = FutureProvider.family
+    <List<PlannedItemView>, PlannedType>((ref, type) async {
+  final transactionsRepo = ref.watch(transactionsRepoProvider);
+  final categoriesRepo = ref.watch(categoriesRepoProvider);
+  final records = await transactionsRepo.listPlanned(
+    type: type.toTransactionType(),
+  );
+  if (records.isEmpty) {
+    return const [];
+  }
+  final categories = await categoriesRepo.getAll();
+  final categoriesById = {
+    for (final category in categories)
+      if (category.id != null) category.id!: category,
+  };
+  return [
+    for (final record in records)
+      PlannedItemView(
+        record: record,
+        category: categoriesById[record.categoryId],
+      ),
+  ];
+});
 
-  void add({
-    required PlannedType type,
-    required String title,
-    required double amount,
-  }) {
-    final id = DateTime.now().microsecondsSinceEpoch.toString();
-    state = [
-      ...state,
-      PlannedItem(id: id, type: type, title: title, amount: amount),
-    ];
+final plannedTotalByTypeProvider = FutureProvider.family<int, PlannedType>((ref, type) async {
+  final transactionsRepo = ref.watch(transactionsRepoProvider);
+  final records = await transactionsRepo.listPlanned(
+    type: type.toTransactionType(),
+  );
+  return records.fold<int>(0, (sum, record) => sum + record.amountMinor);
+});
+
+final plannedActionsProvider = Provider<PlannedActions>((ref) {
+  final repo = ref.watch(transactionsRepoProvider);
+  return PlannedActions(repo);
+});
+
+class PlannedActions {
+  const PlannedActions(this._repository);
+
+  final TransactionsRepository _repository;
+
+  Future<int> add(TransactionRecord record) {
+    return _repository.add(record, asSavingPair: false);
   }
 
-  void toggle(String id, bool value) {
-    state = [
-      for (final item in state)
-        if (item.id == id)
-          item.copyWith(isDone: value)
-        else
-          item,
-    ];
+  Future<void> update(TransactionRecord record) {
+    return _repository.update(record);
   }
 
-  void update(
-    String id, {
-    String? title,
-    double? amount,
-    bool? isDone,
-  }) {
-    state = [
-      for (final item in state)
-        if (item.id == id)
-          item.copyWith(
-            title: title ?? item.title,
-            amount: amount ?? item.amount,
-            isDone: isDone ?? item.isDone,
-          )
-        else
-          item,
-    ];
+  Future<void> remove(int id) {
+    return _repository.delete(id);
   }
 
-  void remove(String id) {
-    state = state.where((item) => item.id != id).toList(growable: false);
+  Future<void> toggle(int id, bool value) {
+    return _repository.setPlannedCompletion(id, value);
   }
 }
-
-final plannedProvider =
-    StateNotifierProvider<PlannedController, List<PlannedItem>>((ref) {
-  return PlannedController();
-});
-
-final plannedTotalByTypeProvider =
-    Provider.family<double, PlannedType>((ref, type) {
-  final items = ref.watch(plannedProvider).where((item) => item.type == type);
-  return items.fold<double>(0, (sum, item) => sum + item.amount);
-});

@@ -1,57 +1,142 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import '../../data/mock/mock_models.dart';
+import '../../data/models/category.dart';
+import '../../data/models/transaction_record.dart';
 import '../../state/app_providers.dart';
+import '../../state/budget_providers.dart';
 import '../../utils/formatting.dart';
+
+enum OperationsFilter { all, income, expense, saving }
+
+final _operationsFilterProvider =
+    StateProvider<OperationsFilter>((_) => OperationsFilter.all);
+
+final _categoriesMapProvider = FutureProvider<Map<int, Category>>((ref) async {
+  final repository = ref.watch(categoriesRepoProvider);
+  final categories = await repository.getAll();
+  return {
+    for (final category in categories)
+      if (category.id != null) category.id!: category,
+  };
+});
 
 class OperationsScreen extends ConsumerWidget {
   const OperationsScreen({super.key});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final period = ref.watch(activePeriodProvider);
-    final operations = ref.watch(activePeriodOperationsProvider);
+    final transactionsAsync = ref.watch(halfPeriodTransactionsProvider);
+    final boundsAsync = ref.watch(halfPeriodBoundsProvider);
+    final categoriesAsync = ref.watch(_categoriesMapProvider);
+    final filter = ref.watch(_operationsFilterProvider);
 
-    final grouped = <DateTime, List<Operation>>{};
-    for (final operation in operations) {
-      final date = DateTime(operation.date.year, operation.date.month, operation.date.day);
-      grouped.putIfAbsent(date, () => []).add(operation);
-    }
-    final dates = grouped.keys.toList()
-      ..sort((a, b) => b.compareTo(a));
+    final boundsLabel = boundsAsync.when(
+      data: (bounds) {
+        final endInclusive =
+            bounds.endExclusive.subtract(const Duration(days: 1));
+        return '${formatDayMonth(bounds.start)} – ${formatDayMonth(endInclusive)}';
+      },
+      loading: () => 'Загрузка периода…',
+      error: (error, _) => 'Период недоступен',
+    );
 
     return Scaffold(
       appBar: AppBar(
         title: const Text('Операции периода'),
       ),
-      body: operations.isEmpty
-          ? Center(
+      body: transactionsAsync.when(
+        loading: () => const Center(child: CircularProgressIndicator()),
+        error: (error, _) => Center(
+          child: Padding(
+            padding: const EdgeInsets.all(24),
+            child: Text('Не удалось загрузить операции: $error'),
+          ),
+        ),
+        data: (transactions) {
+          final categories = categoriesAsync.asData?.value ?? const <int, Category>{};
+          final filtered = _applyFilter(transactions, filter);
+          if (filtered.isEmpty) {
+            return Center(
               child: Padding(
                 padding: const EdgeInsets.all(24),
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
-                  children: const [
-                    Icon(Icons.receipt_long, size: 64),
-                    SizedBox(height: 16),
-                    Text('Пока нет операций. Нажмите “+”, чтобы добавить первую!'),
+                  children: [
+                    const Icon(Icons.receipt_long, size: 64),
+                    const SizedBox(height: 16),
+                    Text(
+                      filter == OperationsFilter.all
+                          ? 'Операций пока нет'
+                          : 'Нет операций выбранного типа',
+                      textAlign: TextAlign.center,
+                    ),
                   ],
                 ),
               ),
-            )
-          : ListView.builder(
-              padding: const EdgeInsets.all(16),
-              itemCount: dates.length,
-              itemBuilder: (context, index) {
-                final date = dates[index];
-                final items = grouped[date]!;
-                return _OperationsSection(
-                  title: formatDate(date),
-                  operations: items,
-                  periodId: period.id,
-                );
-              },
-            ),
+            );
+          }
+
+          final grouped = _groupByDate(filtered);
+          final dates = grouped.keys.toList()..sort((a, b) => b.compareTo(a));
+
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
+                child: Text(boundsLabel, style: Theme.of(context).textTheme.titleMedium),
+              ),
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                child: SegmentedButton<OperationsFilter>(
+                  segments: const [
+                    ButtonSegment(
+                      value: OperationsFilter.all,
+                      label: Text('Все'),
+                    ),
+                    ButtonSegment(
+                      value: OperationsFilter.expense,
+                      label: Text('Расходы'),
+                    ),
+                    ButtonSegment(
+                      value: OperationsFilter.income,
+                      label: Text('Доходы'),
+                    ),
+                    ButtonSegment(
+                      value: OperationsFilter.saving,
+                      label: Text('Сбережения'),
+                    ),
+                  ],
+                  selected: {filter},
+                  showSelectedIcon: false,
+                  onSelectionChanged: (selection) {
+                    if (selection.isEmpty) {
+                      return;
+                    }
+                    ref.read(_operationsFilterProvider.notifier).state = selection.first;
+                  },
+                ),
+              ),
+              Expanded(
+                child: ListView.builder(
+                  padding: const EdgeInsets.all(16),
+                  itemCount: dates.length,
+                  itemBuilder: (context, index) {
+                    final date = dates[index];
+                    final items = grouped[date]!;
+                    return _OperationsSection(
+                      title: formatDate(date),
+                      transactions: items,
+                      categories: categories,
+                    );
+                  },
+                ),
+              ),
+            ],
+          );
+        },
+      ),
     );
   }
 }
@@ -59,17 +144,17 @@ class OperationsScreen extends ConsumerWidget {
 class _OperationsSection extends ConsumerWidget {
   const _OperationsSection({
     required this.title,
-    required this.operations,
-    required this.periodId,
+    required this.transactions,
+    required this.categories,
   });
 
   final String title;
-  final List<Operation> operations;
-  final String periodId;
+  final List<TransactionRecord> transactions;
+  final Map<int, Category> categories;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final repository = ref.watch(operationsRepositoryProvider);
+    final repository = ref.watch(transactionsRepoProvider);
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -81,71 +166,142 @@ class _OperationsSection extends ConsumerWidget {
             style: Theme.of(context).textTheme.titleMedium,
           ),
         ),
-        ...operations.map(
-          (operation) => Card(
-            margin: const EdgeInsets.only(bottom: 12),
-            child: ListTile(
-              leading: CircleAvatar(
-                backgroundColor: operation.type.color.withOpacity(0.15),
-                child: Icon(
-                  operation.category.icon,
-                  color: operation.type.color,
-                ),
-              ),
-              title: Text(operation.category.name),
-              subtitle: Text(operation.note ?? 'Без комментария'),
-              trailing: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                crossAxisAlignment: CrossAxisAlignment.end,
-                children: [
-                  Text(
-                    formatCurrency(operation.amount),
-                    style: TextStyle(
-                      color: operation.type == OperationType.expense
-                          ? Colors.redAccent
-                          : operation.type == OperationType.income
-                              ? Colors.green
-                              : Colors.blueAccent,
-                      fontWeight: FontWeight.bold,
-                    ),
+        ...transactions.map(
+          (record) {
+            final category = categories[record.categoryId];
+            return Card(
+              margin: const EdgeInsets.only(bottom: 12),
+              child: ListTile(
+                leading: CircleAvatar(
+                  backgroundColor: _colorForType(record.type).withOpacity(0.15),
+                  child: Icon(
+                    _iconForType(record.type),
+                    color: _colorForType(record.type),
                   ),
-                  Text(operation.type.label),
-                ],
-              ),
-              onLongPress: () async {
-                final confirm = await showDialog<bool>(
-                      context: context,
-                      builder: (context) => AlertDialog(
-                        title: const Text('Удалить операцию?'),
-                        content: const Text(
-                          'Это действие нельзя отменить. Итоги периода будут пересчитаны.',
-                        ),
-                        actions: [
-                          TextButton(
-                            onPressed: () => Navigator.of(context).pop(false),
-                            child: const Text('Отмена'),
-                          ),
-                          FilledButton(
-                            onPressed: () => Navigator.of(context).pop(true),
-                            child: const Text('Удалить'),
-                          ),
-                        ],
+                ),
+                title: Text(category?.name ?? 'Категория #${record.categoryId}'),
+                subtitle: Text(record.note?.isNotEmpty == true
+                    ? record.note!
+                    : record.necessityLabel ?? 'Без комментария'),
+                trailing: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  crossAxisAlignment: CrossAxisAlignment.end,
+                  children: [
+                    Text(
+                      formatCurrencyMinor(record.amountMinor),
+                      style: TextStyle(
+                        color: _colorForType(record.type),
+                        fontWeight: FontWeight.bold,
                       ),
-                    ) ??
-                    false;
-                if (confirm) {
-                  repository.removeOperation(periodId, operation.id);
+                    ),
+                    Text(_labelForType(record.type)),
+                  ],
+                ),
+                onLongPress: () async {
+                  final id = record.id;
+                  if (id == null) {
+                    return;
+                  }
+                  final confirm = await showDialog<bool>(
+                        context: context,
+                        builder: (context) => AlertDialog(
+                          title: const Text('Удалить операцию?'),
+                          content: const Text(
+                            'Это действие нельзя отменить. Итоги будут пересчитаны.',
+                          ),
+                          actions: [
+                            TextButton(
+                              onPressed: () => Navigator.of(context).pop(false),
+                              child: const Text('Отмена'),
+                            ),
+                            FilledButton(
+                              onPressed: () => Navigator.of(context).pop(true),
+                              child: const Text('Удалить'),
+                            ),
+                          ],
+                        ),
+                      ) ??
+                      false;
+                  if (!confirm) {
+                    return;
+                  }
+                  await repository.delete(id);
+                  ref.invalidate(halfPeriodTransactionsProvider);
                   ScaffoldMessenger.of(context).showSnackBar(
                     const SnackBar(content: Text('Операция удалена')),
                   );
-                  ref.invalidate(activePeriodOperationsProvider);
-                  ref.invalidate(periodSummaryProvider);
-                }
-              },
-            ),
-          ),
+                },
+              ),
+            );
+          },
         ),
       ],
     );
+  }
+}
+
+Map<DateTime, List<TransactionRecord>> _groupByDate(
+  List<TransactionRecord> transactions,
+) {
+  final grouped = <DateTime, List<TransactionRecord>>{};
+  for (final record in transactions) {
+    final date = DateTime(record.date.year, record.date.month, record.date.day);
+    grouped.putIfAbsent(date, () => []).add(record);
+  }
+  return grouped;
+}
+
+List<TransactionRecord> _applyFilter(
+  List<TransactionRecord> source,
+  OperationsFilter filter,
+) {
+  switch (filter) {
+    case OperationsFilter.all:
+      return source;
+    case OperationsFilter.income:
+      return source
+          .where((record) => record.type == TransactionType.income)
+          .toList();
+    case OperationsFilter.expense:
+      return source
+          .where((record) => record.type == TransactionType.expense)
+          .toList();
+    case OperationsFilter.saving:
+      return source
+          .where((record) => record.type == TransactionType.saving)
+          .toList();
+  }
+}
+
+Color _colorForType(TransactionType type) {
+  switch (type) {
+    case TransactionType.income:
+      return Colors.green;
+    case TransactionType.expense:
+      return Colors.redAccent;
+    case TransactionType.saving:
+      return Colors.blueAccent;
+  }
+}
+
+IconData _iconForType(TransactionType type) {
+  switch (type) {
+    case TransactionType.income:
+      return Icons.trending_up;
+    case TransactionType.expense:
+      return Icons.trending_down;
+    case TransactionType.saving:
+      return Icons.savings;
+  }
+}
+
+String _labelForType(TransactionType type) {
+  switch (type) {
+    case TransactionType.income:
+      return 'Доход';
+    case TransactionType.expense:
+      return 'Расход';
+    case TransactionType.saving:
+      return 'Сбережение';
   }
 }

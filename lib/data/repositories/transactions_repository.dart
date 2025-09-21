@@ -15,6 +15,7 @@ abstract class TransactionsRepository {
     DateTime to, {
     int? accountId,
     int? categoryId,
+    TransactionType? type,
     bool? isPlanned,
     bool? includedInPeriod,
   });
@@ -24,6 +25,10 @@ abstract class TransactionsRepository {
   Future<void> update(TransactionRecord record);
 
   Future<void> delete(int id);
+
+  Future<List<TransactionRecord>> listPlanned({TransactionType? type});
+
+  Future<void> setPlannedCompletion(int id, bool isCompleted);
 }
 
 class SqliteTransactionsRepository implements TransactionsRepository {
@@ -105,6 +110,7 @@ class SqliteTransactionsRepository implements TransactionsRepository {
     DateTime to, {
     int? accountId,
     int? categoryId,
+    TransactionType? type,
     bool? isPlanned,
     bool? includedInPeriod,
   }) async {
@@ -119,6 +125,10 @@ class SqliteTransactionsRepository implements TransactionsRepository {
     if (categoryId != null) {
       where.write(' AND category_id = ?');
       args.add(categoryId);
+    }
+    if (type != null) {
+      where.write(' AND type = ?');
+      args.add(_typeToString(type));
     }
     if (isPlanned != null) {
       where.write(' AND is_planned = ?');
@@ -148,6 +158,35 @@ class SqliteTransactionsRepository implements TransactionsRepository {
     await db.update(
       'transactions',
       record.toMap(),
+      where: 'id = ?',
+      whereArgs: [id],
+    );
+  }
+
+  @override
+  Future<List<TransactionRecord>> listPlanned({TransactionType? type}) async {
+    final db = await _db;
+    final where = StringBuffer('is_planned = 1');
+    final args = <Object?>[];
+    if (type != null) {
+      where.write(' AND type = ?');
+      args.add(_typeToString(type));
+    }
+    final rows = await db.query(
+      'transactions',
+      where: where.toString(),
+      whereArgs: args,
+      orderBy: 'date ASC, id ASC',
+    );
+    return rows.map(TransactionRecord.fromMap).toList();
+  }
+
+  @override
+  Future<void> setPlannedCompletion(int id, bool isCompleted) async {
+    final db = await _db;
+    await db.update(
+      'transactions',
+      {'included_in_period': isCompleted ? 1 : 0},
       where: 'id = ?',
       whereArgs: [id],
     );
@@ -197,6 +236,17 @@ class SqliteTransactionsRepository implements TransactionsRepository {
         return CategoryType.saving;
       default:
         throw ArgumentError.value(raw, 'raw', 'Unknown category type');
+    }
+  }
+
+  String _typeToString(TransactionType type) {
+    switch (type) {
+      case TransactionType.income:
+        return 'income';
+      case TransactionType.expense:
+        return 'expense';
+      case TransactionType.saving:
+        return 'saving';
     }
   }
 }

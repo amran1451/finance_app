@@ -5,7 +5,7 @@ class AppMigrations {
   AppMigrations._();
 
   /// Latest schema version supported by the application.
-  static const int latestVersion = 1;
+  static const int latestVersion = 2;
 
   static final Map<int, List<String>> _migrationScripts = {
     1: [
@@ -52,6 +52,10 @@ class AppMigrations {
           'key TEXT PRIMARY KEY, '
           'value TEXT NOT NULL'
           ')',
+    ],
+    2: [
+      'ALTER TABLE transactions ADD COLUMN criticality INTEGER NOT NULL DEFAULT 0',
+      'ALTER TABLE transactions ADD COLUMN necessity_label TEXT NULL',
     ],
   };
 

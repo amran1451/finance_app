@@ -2,7 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
-import '../../data/mock/mock_models.dart';
+import '../../data/mock/mock_models.dart' as mock;
+import '../../data/models/category.dart' as db_models;
+import '../../data/models/transaction_record.dart';
 import '../../routing/app_router.dart';
 import '../../state/app_providers.dart';
 import '../../state/entry_flow_providers.dart';
@@ -15,8 +17,6 @@ class ReviewScreen extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final entryState = ref.watch(entryFlowControllerProvider);
     final controller = ref.read(entryFlowControllerProvider.notifier);
-    final period = ref.watch(activePeriodProvider);
-    final operationsRepository = ref.watch(operationsRepositoryProvider);
     final necessityLabels = ref.watch(necessityLabelsProvider);
     final selectedNecessity = entryState.necessityIndex;
 
@@ -30,18 +30,41 @@ class ReviewScreen extends ConsumerWidget {
         return;
       }
 
-      operationsRepository.addOperation(
-        periodId: period.id,
-        amount: entryState.amount,
-        type: entryState.type,
-        category: entryState.category!,
+      final categoryId =
+          await _resolveCategoryId(ref, entryState.category!);
+      final accountId = await _defaultAccountId(ref);
+      final transactionType = _mapTransactionType(entryState.type);
+      final amountMinor = (entryState.amount * 100).round();
+      final note = entryState.note.trim().isEmpty
+          ? null
+          : entryState.note.trim();
+      String? necessityLabel;
+      if (selectedNecessity >= 0 &&
+          selectedNecessity < necessityLabels.length) {
+        necessityLabel = necessityLabels[selectedNecessity];
+      }
+
+      final record = TransactionRecord(
+        accountId: accountId,
+        categoryId: categoryId,
+        type: transactionType,
+        amountMinor: amountMinor,
         date: entryState.selectedDate,
-        note: entryState.note.isEmpty ? null : entryState.note,
-        plannedId: entryState.attachToPlanned ? 'planned-mock' : null,
+        note: note,
+        isPlanned: false,
+        includedInPeriod: true,
+        criticality: selectedNecessity,
+        necessityLabel: necessityLabel,
       );
 
-      ref.invalidate(activePeriodOperationsProvider);
-      ref.invalidate(periodSummaryProvider);
+      final transactionsRepository = ref.read(transactionsRepoProvider);
+      await transactionsRepository.add(
+        record,
+        asSavingPair: entryState.type == mock.OperationType.savings,
+      );
+
+      ref.invalidate(halfPeriodTransactionsProvider);
+      ref.invalidate(computedBalanceProvider(accountId));
       controller.reset();
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Сохранено')),
@@ -67,125 +90,138 @@ class ReviewScreen extends ConsumerWidget {
           ),
         ],
       ),
-      body: Padding(
-        padding: const EdgeInsets.all(24),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Card(
-              child: Padding(
-                padding: const EdgeInsets.all(20),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    _SummaryRow(
-                      label: 'Категория',
-                      value: entryState.category?.name ?? 'Не выбрано',
-                    ),
-                    const SizedBox(height: 12),
-                    _SummaryRow(
-                      label: 'Сумма',
-                      value: formatCurrency(entryState.amount),
-                    ),
-                    const SizedBox(height: 12),
-                    _SummaryRow(
-                      label: 'Тип операции',
-                      value: entryState.type.label,
-                    ),
-                    const SizedBox(height: 12),
-                    _SummaryRow(
-                      label: 'Период',
-                      value: period.title,
-                    ),
-                    const SizedBox(height: 16),
-                    Text(
-                      'Критичность/необходимость',
-                      style: Theme.of(context).textTheme.titleSmall,
-                    ),
-                    const SizedBox(height: 8),
-                    Wrap(
-                      spacing: 8,
-                      runSpacing: 8,
-                      children: [
-                        for (var i = 0; i < necessityLabels.length; i++)
-                          ChoiceChip(
-                            label: Text(necessityLabels[i]),
-                            selected: selectedNecessity == i,
-                            onSelected: (_) => controller.setNecessityIndex(i),
+      body: SafeArea(
+        child: LayoutBuilder(
+          builder: (context, constraints) {
+            return SingleChildScrollView(
+              padding: const EdgeInsets.all(24),
+              child: ConstrainedBox(
+                constraints: BoxConstraints(minHeight: constraints.maxHeight),
+                child: IntrinsicHeight(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      Card(
+                        child: Padding(
+                          padding: const EdgeInsets.all(20),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              _SummaryRow(
+                                label: 'Категория',
+                                value: entryState.category?.name ?? 'Не выбрано',
+                              ),
+                              const SizedBox(height: 12),
+                              _SummaryRow(
+                                label: 'Сумма',
+                                value: formatCurrency(entryState.amount),
+                              ),
+                              const SizedBox(height: 12),
+                              _SummaryRow(
+                                label: 'Тип операции',
+                                value: entryState.type.label,
+                              ),
+                              const SizedBox(height: 16),
+                              Text(
+                                'Критичность/необходимость',
+                                style:
+                                    Theme.of(context).textTheme.titleSmall,
+                              ),
+                              const SizedBox(height: 8),
+                              Wrap(
+                                spacing: 8,
+                                runSpacing: 8,
+                                children: [
+                                  for (var i = 0;
+                                      i < necessityLabels.length;
+                                      i++)
+                                    ChoiceChip(
+                                      label: Text(necessityLabels[i]),
+                                      selected: selectedNecessity == i,
+                                      onSelected: (_) =>
+                                          controller.setNecessityIndex(i),
+                                    ),
+                                ],
+                              ),
+                            ],
                           ),
-                      ],
-                    ),
-                  ],
-                ),
-              ),
-            ),
-            const SizedBox(height: 24),
-            Text(
-              'Дата',
-              style: Theme.of(context).textTheme.titleMedium,
-            ),
-            const SizedBox(height: 8),
-            SingleChildScrollView(
-              scrollDirection: Axis.horizontal,
-              child: Row(
-                children: [
-                  for (final date in upcomingDates)
-                    Padding(
-                      padding: const EdgeInsets.only(right: 12),
-                      child: ChoiceChip(
-                        label: Text(formatShortDate(date)),
-                        selected: entryState.selectedDate == date,
-                        onSelected: (_) => controller.setDate(date),
+                        ),
                       ),
-                    ),
-                ],
-              ),
-            ),
-            const SizedBox(height: 24),
-            Text(
-              'Комментарий',
-              style: Theme.of(context).textTheme.titleMedium,
-            ),
-            const SizedBox(height: 8),
-            TextFormField(
-              initialValue: entryState.note,
-              minLines: 2,
-              maxLines: 3,
-              onChanged: controller.setNote,
-              decoration: const InputDecoration(
-                hintText: 'Например: покупки к ужину',
-              ),
-            ),
-            const SizedBox(height: 16),
-            Card(
-              child: ListTile(
-                title: const Text('Привязать к запланированному'),
-                subtitle: Text(entryState.attachToPlanned
-                    ? 'Связано (заглушка)'
-                    : 'Можно будет выбрать в следующих версиях'),
-                trailing: Switch(
-                  value: entryState.attachToPlanned,
-                  onChanged: (value) {
-                    controller.setAttachToPlanned(value);
-                    if (value) {
-                      if (entryState.type == OperationType.income) {
-                        context.pushNamed(RouteNames.plannedIncome);
-                      } else if (entryState.type == OperationType.expense) {
-                        context.pushNamed(RouteNames.plannedExpense);
-                      } else {
-                        context.pushNamed(RouteNames.plannedSavings);
-                      }
-                    }
-                  },
+                      const SizedBox(height: 24),
+                      Text(
+                        'Дата',
+                        style: Theme.of(context).textTheme.titleMedium,
+                      ),
+                      const SizedBox(height: 8),
+                      SingleChildScrollView(
+                        scrollDirection: Axis.horizontal,
+                        child: Row(
+                          children: [
+                            for (final date in upcomingDates)
+                              Padding(
+                                padding: const EdgeInsets.only(right: 12),
+                                child: ChoiceChip(
+                                  label: Text(formatShortDate(date)),
+                                  selected: entryState.selectedDate == date,
+                                  onSelected: (_) => controller.setDate(date),
+                                ),
+                              ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(height: 24),
+                      Text(
+                        'Комментарий',
+                        style: Theme.of(context).textTheme.titleMedium,
+                      ),
+                      const SizedBox(height: 8),
+                      TextFormField(
+                        initialValue: entryState.note,
+                        minLines: 2,
+                        maxLines: 3,
+                        onChanged: controller.setNote,
+                        decoration: const InputDecoration(
+                          hintText: 'Например: покупки к ужину',
+                        ),
+                      ),
+                      const SizedBox(height: 16),
+                      Card(
+                        child: ListTile(
+                          title: const Text('Привязать к запланированному'),
+                          subtitle: Text(entryState.attachToPlanned
+                              ? 'Связано (заглушка)'
+                              : 'Можно будет выбрать в следующих версиях'),
+                          trailing: Switch(
+                            value: entryState.attachToPlanned,
+                            onChanged: (value) {
+                              controller.setAttachToPlanned(value);
+                              if (value) {
+                                if (entryState.type == mock.OperationType.income) {
+                                  context.pushNamed(RouteNames.plannedIncome);
+                                } else if (entryState.type ==
+                                    mock.OperationType.expense) {
+                                  context
+                                      .pushNamed(RouteNames.plannedExpense);
+                                } else {
+                                  context
+                                      .pushNamed(RouteNames.plannedSavings);
+                                }
+                              }
+                            },
+                          ),
+                        ),
+                      ),
+                      const Spacer(),
+                      FilledButton(
+                        onPressed: entryState.canSave ? saveOperation : null,
+                        child: const Text('Сохранить'),
+                      ),
+                    ],
+                  ),
                 ),
               ),
-            ),
-            const Spacer(),
-            FilledButton(
-              onPressed: entryState.canSave ? saveOperation : null,
-              child: const Text('Сохранить'),
-            ),
-          ],
+            );
+          },
         ),
       ),
     );
@@ -220,5 +256,55 @@ class _SummaryRow extends StatelessWidget {
         ),
       ],
     );
+  }
+}
+
+Future<int> _resolveCategoryId(WidgetRef ref, mock.Category category) async {
+  final repository = ref.read(categoriesRepoProvider);
+  final type = _mapCategoryType(category.type);
+  final existing = await repository.getByType(type);
+  for (final item in existing) {
+    if (item.name == category.name && item.id != null) {
+      return item.id!;
+    }
+  }
+  return repository.create(
+    db_models.Category(type: type, name: category.name),
+  );
+}
+
+Future<int> _defaultAccountId(WidgetRef ref) async {
+  final accountsRepository = ref.read(accountsRepoProvider);
+  final accounts = await accountsRepository.getAll();
+  if (accounts.isEmpty) {
+    throw StateError('Нет доступных счетов для сохранения операции');
+  }
+  final preferred = accounts.firstWhere(
+    (account) =>
+        account.name.trim().toLowerCase() == 'карта',
+    orElse: () => accounts.first,
+  );
+  return preferred.id ?? accounts.first.id!;
+}
+
+TransactionType _mapTransactionType(mock.OperationType type) {
+  switch (type) {
+    case mock.OperationType.income:
+      return TransactionType.income;
+    case mock.OperationType.expense:
+      return TransactionType.expense;
+    case mock.OperationType.savings:
+      return TransactionType.saving;
+  }
+}
+
+db_models.CategoryType _mapCategoryType(mock.CategoryType type) {
+  switch (type) {
+    case mock.OperationType.income:
+      return db_models.CategoryType.income;
+    case mock.OperationType.expense:
+      return db_models.CategoryType.expense;
+    case mock.OperationType.savings:
+      return db_models.CategoryType.saving;
   }
 }

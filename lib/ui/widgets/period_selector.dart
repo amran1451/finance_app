@@ -1,36 +1,28 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import '../../state/app_providers.dart';
+import '../../state/budget_providers.dart';
 
 class PeriodSelector extends ConsumerWidget {
   const PeriodSelector({super.key});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final periods = ref.watch(periodsProvider);
-    final activePeriod = ref.watch(activePeriodProvider);
-    final controller = ref.read(activePeriodProvider.notifier);
+    final selectedHalf = ref.watch(selectedHalfProvider);
+    final notifier = ref.read(selectedHalfProvider.notifier);
 
-    final labels = ['1–15', '15–31'];
-    final segments = <ButtonSegment<String>>[];
-
-    for (var i = 0; i < periods.length && i < labels.length; i++) {
-      segments.add(
+    return SegmentedButton<HalfPeriod>(
+      segments: const [
         ButtonSegment(
-          value: periods[i].id,
-          label: Text(labels[i]),
+          value: HalfPeriod.first,
+          label: Text('1–15'),
         ),
-      );
-    }
-
-    if (segments.isEmpty) {
-      return const SizedBox.shrink();
-    }
-
-    return SegmentedButton<String>(
-      segments: segments,
-      selected: {activePeriod.id},
+        ButtonSegment(
+          value: HalfPeriod.second,
+          label: Text('15–31'),
+        ),
+      ],
+      selected: {selectedHalf},
       showSelectedIcon: false,
       style: SegmentedButton.styleFrom(
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
@@ -41,7 +33,7 @@ class PeriodSelector extends ConsumerWidget {
         if (selection.isEmpty) {
           return;
         }
-        controller.setActive(selection.first);
+        notifier.state = selection.first;
       },
     );
   }

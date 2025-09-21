@@ -15,6 +15,8 @@ class TransactionRecord {
     this.isPlanned = false,
     this.includedInPeriod = true,
     this.tags = const <String>[],
+    this.criticality = 0,
+    this.necessityLabel,
   });
 
   final int? id;
@@ -28,6 +30,8 @@ class TransactionRecord {
   final bool isPlanned;
   final bool includedInPeriod;
   final List<String> tags;
+  final int criticality;
+  final String? necessityLabel;
 
   TransactionRecord copyWith({
     int? id,
@@ -41,6 +45,8 @@ class TransactionRecord {
     bool? isPlanned,
     bool? includedInPeriod,
     List<String>? tags,
+    int? criticality,
+    Object? necessityLabel = _unset,
   }) {
     return TransactionRecord(
       id: id ?? this.id,
@@ -54,6 +60,10 @@ class TransactionRecord {
       isPlanned: isPlanned ?? this.isPlanned,
       includedInPeriod: includedInPeriod ?? this.includedInPeriod,
       tags: tags ?? this.tags,
+      criticality: criticality ?? this.criticality,
+      necessityLabel: necessityLabel == _unset
+          ? this.necessityLabel
+          : necessityLabel as String?,
     );
   }
 
@@ -70,6 +80,8 @@ class TransactionRecord {
       isPlanned: (map['is_planned'] as int? ?? 0) != 0,
       includedInPeriod: (map['included_in_period'] as int? ?? 0) != 0,
       tags: _decodeTags(map['tags'] as String?),
+      criticality: map['criticality'] as int? ?? 0,
+      necessityLabel: map['necessity_label'] as String?,
     );
   }
 
@@ -86,8 +98,12 @@ class TransactionRecord {
       'is_planned': isPlanned ? 1 : 0,
       'included_in_period': includedInPeriod ? 1 : 0,
       'tags': tags.isEmpty ? null : jsonEncode(tags),
+      'criticality': criticality,
+      'necessity_label': necessityLabel,
     };
   }
+
+  static const Object _unset = Object();
 
   static TransactionType _typeFromString(String? raw) {
     switch (raw) {

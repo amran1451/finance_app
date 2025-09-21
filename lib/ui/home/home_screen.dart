@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 
 import '../../data/models/account.dart' as db_models;
 import '../../data/models/payout.dart';
+import '../../data/models/transaction_record.dart';
 import '../../routing/app_router.dart';
 import '../../state/app_providers.dart';
 import '../../state/budget_providers.dart';
@@ -21,14 +22,68 @@ class HomeScreen extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final period = ref.watch(activePeriodProvider);
-    final summary = ref.watch(periodSummaryProvider);
     final dailyLimitAsync = ref.watch(dailyLimitProvider);
     final periodBudgetAsync = ref.watch(periodBudgetMinorProvider);
     final accountsAsync = ref.watch(accountsDbProvider);
-    final hasOperations = ref.watch(hasOperationsProvider);
     final hideFab = ref.watch(isSheetOpenProvider);
     final entryController = ref.read(entryFlowControllerProvider.notifier);
+    final transactionsAsync = ref.watch(halfPeriodTransactionsProvider);
+    final boundsAsync = ref.watch(halfPeriodBoundsProvider);
+
+    final transactions = transactionsAsync.asData?.value ?? const [];
+    final isTransactionsLoading = transactionsAsync.isLoading;
+    final transactionsError = transactionsAsync is AsyncError
+        ? (transactionsAsync as AsyncError).error
+        : null;
+    final hasOperations = transactions.isNotEmpty;
+    final today = DateTime.now();
+    final normalizedToday = DateTime(today.year, today.month, today.day);
+    final todaySpentMinor = transactions
+        .where((record) =>
+            record.type == TransactionType.expense &&
+            _isSameDay(record.date, normalizedToday))
+        .fold<int>(0, (sum, record) => sum + record.amountMinor);
+    final periodExpenseMinor = transactions
+        .where((record) => record.type == TransactionType.expense)
+        .fold<int>(0, (sum, record) => sum + record.amountMinor);
+    final periodIncomeMinor = transactions
+        .where((record) => record.type == TransactionType.income)
+        .fold<int>(0, (sum, record) => sum + record.amountMinor);
+
+    final dailyLimitValue = dailyLimitAsync.asData?.value;
+    final dailyLimitLabel = dailyLimitAsync.when(
+      data: (value) => formatCurrencyMinorNullable(value),
+      loading: () => '…',
+      error: (e, _) => '—',
+    );
+    final todaySubtitle = isTransactionsLoading
+        ? 'Загрузка…'
+        : transactionsError != null
+            ? 'Ошибка загрузки'
+            : '${formatCurrencyMinor(todaySpentMinor)} из $dailyLimitLabel';
+    final todayProgress = (dailyLimitValue ?? 0) <= 0
+        ? 0.0
+        : (todaySpentMinor / (dailyLimitValue ?? 1)).clamp(0.0, 1.0);
+
+    final periodExpenseLabel = isTransactionsLoading
+        ? 'Загрузка…'
+        : transactionsError != null
+            ? 'Ошибка'
+            : formatCurrencyMinor(periodExpenseMinor);
+    final periodIncomeLabel = isTransactionsLoading
+        ? 'Загрузка…'
+        : transactionsError != null
+            ? 'Ошибка'
+            : formatCurrencyMinor(periodIncomeMinor);
+
+    final boundsLabel = boundsAsync.when(
+      data: (bounds) {
+        final endInclusive = bounds.endExclusive.subtract(const Duration(days: 1));
+        return '${formatDayMonth(bounds.start)} – ${formatDayMonth(endInclusive)}';
+      },
+      loading: () => 'Выбранный период',
+      error: (error, _) => 'Период недоступен',
+    );
 
     return Scaffold(
       floatingActionButtonLocation: FloatingActionButtonLocation.centerFloat,
@@ -58,14 +113,15 @@ class HomeScreen extends ConsumerWidget {
               const SizedBox(height: 16),
               CalloutCard(
                 title: 'Траты сегодня',
-                subtitle:
-                    '${formatCurrency(summary.todaySpent)} из ${formatCurrency(summary.todayBudget)}',
+                subtitle: todaySubtitle,
                 trailing: const Icon(Icons.chevron_right),
                 onTap: () => context.pushNamed(RouteNames.operations),
-                child: ProgressLine(
-                  value: summary.dailyProgress,
-                  label: 'Прогресс дня',
-                ),
+                child: isTransactionsLoading
+                    ? const LinearProgressIndicator()
+                    : ProgressLine(
+                        value: todayProgress,
+                        label: 'Прогресс дня',
+                      ),
               ),
               const SizedBox(height: 16),
               CalloutCard(
@@ -108,11 +164,18 @@ class HomeScreen extends ConsumerWidget {
               ),
               const SizedBox(height: 32),
               Text(
-                '${period.title}: операции',
+                '$boundsLabel: операции',
                 style: Theme.of(context).textTheme.titleMedium,
               ),
               const SizedBox(height: 8),
-              if (!hasOperations)
+              if (transactionsError != null)
+                Card(
+                  child: Padding(
+                    padding: const EdgeInsets.all(20),
+                    child: Text('Не удалось загрузить операции: $transactionsError'),
+                  ),
+                )
+              else if (!hasOperations && !isTransactionsLoading)
                 Card(
                   child: Padding(
                     padding: const EdgeInsets.all(20),
@@ -129,12 +192,19 @@ class HomeScreen extends ConsumerWidget {
                     ),
                   ),
                 )
+              else if (isTransactionsLoading)
+                const Center(child: CircularProgressIndicator())
               else
                 FilledButton.tonalIcon(
                   onPressed: () => context.pushNamed(RouteNames.operations),
                   icon: const Icon(Icons.receipt_long),
-                  label: const Text('Открыть операции периода'),
+                  label: Text('Открыть операции периода · $periodExpenseLabel'),
                 ),
+              const SizedBox(height: 8),
+              Text(
+                'Доходы за период: $periodIncomeLabel',
+                style: Theme.of(context).textTheme.bodyMedium,
+              ),
             ],
           ),
         ),
@@ -366,11 +436,11 @@ class _PlannedOverview extends StatelessWidget {
           );
         }
 
-        final incomeTotal =
+        final incomeTotalAsync =
             ref.watch(plannedTotalByTypeProvider(PlannedType.income));
-        final expenseTotal =
+        final expenseTotalAsync =
             ref.watch(plannedTotalByTypeProvider(PlannedType.expense));
-        final savingTotal =
+        final savingTotalAsync =
             ref.watch(plannedTotalByTypeProvider(PlannedType.saving));
         final plannedPool = ref.watch(plannedPoolMinorProvider);
 
@@ -397,7 +467,11 @@ class _PlannedOverview extends StatelessWidget {
             ListTile(
               contentPadding: EdgeInsets.zero,
               title: const Text('Доходы'),
-              subtitle: Text(formatCurrency(incomeTotal)),
+              subtitle: incomeTotalAsync.when(
+                data: (value) => Text(formatCurrencyMinor(value)),
+                loading: () => const Text('Загрузка…'),
+                error: (error, _) => Text('Ошибка: $error'),
+              ),
               onTap: () =>
                   showPlannedSheet(context, ref, type: PlannedType.income),
             ),
@@ -405,7 +479,11 @@ class _PlannedOverview extends StatelessWidget {
             ListTile(
               contentPadding: EdgeInsets.zero,
               title: const Text('Расходы'),
-              subtitle: Text(formatCurrency(expenseTotal)),
+              subtitle: expenseTotalAsync.when(
+                data: (value) => Text(formatCurrencyMinor(value)),
+                loading: () => const Text('Загрузка…'),
+                error: (error, _) => Text('Ошибка: $error'),
+              ),
               onTap: () =>
                   showPlannedSheet(context, ref, type: PlannedType.expense),
             ),
@@ -413,7 +491,11 @@ class _PlannedOverview extends StatelessWidget {
             ListTile(
               contentPadding: EdgeInsets.zero,
               title: const Text('Сбережения'),
-              subtitle: Text(formatCurrency(savingTotal)),
+              subtitle: savingTotalAsync.when(
+                data: (value) => Text(formatCurrencyMinor(value)),
+                loading: () => const Text('Загрузка…'),
+                error: (error, _) => Text('Ошибка: $error'),
+              ),
               onTap: () =>
                   showPlannedSheet(context, ref, type: PlannedType.saving),
             ),
@@ -558,4 +640,8 @@ class _OvalFab extends StatelessWidget {
       child: Icon(Icons.add, color: theme.colorScheme.onPrimary),
     );
   }
+}
+
+bool _isSameDay(DateTime a, DateTime b) {
+  return a.year == b.year && a.month == b.month && a.day == b.day;
 }
