@@ -3,16 +3,18 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../data/models/account.dart' as db_models;
+import '../../data/models/payout.dart';
+import '../../routing/app_router.dart';
 import '../../state/app_providers.dart';
 import '../../state/budget_providers.dart';
 import '../../state/entry_flow_providers.dart';
 import '../../state/planned_providers.dart';
 import '../../utils/formatting.dart';
+import '../planned/planned_sheet.dart';
+import '../payouts/add_payout_sheet.dart';
 import '../widgets/callout_card.dart';
 import '../widgets/period_selector.dart';
 import '../widgets/progress_line.dart';
-import '../../routing/app_router.dart';
-import '../planned/planned_sheet.dart';
 
 class HomeScreen extends ConsumerWidget {
   const HomeScreen({super.key});
@@ -330,58 +332,102 @@ class _PlannedOverview extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final incomeTotal =
-        ref.watch(plannedTotalByTypeProvider(PlannedType.income));
-    final expenseTotal =
-        ref.watch(plannedTotalByTypeProvider(PlannedType.expense));
-    final savingTotal =
-        ref.watch(plannedTotalByTypeProvider(PlannedType.saving));
-    final plannedPool = ref.watch(plannedPoolMinorProvider);
+    final payoutAsync = ref.watch(currentPayoutProvider);
+    return payoutAsync.when(
+      data: (payout) {
+        if (payout == null) {
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              FilledButton.tonalIcon(
+                onPressed: () async {
+                  final saved = await showAddPayoutSheet(
+                    context,
+                    ref,
+                    type: PayoutType.salary,
+                  );
+                  if (!context.mounted) {
+                    return;
+                  }
+                  if (saved) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(content: Text('Выплата добавлена')),
+                    );
+                  }
+                },
+                icon: const Icon(Icons.payments),
+                label: const Text('Добавить выплату'),
+              ),
+              const SizedBox(height: 12),
+              const Text(
+                'Добавьте ближайшую выплату, чтобы расчёт бюджета был точным.',
+              ),
+            ],
+          );
+        }
 
-    return Column(
-      children: [
-        plannedPool.when(
-          data: (value) => ListTile(
-            contentPadding: EdgeInsets.zero,
-            title: const Text('Доступно на планы'),
-            subtitle: Text(formatCurrencyMinor(value)),
-          ),
-          loading: () => const ListTile(
-            contentPadding: EdgeInsets.zero,
-            title: Text('Доступно на планы'),
-            subtitle: Text('Загрузка…'),
-          ),
-          error: (_, __) => const ListTile(
-            contentPadding: EdgeInsets.zero,
-            title: Text('Доступно на планы'),
-            subtitle: Text('Не удалось загрузить'),
-          ),
-        ),
-        const Divider(height: 0),
-        ListTile(
-          contentPadding: EdgeInsets.zero,
-          title: const Text('Доходы'),
-          subtitle: Text(formatCurrency(incomeTotal)),
-          onTap: () =>
-              showPlannedSheet(context, ref, type: PlannedType.income),
-        ),
-        const Divider(height: 0),
-        ListTile(
-          contentPadding: EdgeInsets.zero,
-          title: const Text('Расходы'),
-          subtitle: Text(formatCurrency(expenseTotal)),
-          onTap: () =>
-              showPlannedSheet(context, ref, type: PlannedType.expense),
-        ),
-        const Divider(height: 0),
-        ListTile(
-          contentPadding: EdgeInsets.zero,
-          title: const Text('Сбережения'),
-          subtitle: Text(formatCurrency(savingTotal)),
-          onTap: () =>
-              showPlannedSheet(context, ref, type: PlannedType.saving),
-        ),
-      ],
+        final incomeTotal =
+            ref.watch(plannedTotalByTypeProvider(PlannedType.income));
+        final expenseTotal =
+            ref.watch(plannedTotalByTypeProvider(PlannedType.expense));
+        final savingTotal =
+            ref.watch(plannedTotalByTypeProvider(PlannedType.saving));
+        final plannedPool = ref.watch(plannedPoolMinorProvider);
+
+        return Column(
+          children: [
+            plannedPool.when(
+              data: (value) => ListTile(
+                contentPadding: EdgeInsets.zero,
+                title: const Text('Доступно на планы'),
+                subtitle: Text(formatCurrencyMinor(value)),
+              ),
+              loading: () => const ListTile(
+                contentPadding: EdgeInsets.zero,
+                title: Text('Доступно на планы'),
+                subtitle: Text('Загрузка…'),
+              ),
+              error: (_, __) => const ListTile(
+                contentPadding: EdgeInsets.zero,
+                title: Text('Доступно на планы'),
+                subtitle: Text('Не удалось загрузить'),
+              ),
+            ),
+            const Divider(height: 0),
+            ListTile(
+              contentPadding: EdgeInsets.zero,
+              title: const Text('Доходы'),
+              subtitle: Text(formatCurrency(incomeTotal)),
+              onTap: () =>
+                  showPlannedSheet(context, ref, type: PlannedType.income),
+            ),
+            const Divider(height: 0),
+            ListTile(
+              contentPadding: EdgeInsets.zero,
+              title: const Text('Расходы'),
+              subtitle: Text(formatCurrency(expenseTotal)),
+              onTap: () =>
+                  showPlannedSheet(context, ref, type: PlannedType.expense),
+            ),
+            const Divider(height: 0),
+            ListTile(
+              contentPadding: EdgeInsets.zero,
+              title: const Text('Сбережения'),
+              subtitle: Text(formatCurrency(savingTotal)),
+              onTap: () =>
+                  showPlannedSheet(context, ref, type: PlannedType.saving),
+            ),
+          ],
+        );
+      },
+      loading: () => const Padding(
+        padding: EdgeInsets.symmetric(vertical: 16),
+        child: Center(child: CircularProgressIndicator()),
+      ),
+      error: (error, _) => Padding(
+        padding: const EdgeInsets.symmetric(vertical: 16),
+        child: Text('Не удалось получить данные о выплатах: $error'),
+      ),
     );
   }
 }
