@@ -52,7 +52,10 @@ class _AddAnotherContentState extends State<_AddAnotherContent>
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
     return InkWell(
-      onTap: () => widget.onTap(context),
+      onTap: () {
+        ScaffoldMessenger.maybeOf(context)?.hideCurrentSnackBar();
+        widget.onTap(context);
+      },
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
