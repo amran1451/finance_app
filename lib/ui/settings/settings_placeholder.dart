@@ -5,7 +5,7 @@ import '../../data/models/payout.dart';
 import '../../state/app_providers.dart';
 import '../payouts/add_payout_sheet.dart';
 import 'categories_manage_screen.dart';
-import 'necessity_settings_stub.dart';
+import 'necessity_settings_screen.dart';
 
 class SettingsPlaceholder extends ConsumerStatefulWidget {
   const SettingsPlaceholder({super.key});
@@ -191,7 +191,7 @@ class _SettingsPlaceholderState extends ConsumerState<SettingsPlaceholder> {
                   onTap: () {
                     Navigator.of(context).push(
                       MaterialPageRoute(
-                        builder: (_) => const NecessitySettingsStub(),
+                        builder: (_) => const NecessitySettingsScreen(),
                       ),
                     );
                   },

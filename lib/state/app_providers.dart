@@ -8,6 +8,7 @@ import '../data/mock/mock_repositories.dart' as mock_repo;
 import '../data/repositories/accounts_repository.dart' as accounts_repo;
 import '../data/repositories/categories_repository.dart' as categories_repo;
 import '../data/repositories/payouts_repository.dart' as payouts_repo;
+import '../data/repositories/necessity_repository.dart' as necessity_repo;
 import '../data/repositories/settings_repository.dart' as settings_repo;
 import '../data/repositories/transactions_repository.dart' as transactions_repo;
 
@@ -44,6 +45,11 @@ final payoutsRepoProvider = Provider<payouts_repo.PayoutsRepository>((ref) {
 final settingsRepoProvider = Provider<settings_repo.SettingsRepository>((ref) {
   final database = ref.watch(appDatabaseProvider);
   return settings_repo.SqliteSettingsRepository(database: database);
+});
+
+final necessityRepoProvider = Provider<necessity_repo.NecessityRepository>((ref) {
+  final database = ref.watch(appDatabaseProvider);
+  return necessity_repo.NecessityRepositorySqlite(database: database);
 });
 
 final computedBalanceProvider =
@@ -99,8 +105,16 @@ final categoriesRepositoryProvider =
 
 final isSheetOpenProvider = StateProvider<bool>((_) => false);
 
-final necessityLabelsProvider = StateProvider<List<String>>((ref) => const [
-      'Необходимо',
-      'Вынуждено',
-      'Эмоции',
-    ]);
+final necessityLabelsProvider =
+    FutureProvider<List<necessity_repo.NecessityLabel>>((ref) {
+  final repository = ref.watch(necessityRepoProvider);
+  return repository.list();
+});
+
+final necessityMapProvider =
+    FutureProvider<Map<int, necessity_repo.NecessityLabel>>((ref) async {
+  final labels = await ref.watch(necessityLabelsProvider.future);
+  return {
+    for (final label in labels) label.id: label,
+  };
+});

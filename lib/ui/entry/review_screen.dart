@@ -5,6 +5,7 @@ import 'package:go_router/go_router.dart';
 import '../../data/mock/mock_models.dart' as mock;
 import '../../data/models/category.dart' as db_models;
 import '../../data/models/transaction_record.dart';
+import '../../data/repositories/necessity_repository.dart';
 import '../../routing/app_router.dart';
 import '../../state/app_providers.dart';
 import '../../state/entry_flow_providers.dart';
@@ -17,8 +18,52 @@ class ReviewScreen extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final entryState = ref.watch(entryFlowControllerProvider);
     final controller = ref.read(entryFlowControllerProvider.notifier);
-    final necessityLabels = ref.watch(necessityLabelsProvider);
-    final selectedNecessity = entryState.necessityIndex;
+    final necessityLabelsAsync = ref.watch(necessityLabelsProvider);
+    final necessityLabels =
+        necessityLabelsAsync.value ?? <NecessityLabel>[];
+
+    if (!entryState.necessityResolved && necessityLabels.isNotEmpty) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!context.mounted) {
+          return;
+        }
+        final fallbackLabel = entryState.necessityLabel;
+        if (fallbackLabel != null) {
+          final match = _findLabelByName(necessityLabels, fallbackLabel);
+          if (match != null) {
+            controller.setNecessity(
+              id: match.id,
+              label: match.name,
+              criticality: necessityLabels.indexOf(match),
+              resolved: true,
+            );
+          } else {
+            controller.setNecessity(
+              id: null,
+              label: fallbackLabel,
+              criticality: entryState.necessityCriticality,
+              resolved: true,
+            );
+          }
+          return;
+        }
+        final first = necessityLabels.first;
+        controller.setNecessity(
+          id: first.id,
+          label: first.name,
+          criticality: 0,
+          resolved: true,
+        );
+      });
+    }
+
+    NecessityLabel? selectedNecessityLabel;
+    for (final label in necessityLabels) {
+      if (label.id == entryState.necessityId) {
+        selectedNecessityLabel = label;
+        break;
+      }
+    }
 
     final upcomingDates = List.generate(7, (index) {
       final date = DateTime.now().add(Duration(days: index));
@@ -38,11 +83,13 @@ class ReviewScreen extends ConsumerWidget {
       final note = entryState.note.trim().isEmpty
           ? null
           : entryState.note.trim();
-      String? necessityLabel;
-      if (selectedNecessity >= 0 &&
-          selectedNecessity < necessityLabels.length) {
-        necessityLabel = necessityLabels[selectedNecessity];
-      }
+      final fallbackNecessityLabel = entryState.necessityLabel;
+      final necessityId = selectedNecessityLabel?.id;
+      final necessityLabel =
+          selectedNecessityLabel?.name ?? fallbackNecessityLabel;
+      final necessityCriticality = selectedNecessityLabel != null
+          ? necessityLabels.indexOf(selectedNecessityLabel)
+          : entryState.necessityCriticality;
 
       final record = TransactionRecord(
         accountId: accountId,
@@ -53,7 +100,8 @@ class ReviewScreen extends ConsumerWidget {
         note: note,
         isPlanned: false,
         includedInPeriod: true,
-        criticality: selectedNecessity,
+        criticality: necessityCriticality,
+        necessityId: necessityId,
         necessityLabel: necessityLabel,
       );
 
@@ -127,21 +175,59 @@ class ReviewScreen extends ConsumerWidget {
                                     Theme.of(context).textTheme.titleSmall,
                               ),
                               const SizedBox(height: 8),
-                              Wrap(
-                                spacing: 8,
-                                runSpacing: 8,
-                                children: [
-                                  for (var i = 0;
-                                      i < necessityLabels.length;
-                                      i++)
-                                    ChoiceChip(
-                                      label: Text(necessityLabels[i]),
-                                      selected: selectedNecessity == i,
-                                      onSelected: (_) =>
-                                          controller.setNecessityIndex(i),
+                              if (necessityLabelsAsync.isLoading &&
+                                  necessityLabels.isEmpty)
+                                const Center(
+                                  child: Padding(
+                                    padding: EdgeInsets.symmetric(vertical: 12),
+                                    child: CircularProgressIndicator(),
+                                  ),
+                                )
+                              else if (necessityLabels.isEmpty)
+                                Text(
+                                  'Нет доступных меток. Добавьте их в настройках.',
+                                  style: TextStyle(
+                                    color:
+                                        Theme.of(context).colorScheme.error,
+                                  ),
+                                )
+                              else ...[
+                                Wrap(
+                                  spacing: 8,
+                                  runSpacing: 8,
+                                  children: [
+                                    for (var i = 0;
+                                        i < necessityLabels.length;
+                                        i++)
+                                      ChoiceChip(
+                                        label: Text(necessityLabels[i].name),
+                                        selected:
+                                            necessityLabels[i].id ==
+                                                selectedNecessityLabel?.id,
+                                        onSelected: (_) => controller
+                                            .setNecessity(
+                                          id: necessityLabels[i].id,
+                                          label: necessityLabels[i].name,
+                                          criticality: i,
+                                        ),
+                                      ),
+                                  ],
+                                ),
+                                if (selectedNecessityLabel == null &&
+                                    entryState.necessityLabel != null &&
+                                    entryState.necessityResolved)
+                                  Padding(
+                                    padding: const EdgeInsets.only(top: 8),
+                                    child: Text(
+                                      'Метка "${entryState.necessityLabel!}" недоступна. Выберите новую.',
+                                      style: TextStyle(
+                                        color: Theme.of(context)
+                                            .colorScheme
+                                            .error,
+                                      ),
                                     ),
-                                ],
-                              ),
+                                  ),
+                              ],
                             ],
                           ),
                         ),
@@ -256,6 +342,19 @@ class _SummaryRow extends StatelessWidget {
       ],
     );
   }
+}
+
+NecessityLabel? _findLabelByName(
+  List<NecessityLabel> labels,
+  String name,
+) {
+  final normalized = name.trim().toLowerCase();
+  for (final label in labels) {
+    if (label.name.trim().toLowerCase() == normalized) {
+      return label;
+    }
+  }
+  return null;
 }
 
 Future<int> _resolveCategoryId(WidgetRef ref, mock.Category category) async {
