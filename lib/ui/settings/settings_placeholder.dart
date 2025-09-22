@@ -4,7 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../data/models/payout.dart';
 import '../../state/app_providers.dart';
 import '../../state/db_refresh.dart';
-import '../payouts/add_payout_sheet.dart';
+import '../payouts/payout_edit_sheet.dart';
 import 'categories_manage_screen.dart';
 import 'necessity_settings_screen.dart';
 import 'reasons_settings_screen.dart';
@@ -155,12 +155,12 @@ class _SettingsPlaceholderState extends ConsumerState<SettingsPlaceholder> {
                     children: [
                       FilledButton.tonal(
                         onPressed: () =>
-                            _showAddPayoutSheet(context, PayoutType.advance),
+                            _showPayoutSheet(context, presetType: PayoutType.advance),
                         child: const Text('Добавить аванс'),
                       ),
                       FilledButton.tonal(
                         onPressed: () =>
-                            _showAddPayoutSheet(context, PayoutType.salary),
+                            _showPayoutSheet(context, presetType: PayoutType.salary),
                         child: const Text('Добавить зарплату'),
                       ),
                     ],
@@ -218,13 +218,13 @@ class _SettingsPlaceholderState extends ConsumerState<SettingsPlaceholder> {
     );
   }
 
-  Future<void> _showAddPayoutSheet(
-    BuildContext context,
-    PayoutType type,
-  ) async {
-    final saved = await showAddPayoutSheet(
+  Future<void> _showPayoutSheet(
+    BuildContext context, {
+    PayoutType? presetType,
+  }) async {
+    final saved = await showPayoutEditSheet(
       context,
-      type: type,
+      presetType: presetType,
     );
 
     if (!mounted) {
@@ -232,6 +232,7 @@ class _SettingsPlaceholderState extends ConsumerState<SettingsPlaceholder> {
     }
 
     if (saved) {
+      bumpDbTick(ref);
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Выплата добавлена')),
       );

@@ -10,10 +10,11 @@ import '../../state/app_providers.dart';
 import '../../state/budget_providers.dart';
 import '../../state/entry_flow_providers.dart';
 import '../../state/planned_providers.dart';
+import '../../state/db_refresh.dart';
 import '../../utils/formatting.dart';
 import '../../utils/ru_plural.dart';
 import '../planned/planned_sheet.dart';
-import '../payouts/add_payout_sheet.dart';
+import '../payouts/payout_edit_sheet.dart';
 import '../widgets/callout_card.dart';
 import '../widgets/period_selector.dart';
 import '../widgets/progress_line.dart';
@@ -137,6 +138,36 @@ class HomeScreen extends ConsumerWidget {
               CalloutCard(
                 title: 'Запланировано',
                 subtitle: 'Быстрый доступ к будущим операциям',
+                trailing: IconButton(
+                  icon: const Icon(Icons.edit_outlined),
+                  tooltip: 'Редактировать выплату',
+                  onPressed: () async {
+                    final repository = ref.read(payoutsRepoProvider);
+                    final last = await repository.getLast();
+                    if (!context.mounted) {
+                      return;
+                    }
+                    if (last == null) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(content: Text('Нет выплат для редактирования')),
+                      );
+                      return;
+                    }
+                    final updated = await showPayoutEditSheet(
+                      context,
+                      initial: last,
+                    );
+                    if (!context.mounted) {
+                      return;
+                    }
+                    if (updated) {
+                      bumpDbTick(ref);
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(content: Text('Изменения применены')),
+                      );
+                    }
+                  },
+                ),
                 child: _PlannedOverview(ref: ref),
               ),
               const SizedBox(height: 16),
@@ -447,14 +478,12 @@ class _PlannedOverview extends StatelessWidget {
             children: [
               FilledButton.tonalIcon(
                 onPressed: () async {
-                  final saved = await showAddPayoutSheet(
-                    context,
-                    type: PayoutType.salary,
-                  );
+                  final saved = await showPayoutEditSheet(context);
                   if (!context.mounted) {
                     return;
                   }
                   if (saved) {
+                    bumpDbTick(ref);
                     ScaffoldMessenger.of(context).showSnackBar(
                       const SnackBar(content: Text('Выплата добавлена')),
                     );

@@ -5,7 +5,7 @@ class AppMigrations {
   AppMigrations._();
 
   /// Latest schema version supported by the application.
-  static const int latestVersion = 4;
+  static const int latestVersion = 5;
 
   static final Map<int, List<String>> _migrationScripts = {
     1: [
@@ -79,6 +79,10 @@ class AppMigrations {
       'ALTER TABLE transactions ADD COLUMN reason_id INTEGER NULL',
       'ALTER TABLE transactions ADD COLUMN reason_label TEXT NULL',
       'CREATE INDEX IF NOT EXISTS idx_transactions_reason_id ON transactions(reason_id)',
+    ],
+    5: [
+      'ALTER TABLE transactions ADD COLUMN payout_id INTEGER NULL',
+      'CREATE INDEX IF NOT EXISTS idx_transactions_payout_id ON transactions(payout_id)',
     ],
   };
 
