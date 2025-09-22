@@ -1,220 +1,250 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../data/models/account.dart' as db;
 import '../../data/models/payout.dart';
 import '../../state/app_providers.dart';
-import '../../state/budget_providers.dart';
 import '../../state/db_refresh.dart';
 import '../../utils/formatting.dart';
 
 Future<bool> showAddPayoutSheet(
-  BuildContext context,
-  WidgetRef ref, {
+  BuildContext context, {
   required PayoutType type,
 }) async {
-  final accountsRepo = ref.read(accountsRepoProvider);
-  final payoutsRepo = ref.read(payoutsRepoProvider);
-  final accounts = await accountsRepo.getAll();
-
-  if (!context.mounted) {
-    return false;
-  }
-
-  if (accounts.isEmpty) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Сначала добавьте счёт.')),
-    );
-    return false;
-  }
-
-  final selectableAccounts =
-      accounts.where((account) => account.id != null).toList();
-  if (selectableAccounts.isEmpty) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Нет доступных счетов для выплаты.')),
-    );
-    return false;
-  }
-
-  final defaultAccount = selectableAccounts.firstWhere(
-    (account) => account.name.toLowerCase() == 'карта',
-    orElse: () => selectableAccounts.first,
-  );
-
-  var selectedAccountId = defaultAccount.id;
-  DateTime selectedDate = DateTime.now();
-  final amountController = TextEditingController();
-  String? errorText;
-  var isSaving = false;
-  var saved = false;
-
-  await showModalBottomSheet<void>(
+  final result = await showModalBottomSheet<bool>(
     context: context,
     isScrollControlled: true,
-    builder: (sheetContext) {
-      return Padding(
-        padding: EdgeInsets.only(
-          left: 24,
-          right: 24,
-          top: 24,
-          bottom: MediaQuery.of(sheetContext).viewInsets.bottom + 24,
-        ),
-        child: StatefulBuilder(
-          builder: (context, setState) {
-            Future<void> pickDate() async {
-              final picked = await showDatePicker(
-                context: sheetContext,
-                initialDate: selectedDate,
-                firstDate: DateTime.now().subtract(const Duration(days: 365)),
-                lastDate: DateTime.now().add(const Duration(days: 365)),
-              );
-              if (picked != null) {
-                setState(() => selectedDate = picked);
-              }
-            }
-
-            Future<void> save() async {
-              if (isSaving) {
-                return;
-              }
-              setState(() {
-                errorText = null;
-                isSaving = true;
-              });
-
-              final rawAmount =
-                  amountController.text.trim().replaceAll(',', '.');
-              final parsed = double.tryParse(rawAmount);
-              if (parsed == null || parsed <= 0) {
-                setState(() {
-                  errorText = 'Введите сумму больше нуля';
-                  isSaving = false;
-                });
-                return;
-              }
-
-              final accountId = selectedAccountId;
-              if (accountId == null) {
-                setState(() {
-                  errorText = 'Выберите счёт';
-                  isSaving = false;
-                });
-                return;
-              }
-
-              final amountMinor = (parsed * 100).round();
-              try {
-                await payoutsRepo.add(
-                  type,
-                  DateTime(
-                    selectedDate.year,
-                    selectedDate.month,
-                    selectedDate.day,
-                  ),
-                  amountMinor,
-                  accountId: accountId,
-                );
-                bumpDbTick(ref);
-              } catch (error) {
-                setState(() {
-                  errorText = 'Ошибка: $error';
-                  isSaving = false;
-                });
-                return;
-              }
-
-              saved = true;
-              Navigator.of(sheetContext).pop();
-            }
-
-            return Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                Text(
-                  type == PayoutType.advance
-                      ? 'Добавить аванс'
-                      : 'Добавить зарплату',
-                  style: Theme.of(context).textTheme.titleMedium,
-                ),
-                const SizedBox(height: 12),
-                ListTile(
-                  contentPadding: EdgeInsets.zero,
-                  title: const Text('Дата'),
-                  subtitle: Text(formatDate(selectedDate)),
-                  trailing: const Icon(Icons.calendar_today),
-                  onTap: pickDate,
-                ),
-                const SizedBox(height: 12),
-                TextField(
-                  controller: amountController,
-                  keyboardType: const TextInputType.numberWithOptions(
-                    decimal: true,
-                  ),
-                  decoration: InputDecoration(
-                    labelText: 'Сумма',
-                    prefixText: '₽ ',
-                    errorText: errorText,
-                  ),
-                  onChanged: (_) {
-                    if (errorText != null) {
-                      setState(() => errorText = null);
-                    }
-                  },
-                ),
-                const SizedBox(height: 12),
-                DropdownButtonFormField<int>(
-                  value: selectedAccountId,
-                  decoration: const InputDecoration(labelText: 'Счёт'),
-                  items: [
-                    for (final account in selectableAccounts)
-                      DropdownMenuItem(
-                        value: account.id,
-                        child: Text(account.name),
-                      ),
-                  ],
-                  onChanged: (value) => setState(() {
-                    selectedAccountId = value;
-                  }),
-                ),
-                const SizedBox(height: 16),
-                Row(
-                  children: [
-                    TextButton(
-                      onPressed: isSaving
-                          ? null
-                          : () {
-                              amountController.clear();
-                              setState(() => errorText = null);
-                            },
-                      child: const Text('Очистить сумму'),
-                    ),
-                    const Spacer(),
-                    FilledButton(
-                      onPressed: isSaving ? null : save,
-                      child: isSaving
-                          ? const SizedBox(
-                              width: 16,
-                              height: 16,
-                              child: CircularProgressIndicator(strokeWidth: 2),
-                            )
-                          : const Text('Сохранить'),
-                    ),
-                  ],
-                ),
-              ],
-            );
-          },
-        ),
-      );
-    },
+    useSafeArea: true,
+    shape: const RoundedRectangleBorder(
+      borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+    ),
+    builder: (_) => _PayoutAddSheet(type: type),
   );
 
-  amountController.dispose();
+  return result ?? false;
+}
 
-  if (!context.mounted) {
-    return saved;
+class _PayoutAddSheet extends ConsumerStatefulWidget {
+  const _PayoutAddSheet({
+    required this.type,
+    super.key,
+  });
+
+  final PayoutType type;
+
+  @override
+  ConsumerState<_PayoutAddSheet> createState() => _PayoutAddSheetState();
+}
+
+class _PayoutAddSheetState extends ConsumerState<_PayoutAddSheet> {
+  final _formKey = GlobalKey<FormState>();
+  final _amountController = TextEditingController();
+  DateTime _date = DateTime.now();
+  int? _accountId;
+  bool _accountInitialized = false;
+  bool _isSaving = false;
+
+  @override
+  void dispose() {
+    _amountController.dispose();
+    super.dispose();
   }
 
-  return saved;
+  @override
+  Widget build(BuildContext context) {
+    final accountsAsync = ref.watch(accountsDbProvider);
+    final accounts = accountsAsync.value ?? const <db.Account>[];
+    final availableAccounts = accounts
+        .where((account) => !account.isArchived && account.id != null)
+        .toList();
+
+    if (!_accountInitialized && availableAccounts.isNotEmpty) {
+      final defaultAccount = availableAccounts.firstWhere(
+        (account) => account.name.trim().toLowerCase() == 'карта',
+        orElse: () => availableAccounts.first,
+      );
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) {
+          return;
+        }
+        setState(() {
+          _accountId = defaultAccount.id!;
+          _accountInitialized = true;
+        });
+      });
+    }
+
+    final theme = Theme.of(context);
+    final bottomInset = MediaQuery.of(context).viewInsets.bottom;
+
+    return Padding(
+      padding: EdgeInsets.only(
+        left: 24,
+        right: 24,
+        top: 24,
+        bottom: 24 + bottomInset,
+      ),
+      child: Form(
+        key: _formKey,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Center(
+              child: Container(
+                width: 36,
+                height: 4,
+                decoration: BoxDecoration(
+                  color: theme.colorScheme.outlineVariant,
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
+            ),
+            const SizedBox(height: 16),
+            Text(
+              widget.type == PayoutType.advance
+                  ? 'Добавить аванс'
+                  : 'Добавить зарплату',
+              style: theme.textTheme.titleMedium,
+              textAlign: TextAlign.center,
+            ),
+            const SizedBox(height: 16),
+            ListTile(
+              contentPadding: EdgeInsets.zero,
+              title: const Text('Дата'),
+              subtitle: Text(formatDate(_date)),
+              trailing: const Icon(Icons.calendar_today),
+              onTap: () async {
+                final picked = await showDatePicker(
+                  context: context,
+                  initialDate: _date,
+                  firstDate: DateTime.now().subtract(const Duration(days: 365)),
+                  lastDate: DateTime.now().add(const Duration(days: 365)),
+                );
+                if (picked != null) {
+                  setState(() => _date = picked);
+                }
+              },
+            ),
+            const SizedBox(height: 12),
+            TextFormField(
+              controller: _amountController,
+              keyboardType: const TextInputType.numberWithOptions(decimal: true),
+              decoration: const InputDecoration(
+                labelText: 'Сумма',
+              ),
+              validator: (value) {
+                final text = value?.trim();
+                if (text == null || text.isEmpty) {
+                  return 'Введите сумму';
+                }
+                final normalized = text.replaceAll(',', '.');
+                final parsed = double.tryParse(normalized);
+                if (parsed == null || parsed <= 0) {
+                  return 'Введите сумму больше нуля';
+                }
+                return null;
+              },
+            ),
+            const SizedBox(height: 12),
+            if (accountsAsync.isLoading && availableAccounts.isEmpty)
+              const Center(child: CircularProgressIndicator())
+            else if (availableAccounts.isEmpty)
+              const Text(
+                'Нет доступных счетов. Добавьте счёт, чтобы продолжить.',
+                style: TextStyle(color: Colors.redAccent),
+              )
+            else
+              DropdownButtonFormField<int>(
+                value: _accountId,
+                decoration: const InputDecoration(labelText: 'Счёт'),
+                items: [
+                  for (final account in availableAccounts)
+                    DropdownMenuItem(
+                      value: account.id!,
+                      child: Text(account.name),
+                    ),
+                ],
+                onChanged: (value) => setState(() => _accountId = value),
+                validator: (value) {
+                  if (value == null) {
+                    return 'Выберите счёт';
+                  }
+                  return null;
+                },
+              ),
+            const SizedBox(height: 16),
+            Row(
+              children: [
+                Expanded(
+                  child: OutlinedButton(
+                    onPressed: () {
+                      if (!mounted) {
+                        return;
+                      }
+                      Navigator.of(context).pop(false);
+                    },
+                    child: const Text('Отмена'),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: FilledButton(
+                    onPressed: _isSaving || availableAccounts.isEmpty
+                        ? null
+                        : () async {
+                            if (!_formKey.currentState!.validate()) {
+                              return;
+                            }
+                            final accountId = _accountId;
+                            if (accountId == null) {
+                              return;
+                            }
+                            final normalized =
+                                _amountController.text.trim().replaceAll(',', '.');
+                            final amount = double.parse(normalized);
+                            final amountMinor = (amount * 100).round();
+
+                            setState(() => _isSaving = true);
+                            try {
+                              final payoutsRepo = ref.read(payoutsRepoProvider);
+                              await payoutsRepo.add(
+                                widget.type,
+                                DateTime(_date.year, _date.month, _date.day),
+                                amountMinor,
+                                accountId: accountId,
+                              );
+                              bumpDbTick(ref);
+                            } catch (error) {
+                              if (!mounted) {
+                                return;
+                              }
+                              setState(() => _isSaving = false);
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                SnackBar(content: Text('Ошибка: $error')),
+                              );
+                              return;
+                            }
+
+                            if (!mounted) {
+                              return;
+                            }
+                            Navigator.of(context).pop(true);
+                          },
+                    child: _isSaving
+                        ? const SizedBox(
+                            width: 16,
+                            height: 16,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          )
+                        : const Text('Сохранить'),
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
 }

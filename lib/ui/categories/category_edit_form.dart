@@ -5,19 +5,11 @@ import '../../data/mock/mock_models.dart';
 import '../../state/app_providers.dart';
 
 Future<void> showCategoryEditForm(
-  BuildContext context,
-  WidgetRef ref, {
+  BuildContext context, {
   required CategoryType type,
   required bool isGroup,
   Category? initial,
 }) {
-  final formKey = GlobalKey<FormState>();
-  final repository = ref.read(categoriesRepositoryProvider);
-  String name = initial?.name ?? '';
-  String? parentId = initial?.parentId;
-
-  final availableGroups = repository.groupsByType(type);
-
   return showModalBottomSheet<void>(
     context: context,
     isScrollControlled: true,
@@ -35,120 +27,167 @@ Future<void> showCategoryEditForm(
           top: 24,
           bottom: 16 + bottomInset,
         ),
-        child: StatefulBuilder(
-          builder: (context, setState) {
-            final theme = Theme.of(context);
-            return Form(
-              key: formKey,
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  Center(
-                    child: Container(
-                      width: 36,
-                      height: 4,
-                      decoration: BoxDecoration(
-                        color: theme.colorScheme.outlineVariant,
-                        borderRadius: BorderRadius.circular(2),
-                      ),
-                    ),
-                  ),
-                  const SizedBox(height: 16),
-                  Text(
-                    initial == null
-                        ? (isGroup ? 'Новая папка' : 'Новая категория')
-                        : (isGroup
-                            ? 'Редактирование папки'
-                            : 'Редактирование категории'),
-                    style: theme.textTheme.titleMedium,
-                    textAlign: TextAlign.center,
-                  ),
-                  const SizedBox(height: 24),
-                  TextFormField(
-                    initialValue: name,
-                    autofocus: true,
-                    decoration: const InputDecoration(
-                      labelText: 'Название',
-                    ),
-                    onChanged: (value) => name = value,
-                    validator: (value) {
-                      if (value == null || value.trim().isEmpty) {
-                        return 'Укажите название';
-                      }
-                      return null;
-                    },
-                  ),
-                  if (!isGroup) ...[
-                    const SizedBox(height: 16),
-                    DropdownButtonFormField<String?>(
-                      value: availableGroups.any((group) => group.id == parentId)
-                          ? parentId
-                          : null,
-                      items: [
-                        const DropdownMenuItem<String?>(
-                          value: null,
-                          child: Text('Без папки'),
-                        ),
-                        for (final group in availableGroups)
-                          DropdownMenuItem<String?>(
-                            value: group.id,
-                            child: Text(group.name),
-                          ),
-                      ],
-                      onChanged: (value) {
-                        setState(() {
-                          parentId = value;
-                        });
-                      },
-                      decoration: const InputDecoration(
-                        labelText: 'Папка',
-                      ),
-                    ),
-                  ],
-                  const SizedBox(height: 24),
-                  Row(
-                    children: [
-                      TextButton(
-                        onPressed: () => Navigator.of(sheetContext).pop(),
-                        child: const Text('Отмена'),
-                      ),
-                      const Spacer(),
-                      FilledButton(
-                        onPressed: () {
-                          if (!formKey.currentState!.validate()) {
-                            return;
-                          }
-                          final trimmed = name.trim();
-                          if (initial == null) {
-                            if (isGroup) {
-                              repository.addGroup(type: type, name: trimmed);
-                            } else {
-                              repository.addCategory(
-                                type: type,
-                                name: trimmed,
-                                parentId: parentId,
-                              );
-                            }
-                          } else {
-                            repository.updateCategory(
-                              initial.id,
-                              name: trimmed,
-                              parentId: isGroup ? null : parentId,
-                            );
-                          }
-                          Navigator.of(sheetContext).pop();
-                        },
-                        child: const Text('Сохранить'),
-                      ),
-                    ],
-                  ),
-                ],
-              ),
-            );
-          },
+        child: _CategoryEditFormSheet(
+          type: type,
+          isGroup: isGroup,
+          initial: initial,
         ),
       );
     },
   );
+}
+
+class _CategoryEditFormSheet extends ConsumerStatefulWidget {
+  const _CategoryEditFormSheet({
+    required this.type,
+    required this.isGroup,
+    this.initial,
+  });
+
+  final CategoryType type;
+  final bool isGroup;
+  final Category? initial;
+
+  @override
+  ConsumerState<_CategoryEditFormSheet> createState() =>
+      _CategoryEditFormSheetState();
+}
+
+class _CategoryEditFormSheetState
+    extends ConsumerState<_CategoryEditFormSheet> {
+  final _formKey = GlobalKey<FormState>();
+  late String _name;
+  String? _parentId;
+
+  @override
+  void initState() {
+    super.initState();
+    _name = widget.initial?.name ?? '';
+    _parentId = widget.initial?.parentId;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final repository = ref.watch(categoriesRepositoryProvider);
+    final availableGroups = repository.groupsByType(widget.type);
+    final hasParent =
+        availableGroups.any((group) => group.id == _parentId);
+
+    return Form(
+      key: _formKey,
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Center(
+            child: Container(
+              width: 36,
+              height: 4,
+              decoration: BoxDecoration(
+                color: theme.colorScheme.outlineVariant,
+                borderRadius: BorderRadius.circular(2),
+              ),
+            ),
+          ),
+          const SizedBox(height: 16),
+          Text(
+            widget.initial == null
+                ? (widget.isGroup ? 'Новая папка' : 'Новая категория')
+                : (widget.isGroup
+                    ? 'Редактирование папки'
+                    : 'Редактирование категории'),
+            style: theme.textTheme.titleMedium,
+            textAlign: TextAlign.center,
+          ),
+          const SizedBox(height: 24),
+          TextFormField(
+            initialValue: _name,
+            autofocus: true,
+            decoration: const InputDecoration(
+              labelText: 'Название',
+            ),
+            onChanged: (value) => _name = value,
+            validator: (value) {
+              if (value == null || value.trim().isEmpty) {
+                return 'Укажите название';
+              }
+              return null;
+            },
+          ),
+          if (!widget.isGroup) ...[
+            const SizedBox(height: 16),
+            DropdownButtonFormField<String?>(
+              value: hasParent ? _parentId : null,
+              items: [
+                const DropdownMenuItem<String?>(
+                  value: null,
+                  child: Text('Без папки'),
+                ),
+                for (final group in availableGroups)
+                  DropdownMenuItem<String?>(
+                    value: group.id,
+                    child: Text(group.name),
+                  ),
+              ],
+              onChanged: (value) {
+                setState(() {
+                  _parentId = value;
+                });
+              },
+              decoration: const InputDecoration(
+                labelText: 'Папка',
+              ),
+            ),
+          ],
+          const SizedBox(height: 24),
+          Row(
+            children: [
+              TextButton(
+                onPressed: () {
+                  if (!mounted) {
+                    return;
+                  }
+                  Navigator.of(context).pop();
+                },
+                child: const Text('Отмена'),
+              ),
+              const Spacer(),
+              FilledButton(
+                onPressed: () {
+                  if (!_formKey.currentState!.validate()) {
+                    return;
+                  }
+                  final trimmed = _name.trim();
+                  final repo = ref.read(categoriesRepositoryProvider);
+                  if (widget.initial == null) {
+                    if (widget.isGroup) {
+                      repo.addGroup(type: widget.type, name: trimmed);
+                    } else {
+                      repo.addCategory(
+                        type: widget.type,
+                        name: trimmed,
+                        parentId: _parentId,
+                      );
+                    }
+                  } else {
+                    repo.updateCategory(
+                      widget.initial!.id,
+                      name: trimmed,
+                      parentId: widget.isGroup ? null : _parentId,
+                    );
+                  }
+                  if (!mounted) {
+                    return;
+                  }
+                  Navigator.of(context).pop();
+                },
+                child: const Text('Сохранить'),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
 }

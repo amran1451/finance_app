@@ -211,7 +211,6 @@ class _SettingsPlaceholderState extends ConsumerState<SettingsPlaceholder> {
   ) async {
     final saved = await showAddPayoutSheet(
       context,
-      ref,
       type: type,
     );
 

@@ -5,6 +5,165 @@ import '../../data/repositories/necessity_repository.dart';
 import '../../state/app_providers.dart';
 import '../../state/db_refresh.dart';
 
+Future<void> showNecessityEditSheet(
+  BuildContext context, {
+  NecessityLabel? initial,
+}) {
+  return showModalBottomSheet<void>(
+    context: context,
+    isScrollControlled: true,
+    useSafeArea: true,
+    shape: const RoundedRectangleBorder(
+      borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+    ),
+    builder: (_) => _NecessityEditSheet(initial: initial),
+  );
+}
+
+class _NecessityEditSheet extends ConsumerStatefulWidget {
+  const _NecessityEditSheet({
+    this.initial,
+    super.key,
+  });
+
+  final NecessityLabel? initial;
+
+  @override
+  ConsumerState<_NecessityEditSheet> createState() =>
+      _NecessityEditSheetState();
+}
+
+class _NecessityEditSheetState extends ConsumerState<_NecessityEditSheet> {
+  final _formKey = GlobalKey<FormState>();
+  late String _name;
+  String? _color;
+
+  @override
+  void initState() {
+    super.initState();
+    _name = widget.initial?.name ?? '';
+    _color = widget.initial?.color;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final bottomInset = MediaQuery.of(context).viewInsets.bottom;
+    return Padding(
+      padding: EdgeInsets.only(
+        left: 16,
+        right: 16,
+        top: 24,
+        bottom: 16 + bottomInset,
+      ),
+      child: Form(
+        key: _formKey,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Center(
+              child: Container(
+                width: 36,
+                height: 4,
+                decoration: BoxDecoration(
+                  color: theme.colorScheme.outlineVariant,
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
+            ),
+            const SizedBox(height: 16),
+            Text(
+              widget.initial == null
+                  ? 'Добавить метку'
+                  : 'Редактировать метку',
+              style: theme.textTheme.titleMedium,
+              textAlign: TextAlign.center,
+            ),
+            const SizedBox(height: 16),
+            TextFormField(
+              initialValue: _name,
+              autofocus: true,
+              decoration: const InputDecoration(labelText: 'Название'),
+              onChanged: (value) => _name = value,
+              validator: (value) {
+                if (value == null || value.trim().isEmpty) {
+                  return 'Укажите название';
+                }
+                return null;
+              },
+            ),
+            const SizedBox(height: 12),
+            TextFormField(
+              initialValue: _color ?? '',
+              decoration:
+                  const InputDecoration(labelText: 'Цвет (#RRGGBB)'),
+              onChanged: (value) {
+                final trimmed = value.trim();
+                _color = trimmed.isEmpty ? null : trimmed;
+              },
+            ),
+            const SizedBox(height: 24),
+            Row(
+              children: [
+                Expanded(
+                  child: OutlinedButton(
+                    onPressed: () {
+                      if (!mounted) {
+                        return;
+                      }
+                      Navigator.of(context).pop();
+                    },
+                    child: const Text('Отмена'),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: FilledButton(
+                    onPressed: () async {
+                      if (!_formKey.currentState!.validate()) {
+                        return;
+                      }
+                      final repo = ref.read(necessityRepoProvider);
+                      final name = _name.trim();
+                      final color = _color?.trim().isEmpty == true
+                          ? null
+                          : _color?.trim();
+                      if (widget.initial == null) {
+                        final labels =
+                            await ref.read(necessityLabelsFutureProvider.future);
+                        final sortOrder =
+                            labels.isEmpty ? 0 : labels.last.sortOrder + 1;
+                        await repo.create(
+                          name: name,
+                          color: color,
+                          sortOrder: sortOrder,
+                        );
+                      } else {
+                        await repo.update(
+                          widget.initial!.id,
+                          name: name,
+                          color: color,
+                        );
+                      }
+                      bumpDbTick(ref);
+                      if (!mounted) {
+                        return;
+                      }
+                      Navigator.of(context).pop();
+                    },
+                    child: const Text('Сохранить'),
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
 class NecessitySettingsScreen extends ConsumerStatefulWidget {
   const NecessitySettingsScreen({super.key});
 
@@ -70,7 +229,8 @@ class _NecessitySettingsScreenState
                       children: [
                         IconButton(
                           tooltip: 'Переименовать',
-                          onPressed: () => _showLabelDialog(label: label),
+                          onPressed: () =>
+                              showNecessityEditSheet(context, initial: label),
                           icon: const Icon(Icons.edit),
                         ),
                         IconButton(
@@ -99,7 +259,7 @@ class _NecessitySettingsScreenState
         ),
       ),
       floatingActionButton: FloatingActionButton(
-        onPressed: () => _showLabelDialog(),
+        onPressed: () => showNecessityEditSheet(context),
         child: const Icon(Icons.add),
       ),
     );
@@ -156,81 +316,4 @@ class _NecessitySettingsScreenState
     );
   }
 
-  Future<void> _showLabelDialog({NecessityLabel? label}) async {
-    final nameController = TextEditingController(text: label?.name ?? '');
-    final colorController = TextEditingController(text: label?.color ?? '');
-    final formKey = GlobalKey<FormState>();
-
-    final result = await showDialog<bool>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: Text(label == null ? 'Добавить метку' : 'Редактировать метку'),
-        content: Form(
-          key: formKey,
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              TextFormField(
-                controller: nameController,
-                autofocus: true,
-                decoration: const InputDecoration(labelText: 'Название'),
-                validator: (value) {
-                  if (value == null || value.trim().isEmpty) {
-                    return 'Введите название';
-                  }
-                  return null;
-                },
-              ),
-              const SizedBox(height: 12),
-              TextFormField(
-                controller: colorController,
-                decoration: const InputDecoration(
-                  labelText: 'Цвет (#RRGGBB)',
-                ),
-              ),
-            ],
-          ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(false),
-            child: const Text('Отмена'),
-          ),
-          FilledButton(
-            onPressed: () {
-              if (formKey.currentState?.validate() != true) {
-                return;
-              }
-              Navigator.of(context).pop(true);
-            },
-            child: const Text('Сохранить'),
-          ),
-        ],
-      ),
-    );
-
-    if (result != true) {
-      nameController.dispose();
-      colorController.dispose();
-      return;
-    }
-
-    final repo = ref.read(necessityRepoProvider);
-    final name = nameController.text.trim();
-    final color = colorController.text.trim().isEmpty
-        ? null
-        : colorController.text.trim();
-
-    if (label == null) {
-      final labels = await ref.read(necessityLabelsFutureProvider.future);
-      final sortOrder = labels.isEmpty ? 0 : labels.last.sortOrder + 1;
-      await repo.create(name: name, color: color, sortOrder: sortOrder);
-    } else {
-      await repo.update(label.id, name: name, color: color);
-    }
-
-    nameController.dispose();
-    colorController.dispose();
-    bumpDbTick(ref);
-  }
 }
