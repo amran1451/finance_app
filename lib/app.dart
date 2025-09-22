@@ -6,6 +6,8 @@ import 'routing/app_router.dart';
 import 'state/app_providers.dart';
 import 'theme/app_theme.dart';
 
+final scaffoldMessengerKey = GlobalKey<ScaffoldMessengerState>();
+
 class FinanceApp extends ConsumerWidget {
   const FinanceApp({super.key});
 
@@ -15,6 +17,7 @@ class FinanceApp extends ConsumerWidget {
     final mode = ref.watch(themeModeProvider);
 
     return MaterialApp.router(
+      scaffoldMessengerKey: scaffoldMessengerKey,
       title: 'Finance App',
       themeMode: mode,
       theme: AppTheme.light,

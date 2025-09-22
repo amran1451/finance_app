@@ -6,6 +6,32 @@ const bool kReturnToOperationsAfterSave = true;
 
 const Object _entryFlowUnset = Object();
 
+enum OperationKind { expense, income, saving }
+
+OperationKind operationKindFromType(OperationType type) {
+  switch (type) {
+    case OperationType.expense:
+      return OperationKind.expense;
+    case OperationType.income:
+      return OperationKind.income;
+    case OperationType.savings:
+      return OperationKind.saving;
+  }
+}
+
+OperationType operationTypeFromKind(OperationKind kind) {
+  switch (kind) {
+    case OperationKind.expense:
+      return OperationType.expense;
+    case OperationKind.income:
+      return OperationType.income;
+    case OperationKind.saving:
+      return OperationType.savings;
+  }
+}
+
+final lastEntryKindProvider = StateProvider<OperationKind?>((_) => null);
+
 class EntryFlowState {
   EntryFlowState({
     this.expression = '',
@@ -292,6 +318,12 @@ class EntryFlowController extends StateNotifier<EntryFlowState> {
       previewResult: preview,
       result: null,
     );
+  }
+}
+
+extension EntryFlowQuickReset on EntryFlowController {
+  void resetForQuickAdd(OperationKind kind) {
+    state = EntryFlowState(type: operationTypeFromKind(kind));
   }
 }
 
