@@ -6,6 +6,7 @@ import '../../state/app_providers.dart';
 import '../../state/planned_providers.dart';
 import '../../state/db_refresh.dart';
 import '../../utils/formatting.dart';
+import '../../utils/ref_postframe.dart';
 import 'planned_add_form.dart';
 
 Future<void> showPlannedSheet(
@@ -49,7 +50,9 @@ class _PlannedSheetContentState extends ConsumerState<_PlannedSheetContent> {
   @override
   void initState() {
     super.initState();
-    ref.read(isSheetOpenProvider.notifier).state = true;
+    ref.postFrame(() {
+      ref.read(isSheetOpenProvider.notifier).state = true;
+    });
   }
 
   @override
