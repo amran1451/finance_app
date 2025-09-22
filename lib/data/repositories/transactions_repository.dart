@@ -20,9 +20,16 @@ abstract class TransactionsRepository {
     bool? includedInPeriod,
   });
 
-  Future<int> add(TransactionRecord record, {bool asSavingPair = false});
+  Future<int> add(
+    TransactionRecord record, {
+    bool asSavingPair = false,
+    bool? includedInPeriod,
+  });
 
-  Future<void> update(TransactionRecord record);
+  Future<void> update(
+    TransactionRecord record, {
+    bool? includedInPeriod,
+  });
 
   Future<void> delete(int id);
 
@@ -46,7 +53,11 @@ class SqliteTransactionsRepository implements TransactionsRepository {
   Future<Database> get _db async => _database.database;
 
   @override
-  Future<int> add(TransactionRecord record, {bool asSavingPair = false}) async {
+  Future<int> add(
+    TransactionRecord record, {
+    bool asSavingPair = false,
+    bool? includedInPeriod,
+  }) async {
     final db = await _db;
     return db.transaction((txn) async {
       final categoryType = await _getCategoryType(txn, record.categoryId);
@@ -58,6 +69,9 @@ class SqliteTransactionsRepository implements TransactionsRepository {
       );
       final primaryValues = Map<String, Object?>.from(adjustedRecord.toMap())
         ..remove('id');
+      if (includedInPeriod != null) {
+        primaryValues['included_in_period'] = includedInPeriod ? 1 : 0;
+      }
       final primaryId = await txn.insert('transactions', primaryValues);
 
       if (asSavingPair && categoryType == CategoryType.saving) {
@@ -74,6 +88,9 @@ class SqliteTransactionsRepository implements TransactionsRepository {
           );
           final pairValues = Map<String, Object?>.from(pairRecord.toMap())
             ..remove('id');
+          if (includedInPeriod != null) {
+            pairValues['included_in_period'] = includedInPeriod ? 1 : 0;
+          }
           await txn.insert('transactions', pairValues);
         }
       }
@@ -155,15 +172,22 @@ class SqliteTransactionsRepository implements TransactionsRepository {
   }
 
   @override
-  Future<void> update(TransactionRecord record) async {
+  Future<void> update(
+    TransactionRecord record, {
+    bool? includedInPeriod,
+  }) async {
     final id = record.id;
     if (id == null) {
       throw ArgumentError('Transaction id is required for update');
     }
     final db = await _db;
+    final values = Map<String, Object?>.from(record.toMap());
+    if (includedInPeriod != null) {
+      values['included_in_period'] = includedInPeriod ? 1 : 0;
+    }
     await db.update(
       'transactions',
-      record.toMap(),
+      values,
       where: 'id = ?',
       whereArgs: [id],
     );

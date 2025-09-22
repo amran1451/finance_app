@@ -71,6 +71,18 @@ final currentPeriodProvider = FutureProvider<BudgetPeriodInfo>((ref) async {
   return (start: start, end: end, days: days);
 });
 
+/// Принадлежит ли произвольная дата активному периоду (currentPeriodProvider)
+final isInCurrentPeriodProvider = Provider.family<bool, DateTime>((ref, date) {
+  final period = ref.watch(currentPeriodProvider).value;
+  if (period == null) {
+    return false;
+  }
+  final d0 = DateTime(date.year, date.month, date.day);
+  final start0 = DateTime(period.start.year, period.start.month, period.start.day);
+  final end0 = DateTime(period.end.year, period.end.month, period.end.day);
+  return !d0.isBefore(start0) && d0.isBefore(end0);
+});
+
 /// Количество дней до конца активного периода (>=0).
 /// Период берём из currentPeriodProvider: [start; endExclusive).
 final daysToPeriodEndProvider = Provider<int?>((ref) {

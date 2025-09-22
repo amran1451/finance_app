@@ -9,11 +9,13 @@ import '../../data/repositories/necessity_repository.dart';
 import '../../data/repositories/reason_repository.dart';
 import '../../routing/app_router.dart';
 import '../../state/app_providers.dart';
+import '../../state/budget_providers.dart';
 import '../../state/db_refresh.dart';
 import '../../state/entry_flow_providers.dart';
 import '../../state/reason_providers.dart';
 import '../../utils/formatting.dart';
 import '../../utils/color_hex.dart';
+import '../../utils/date_format_short.dart';
 import '../widgets/add_another_snack.dart';
 
 class ReviewScreen extends ConsumerStatefulWidget {
@@ -27,6 +29,7 @@ class _ReviewScreenState extends ConsumerState<ReviewScreen> {
   bool _asPlanned = false;
   bool _forcePlanned = false;
   int? _reasonId;
+  DateTime? _selectedDate;
 
   @override
   void initState() {
@@ -34,6 +37,7 @@ class _ReviewScreenState extends ConsumerState<ReviewScreen> {
     final entryState = ref.read(entryFlowControllerProvider);
     _forcePlanned = _shouldForcePlanned(entryState);
     _asPlanned = _forcePlanned && entryState.type == mock.OperationType.expense;
+    _selectedDate = entryState.selectedDate;
   }
 
   bool _shouldForcePlanned(EntryFlowState state) {
@@ -47,6 +51,10 @@ class _ReviewScreenState extends ConsumerState<ReviewScreen> {
   Widget build(BuildContext context) {
     final entryState = ref.watch(entryFlowControllerProvider);
     final controller = ref.read(entryFlowControllerProvider.notifier);
+    final entrySelectedDate = entryState.selectedDate;
+    if (_selectedDate == null || !_isSameDay(_selectedDate!, entrySelectedDate)) {
+      _selectedDate = entrySelectedDate;
+    }
     final necessityLabelsAsync = ref.watch(necessityLabelsFutureProvider);
     final necessityLabels =
         necessityLabelsAsync.value ?? <NecessityLabel>[];
@@ -122,11 +130,6 @@ class _ReviewScreenState extends ConsumerState<ReviewScreen> {
       }
     }
 
-    final upcomingDates = List.generate(7, (index) {
-      final date = DateTime.now().add(Duration(days: index));
-      return DateTime(date.year, date.month, date.day);
-    });
-
     Future<void> saveOperation() async {
       if (!entryState.canSave || entryState.category == null) {
         return;
@@ -166,15 +169,20 @@ class _ReviewScreenState extends ConsumerState<ReviewScreen> {
         }
       }
 
+      final operationDate = _selectedDate ?? entryState.selectedDate;
+      final normalizedDate =
+          DateTime(operationDate.year, operationDate.month, operationDate.day);
+      final inCurrent = ref.read(isInCurrentPeriodProvider(normalizedDate));
+
       final record = TransactionRecord(
         accountId: accountId,
         categoryId: categoryId,
         type: transactionType,
         amountMinor: amountMinor,
-        date: entryState.selectedDate,
+        date: normalizedDate,
         note: note,
         isPlanned: isPlannedExpense,
-        includedInPeriod: isPlannedExpense ? false : true,
+        includedInPeriod: isPlannedExpense ? false : inCurrent,
         criticality: necessityCriticality,
         necessityId: necessityId,
         necessityLabel: necessityLabel,
@@ -186,6 +194,7 @@ class _ReviewScreenState extends ConsumerState<ReviewScreen> {
       await transactionsRepository.add(
         record,
         asSavingPair: entryState.type == mock.OperationType.savings,
+        includedInPeriod: isPlannedExpense ? null : inCurrent,
       );
       bumpDbTick(ref);
       controller.reset();
@@ -437,21 +446,14 @@ class _ReviewScreenState extends ConsumerState<ReviewScreen> {
                         style: Theme.of(context).textTheme.titleMedium,
                       ),
                       const SizedBox(height: 8),
-                      SingleChildScrollView(
-                        scrollDirection: Axis.horizontal,
-                        child: Row(
-                          children: [
-                            for (final date in upcomingDates)
-                              Padding(
-                                padding: const EdgeInsets.only(right: 12),
-                                child: ChoiceChip(
-                                  label: Text(formatShortDate(date)),
-                                  selected: entryState.selectedDate == date,
-                                  onSelected: (_) => controller.setDate(date),
-                                ),
-                              ),
-                          ],
-                        ),
+                      _QuickDatePicker(
+                        selectedDate: _selectedDate,
+                        onSelected: (date) {
+                          setState(() {
+                            _selectedDate = date;
+                          });
+                          controller.setDate(date);
+                        },
                       ),
                       const SizedBox(height: 24),
                       Text(
@@ -481,6 +483,65 @@ class _ReviewScreenState extends ConsumerState<ReviewScreen> {
           },
         ),
       ),
+    );
+  }
+}
+
+class _QuickDatePicker extends StatelessWidget {
+  const _QuickDatePicker({required this.selectedDate, required this.onSelected});
+
+  final DateTime? selectedDate;
+  final ValueChanged<DateTime> onSelected;
+
+  @override
+  Widget build(BuildContext context) {
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    final offsets = List.generate(7, (index) => index - 3);
+    return SingleChildScrollView(
+      scrollDirection: Axis.horizontal,
+      child: Row(
+        children: [
+          for (final offset in offsets)
+            Padding(
+              padding: const EdgeInsets.only(right: 12),
+              child: _DateChoiceChip(
+                baseDate: today,
+                offset: offset,
+                selectedDate: selectedDate,
+                onSelected: onSelected,
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+}
+
+class _DateChoiceChip extends StatelessWidget {
+  const _DateChoiceChip({
+    required this.baseDate,
+    required this.offset,
+    required this.selectedDate,
+    required this.onSelected,
+  });
+
+  final DateTime baseDate;
+  final int offset;
+  final DateTime? selectedDate;
+  final ValueChanged<DateTime> onSelected;
+
+  @override
+  Widget build(BuildContext context) {
+    final date = baseDate.add(Duration(days: offset));
+    final isToday = offset == 0;
+    final label = isToday ? 'Сегодня' : shortDowDay(date);
+    final isSelected =
+        selectedDate != null && _isSameDay(selectedDate!, date);
+    return ChoiceChip(
+      label: Text(label),
+      selected: isSelected,
+      onSelected: (_) => onSelected(date),
     );
   }
 }
@@ -527,6 +588,10 @@ NecessityLabel? _findLabelByName(
     }
   }
   return null;
+}
+
+bool _isSameDay(DateTime a, DateTime b) {
+  return a.year == b.year && a.month == b.month && a.day == b.day;
 }
 
 Future<int> _resolveCategoryId(WidgetRef ref, mock.Category category) async {
