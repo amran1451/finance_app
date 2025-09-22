@@ -30,13 +30,14 @@ TransactionType _transactionTypeFor(PlannedType type) {
   }
 }
 
+enum _PlannedFormResult { added, updated }
+
 Future<void> showPlannedAddForm(
-  BuildContext context,
-  WidgetRef ref, {
+  BuildContext context, {
   required PlannedType type,
   TransactionRecord? initialRecord,
-}) {
-  return showModalBottomSheet(
+}) async {
+  final result = await showModalBottomSheet<_PlannedFormResult>(
     context: context,
     isScrollControlled: true,
     useSafeArea: true,
@@ -50,40 +51,43 @@ Future<void> showPlannedAddForm(
         bottom: true,
         child: Padding(
           padding: EdgeInsets.only(bottom: 16 + bottomInset),
-          child: Consumer(
-            builder: (context, formRef, __) {
-              return _PlannedAddForm(
-                type: type,
-                ref: formRef,
-                rootContext: context,
-                initialRecord: initialRecord,
-              );
-            },
+          child: _PlannedAddForm(
+            type: type,
+            initialRecord: initialRecord,
           ),
         ),
       );
     },
   );
+
+  if (!context.mounted || result == null) {
+    return;
+  }
+
+  final messenger = ScaffoldMessenger.of(context);
+  messenger.showSnackBar(
+    SnackBar(
+      content: Text(
+        result == _PlannedFormResult.added ? 'Добавлено' : 'Изменено',
+      ),
+    ),
+  );
 }
 
-class _PlannedAddForm extends StatefulWidget {
+class _PlannedAddForm extends ConsumerStatefulWidget {
   const _PlannedAddForm({
     required this.type,
-    required this.ref,
-    required this.rootContext,
     this.initialRecord,
   });
 
   final PlannedType type;
-  final WidgetRef ref;
-  final BuildContext rootContext;
   final TransactionRecord? initialRecord;
 
   @override
-  State<_PlannedAddForm> createState() => _PlannedAddFormState();
+  ConsumerState<_PlannedAddForm> createState() => _PlannedAddFormState();
 }
 
-class _PlannedAddFormState extends State<_PlannedAddForm> {
+class _PlannedAddFormState extends ConsumerState<_PlannedAddForm> {
   final _formKey = GlobalKey<FormState>();
   final _nameController = TextEditingController();
   final _amountController = TextEditingController();
@@ -127,7 +131,7 @@ class _PlannedAddFormState extends State<_PlannedAddForm> {
 
   @override
   Widget build(BuildContext context) {
-    final necessityLabelsAsync = widget.ref.watch(necessityLabelsFutureProvider);
+    final necessityLabelsAsync = ref.watch(necessityLabelsFutureProvider);
     final necessityLabels =
         necessityLabelsAsync.value ?? <NecessityLabel>[];
 
@@ -166,8 +170,8 @@ class _PlannedAddFormState extends State<_PlannedAddForm> {
 
     final selectedNecessityId = _selectedNecessityId;
 
-    final dbTick = widget.ref.watch(dbTickProvider);
-    final categoriesFuture = widget.ref
+    final dbTick = ref.watch(dbTickProvider);
+    final categoriesFuture = ref
         .read(categoriesRepoProvider)
         .getByType(_categoryTypeFor(widget.type));
 
@@ -360,7 +364,7 @@ class _PlannedAddFormState extends State<_PlannedAddForm> {
     final amount = double.parse(amountText);
     final amountMinor = (amount * 100).round();
 
-    final labelsAsync = widget.ref.read(necessityLabelsFutureProvider);
+    final labelsAsync = ref.read(necessityLabelsFutureProvider);
     final labels = labelsAsync.value ?? <NecessityLabel>[];
     NecessityLabel? selectedLabel;
     for (final label in labels) {
@@ -376,7 +380,7 @@ class _PlannedAddFormState extends State<_PlannedAddForm> {
         : widget.initialRecord?.criticality ?? 0;
 
     final accountId = await _resolveAccountId();
-    final actions = widget.ref.read(plannedActionsProvider);
+    final actions = ref.read(plannedActionsProvider);
 
     final existing = widget.initialRecord;
     final record = TransactionRecord(
@@ -400,16 +404,13 @@ class _PlannedAddFormState extends State<_PlannedAddForm> {
       await actions.update(record);
     }
 
-    bumpDbTick(widget.ref);
+    bumpDbTick(ref);
 
-    if (mounted) {
-      Navigator.of(context).pop();
-      ScaffoldMessenger.of(widget.rootContext).showSnackBar(
-        SnackBar(
-          content: Text(existing == null ? 'Добавлено' : 'Изменено'),
-        ),
-      );
+    if (!mounted) {
+      return;
     }
+    Navigator.of(context)
+        .pop(existing == null ? _PlannedFormResult.added : _PlannedFormResult.updated);
   }
 
   NecessityLabel? _findLabelByName(
@@ -426,7 +427,7 @@ class _PlannedAddFormState extends State<_PlannedAddForm> {
   }
 
   Future<int> _resolveAccountId() async {
-    final accountsRepo = widget.ref.read(accountsRepoProvider);
+    final accountsRepo = ref.read(accountsRepoProvider);
     final accounts = await accountsRepo.getAll();
     if (accounts.isEmpty) {
       throw StateError('Нет доступных счетов для сохранения плана');

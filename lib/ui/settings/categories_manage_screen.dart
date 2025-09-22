@@ -29,7 +29,6 @@ class _CategoriesManageScreenState
     }
     await showCategoryEditForm(
       context,
-      ref,
       type: _selectedType,
       isGroup: option == AddCategoryOption.group,
     );
@@ -38,7 +37,6 @@ class _CategoriesManageScreenState
   Future<void> _editCategory(Category category) {
     return showCategoryEditForm(
       context,
-      ref,
       type: category.type,
       isGroup: category.isGroup,
       initial: category,

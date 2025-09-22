@@ -408,7 +408,6 @@ class _PlannedOverview extends StatelessWidget {
                 onPressed: () async {
                   final saved = await showAddPayoutSheet(
                     context,
-                    ref,
                     type: PayoutType.salary,
                   );
                   if (!context.mounted) {
@@ -468,7 +467,7 @@ class _PlannedOverview extends StatelessWidget {
                 error: (error, _) => Text('Ошибка: $error'),
               ),
               onTap: () =>
-                  showPlannedSheet(context, ref, type: PlannedType.income),
+                  showPlannedSheet(context, type: PlannedType.income),
             ),
             const Divider(height: 0),
             ListTile(
@@ -480,7 +479,7 @@ class _PlannedOverview extends StatelessWidget {
                 error: (error, _) => Text('Ошибка: $error'),
               ),
               onTap: () =>
-                  showPlannedSheet(context, ref, type: PlannedType.expense),
+                  showPlannedSheet(context, type: PlannedType.expense),
             ),
             const Divider(height: 0),
             ListTile(
@@ -492,7 +491,7 @@ class _PlannedOverview extends StatelessWidget {
                 error: (error, _) => Text('Ошибка: $error'),
               ),
               onTap: () =>
-                  showPlannedSheet(context, ref, type: PlannedType.saving),
+                  showPlannedSheet(context, type: PlannedType.saving),
             ),
           ],
         );

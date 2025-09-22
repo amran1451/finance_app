@@ -35,14 +35,12 @@ class CategoryScreen extends ConsumerWidget {
       if (option == AddCategoryOption.group) {
         await showCategoryEditForm(
           context,
-          ref,
           type: type,
           isGroup: true,
         );
       } else {
         await showCategoryEditForm(
           context,
-          ref,
           type: type,
           isGroup: false,
         );
@@ -57,7 +55,6 @@ class CategoryScreen extends ConsumerWidget {
       if (action == CategoryAction.rename) {
         await showCategoryEditForm(
           context,
-          ref,
           type: category.type,
           isGroup: false,
           initial: category,
@@ -75,7 +72,6 @@ class CategoryScreen extends ConsumerWidget {
       if (action == CategoryAction.rename) {
         await showCategoryEditForm(
           context,
-          ref,
           type: group.type,
           isGroup: true,
           initial: group,
