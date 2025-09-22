@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../data/models/category.dart';
 import '../../data/models/transaction_record.dart';
+import '../../data/repositories/necessity_repository.dart';
 import '../../state/app_providers.dart';
 import '../../state/planned_providers.dart';
 
@@ -90,7 +91,10 @@ class _PlannedAddFormState extends State<_PlannedAddForm> {
 
   late Future<List<Category>> _categoriesFuture;
   int? _selectedCategoryId;
-  int _selectedCriticality = 0;
+  int? _selectedNecessityId;
+  String? _legacyNecessityLabel;
+  bool _legacyLabelResolved = false;
+  bool _defaultLabelApplied = false;
   String? _categoryError;
 
   @override
@@ -104,7 +108,13 @@ class _PlannedAddFormState extends State<_PlannedAddForm> {
           ? initialAmount.toStringAsFixed(0)
           : initialAmount.toString();
       _selectedCategoryId = initial.categoryId;
-      _selectedCriticality = initial.criticality;
+      _selectedNecessityId = initial.necessityId;
+      _legacyNecessityLabel = initial.necessityLabel;
+      _legacyLabelResolved =
+          _selectedNecessityId != null || _legacyNecessityLabel == null;
+      _defaultLabelApplied = _selectedNecessityId != null;
+    } else {
+      _legacyLabelResolved = true;
     }
     final categoriesRepo = widget.ref.read(categoriesRepoProvider);
     _categoriesFuture = categoriesRepo.getByType(_categoryTypeFor(widget.type));
@@ -119,10 +129,44 @@ class _PlannedAddFormState extends State<_PlannedAddForm> {
 
   @override
   Widget build(BuildContext context) {
-    final necessityLabels = widget.ref.watch(necessityLabelsProvider);
-    final selectedCriticality = necessityLabels.isEmpty
-        ? -1
-        : _selectedCriticality.clamp(0, necessityLabels.length - 1);
+    final necessityLabelsAsync = widget.ref.watch(necessityLabelsProvider);
+    final necessityLabels =
+        necessityLabelsAsync.value ?? <NecessityLabel>[];
+
+    if (!_legacyLabelResolved &&
+        _legacyNecessityLabel != null &&
+        necessityLabels.isNotEmpty) {
+      final match = _findLabelByName(necessityLabels, _legacyNecessityLabel!);
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) {
+          return;
+        }
+        setState(() {
+          _legacyLabelResolved = true;
+          if (match != null) {
+            _selectedNecessityId = match.id;
+            _defaultLabelApplied = true;
+          }
+        });
+      });
+    }
+
+    if (!_defaultLabelApplied && necessityLabels.isNotEmpty) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) {
+          return;
+        }
+        setState(() {
+          if (_selectedNecessityId == null && _legacyNecessityLabel == null) {
+            _selectedNecessityId = necessityLabels.first.id;
+            _legacyLabelResolved = true;
+          }
+          _defaultLabelApplied = true;
+        });
+      });
+    }
+
+    final selectedNecessityId = _selectedNecessityId;
 
     return FutureBuilder<List<Category>>(
       future: _categoriesFuture,
@@ -218,7 +262,9 @@ class _PlannedAddFormState extends State<_PlannedAddForm> {
                     },
                   ),
                 const SizedBox(height: 16),
-                if (necessityLabels.isNotEmpty) ...[
+                if (necessityLabelsAsync.isLoading && necessityLabels.isEmpty)
+                  const Center(child: CircularProgressIndicator())
+                else if (necessityLabels.isNotEmpty) ...[
                   Text(
                     'Критичность/необходимость',
                     style: Theme.of(context).textTheme.titleSmall,
@@ -228,19 +274,44 @@ class _PlannedAddFormState extends State<_PlannedAddForm> {
                     spacing: 8,
                     runSpacing: 8,
                     children: [
-                      for (var i = 0; i < necessityLabels.length; i++)
+                      for (final label in necessityLabels)
                         ChoiceChip(
-                          label: Text(necessityLabels[i]),
-                          selected: selectedCriticality == i,
+                          label: Text(label.name),
+                          selected: label.id == selectedNecessityId,
                           onSelected: (_) {
                             setState(() {
-                              _selectedCriticality = i;
+                              _selectedNecessityId = label.id;
+                              _legacyNecessityLabel = label.name;
+                              _legacyLabelResolved = true;
+                              _defaultLabelApplied = true;
                             });
                           },
                         ),
                     ],
                   ),
-                ],
+                  if (selectedNecessityId == null &&
+                      _legacyLabelResolved &&
+                      _legacyNecessityLabel != null)
+                    Padding(
+                      padding: const EdgeInsets.only(top: 8),
+                      child: Text(
+                        'Метка "${_legacyNecessityLabel!}" недоступна. Выберите новую.',
+                        style: TextStyle(
+                          color: Theme.of(context).colorScheme.error,
+                        ),
+                      ),
+                    ),
+                ]
+                else if (necessityLabelsAsync.hasError)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 8),
+                    child: Text(
+                      'Не удалось загрузить метки необходимости',
+                      style: TextStyle(
+                        color: Theme.of(context).colorScheme.error,
+                      ),
+                    ),
+                  ),
                 const SizedBox(height: 24),
                 Row(
                   children: [
@@ -285,13 +356,21 @@ class _PlannedAddFormState extends State<_PlannedAddForm> {
     final amount = double.parse(amountText);
     final amountMinor = (amount * 100).round();
 
-    final labels = widget.ref.read(necessityLabelsProvider);
-    String? necessityLabel;
-    if (labels.isNotEmpty) {
-      final index = _selectedCriticality.clamp(0, labels.length - 1);
-      necessityLabel = labels[index];
-      _selectedCriticality = index;
+    final labelsAsync = widget.ref.read(necessityLabelsProvider);
+    final labels = labelsAsync.value ?? <NecessityLabel>[];
+    NecessityLabel? selectedLabel;
+    for (final label in labels) {
+      if (label.id == _selectedNecessityId) {
+        selectedLabel = label;
+        break;
+      }
     }
+    final necessityLabel = selectedLabel?.name ?? _legacyNecessityLabel;
+    final necessityId = selectedLabel?.id;
+    final criticality = selectedLabel != null
+        ? labels.indexOf(selectedLabel)
+        : widget.initialRecord?.criticality ?? 0;
+
     final accountId = await _resolveAccountId();
     final actions = widget.ref.read(plannedActionsProvider);
 
@@ -306,7 +385,8 @@ class _PlannedAddFormState extends State<_PlannedAddForm> {
       note: title,
       isPlanned: true,
       includedInPeriod: existing?.includedInPeriod ?? false,
-      criticality: _selectedCriticality,
+      criticality: criticality,
+      necessityId: necessityId,
       necessityLabel: necessityLabel,
     );
 
@@ -327,6 +407,19 @@ class _PlannedAddFormState extends State<_PlannedAddForm> {
         ),
       );
     }
+  }
+
+  NecessityLabel? _findLabelByName(
+    List<NecessityLabel> labels,
+    String name,
+  ) {
+    final normalized = name.trim().toLowerCase();
+    for (final label in labels) {
+      if (label.name.trim().toLowerCase() == normalized) {
+        return label;
+      }
+    }
+    return null;
   }
 
   Future<int> _resolveAccountId() async {

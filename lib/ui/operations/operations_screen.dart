@@ -4,6 +4,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../data/models/category.dart';
 import '../../data/models/transaction_record.dart';
 import '../../state/app_providers.dart';
+import '../../data/repositories/necessity_repository.dart'
+    as necessity_repo;
 import '../../state/budget_providers.dart';
 import '../../utils/formatting.dart';
 
@@ -155,6 +157,8 @@ class _OperationsSection extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final repository = ref.watch(transactionsRepoProvider);
+    final necessityMapAsync = ref.watch(necessityMapProvider);
+    final necessityMap = necessityMapAsync.value ?? const <int, necessity_repo.NecessityLabel>{};
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -182,7 +186,9 @@ class _OperationsSection extends ConsumerWidget {
                 title: Text(category?.name ?? 'Категория #${record.categoryId}'),
                 subtitle: Text(record.note?.isNotEmpty == true
                     ? record.note!
-                    : record.necessityLabel ?? 'Без комментария'),
+                    : record.necessityLabel ??
+                        necessityMap[record.necessityId]?.name ??
+                            'Без комментария'),
                 trailing: Column(
                   mainAxisAlignment: MainAxisAlignment.center,
                   crossAxisAlignment: CrossAxisAlignment.end,

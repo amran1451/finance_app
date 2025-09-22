@@ -16,7 +16,10 @@ class EntryFlowState {
     DateTime? selectedDate,
     this.note = '',
     this.attachToPlanned = false,
-    this.necessityIndex = 0,
+    this.necessityCriticality = 0,
+    this.necessityId,
+    this.necessityLabel,
+    this.necessityResolved = false,
   }) : selectedDate = selectedDate ?? _today;
 
   final String expression;
@@ -27,7 +30,10 @@ class EntryFlowState {
   final DateTime selectedDate;
   final String note;
   final bool attachToPlanned;
-  final int necessityIndex;
+  final int necessityCriticality;
+  final int? necessityId;
+  final String? necessityLabel;
+  final bool necessityResolved;
 
   static DateTime get _today {
     final now = DateTime.now();
@@ -49,7 +55,10 @@ class EntryFlowState {
     bool? attachToPlanned,
     Object? result = _entryFlowUnset,
     Object? previewResult = _entryFlowUnset,
-    Object? necessityIndex = _entryFlowUnset,
+    Object? necessityCriticality = _entryFlowUnset,
+    Object? necessityId = _entryFlowUnset,
+    Object? necessityLabel = _entryFlowUnset,
+    Object? necessityResolved = _entryFlowUnset,
   }) {
     return EntryFlowState(
       expression:
@@ -64,9 +73,17 @@ class EntryFlowState {
       previewResult: previewResult == _entryFlowUnset
           ? this.previewResult
           : previewResult as double?,
-      necessityIndex: necessityIndex == _entryFlowUnset
-          ? this.necessityIndex
-          : necessityIndex as int,
+      necessityCriticality: necessityCriticality == _entryFlowUnset
+          ? this.necessityCriticality
+          : necessityCriticality as int,
+      necessityId:
+          necessityId == _entryFlowUnset ? this.necessityId : necessityId as int?,
+      necessityLabel: necessityLabel == _entryFlowUnset
+          ? this.necessityLabel
+          : necessityLabel as String?,
+      necessityResolved: necessityResolved == _entryFlowUnset
+          ? this.necessityResolved
+          : necessityResolved as bool,
     );
   }
 
@@ -225,7 +242,11 @@ class EntryFlowController extends StateNotifier<EntryFlowState> {
       previewResult: state.previewResult,
       selectedDate: state.selectedDate,
       note: state.note,
-      necessityIndex: state.necessityIndex,
+      attachToPlanned: state.attachToPlanned,
+      necessityCriticality: state.necessityCriticality,
+      necessityId: state.necessityId,
+      necessityLabel: state.necessityLabel,
+      necessityResolved: state.necessityResolved,
     );
   }
 
@@ -245,8 +266,19 @@ class EntryFlowController extends StateNotifier<EntryFlowState> {
     state = state.copyWith(attachToPlanned: value);
   }
 
-  void setNecessityIndex(int index) {
-    state = state.copyWith(necessityIndex: index);
+  void setNecessity({
+    int? id,
+    String? label,
+    int? criticality,
+    bool? resolved,
+  }) {
+    state = state.copyWith(
+      necessityId: id,
+      necessityLabel: label,
+      necessityCriticality:
+          criticality ?? state.necessityCriticality,
+      necessityResolved: resolved ?? true,
+    );
   }
 
   void reset() {

@@ -16,6 +16,7 @@ class TransactionRecord {
     this.includedInPeriod = true,
     this.tags = const <String>[],
     this.criticality = 0,
+    this.necessityId,
     this.necessityLabel,
   });
 
@@ -31,6 +32,7 @@ class TransactionRecord {
   final bool includedInPeriod;
   final List<String> tags;
   final int criticality;
+  final int? necessityId;
   final String? necessityLabel;
 
   TransactionRecord copyWith({
@@ -46,6 +48,7 @@ class TransactionRecord {
     bool? includedInPeriod,
     List<String>? tags,
     int? criticality,
+    Object? necessityId = _unset,
     Object? necessityLabel = _unset,
   }) {
     return TransactionRecord(
@@ -61,6 +64,9 @@ class TransactionRecord {
       includedInPeriod: includedInPeriod ?? this.includedInPeriod,
       tags: tags ?? this.tags,
       criticality: criticality ?? this.criticality,
+      necessityId: necessityId == _unset
+          ? this.necessityId
+          : necessityId as int?,
       necessityLabel: necessityLabel == _unset
           ? this.necessityLabel
           : necessityLabel as String?,
@@ -81,6 +87,7 @@ class TransactionRecord {
       includedInPeriod: (map['included_in_period'] as int? ?? 0) != 0,
       tags: _decodeTags(map['tags'] as String?),
       criticality: map['criticality'] as int? ?? 0,
+      necessityId: map['necessity_id'] as int?,
       necessityLabel: map['necessity_label'] as String?,
     );
   }
@@ -99,6 +106,7 @@ class TransactionRecord {
       'included_in_period': includedInPeriod ? 1 : 0,
       'tags': tags.isEmpty ? null : jsonEncode(tags),
       'criticality': criticality,
+      'necessity_id': necessityId,
       'necessity_label': necessityLabel,
     };
   }
