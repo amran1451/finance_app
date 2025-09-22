@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 
 import '../../data/models/category.dart';
 import '../../data/models/transaction_record.dart';
@@ -9,6 +10,7 @@ import '../../data/repositories/necessity_repository.dart'
 import '../../state/budget_providers.dart';
 import '../../state/db_refresh.dart';
 import '../../utils/formatting.dart';
+import '../../routing/app_router.dart';
 
 enum OperationsFilter { all, income, expense, saving }
 
@@ -46,6 +48,28 @@ class OperationsScreen extends ConsumerWidget {
     return Scaffold(
       appBar: AppBar(
         title: const Text('Операции периода'),
+        leading: IconButton(
+          icon: Icon(
+            Navigator.of(context).canPop() ? Icons.arrow_back : Icons.close,
+          ),
+          onPressed: () {
+            if (Navigator.of(context).canPop()) {
+              context.pop();
+            } else {
+              context.goNamed(RouteNames.home);
+            }
+          },
+          tooltip: Navigator.of(context).canPop() ? 'Назад' : 'Закрыть',
+        ),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.home_outlined),
+            onPressed: () {
+              context.goNamed(RouteNames.home);
+            },
+            tooltip: 'Домой',
+          ),
+        ],
       ),
       body: transactionsAsync.when(
         loading: () => const Center(child: CircularProgressIndicator()),
