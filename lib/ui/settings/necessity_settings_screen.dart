@@ -4,6 +4,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../data/repositories/necessity_repository.dart';
 import '../../state/app_providers.dart';
 import '../../state/db_refresh.dart';
+import '../../utils/color_hex.dart';
+import '../widgets/color_picker.dart';
 
 Future<void> showNecessityEditSheet(
   BuildContext context, {
@@ -36,13 +38,13 @@ class _NecessityEditSheet extends ConsumerStatefulWidget {
 class _NecessityEditSheetState extends ConsumerState<_NecessityEditSheet> {
   final _formKey = GlobalKey<FormState>();
   late String _name;
-  String? _color;
+  Color? _color;
 
   @override
   void initState() {
     super.initState();
     _name = widget.initial?.name ?? '';
-    _color = widget.initial?.color;
+    _color = hexToColor(widget.initial?.color);
   }
 
   @override
@@ -94,15 +96,7 @@ class _NecessityEditSheetState extends ConsumerState<_NecessityEditSheet> {
               },
             ),
             const SizedBox(height: 12),
-            TextFormField(
-              initialValue: _color ?? '',
-              decoration:
-                  const InputDecoration(labelText: 'Цвет (#RRGGBB)'),
-              onChanged: (value) {
-                final trimmed = value.trim();
-                _color = trimmed.isEmpty ? null : trimmed;
-              },
-            ),
+            _colorRow(context),
             const SizedBox(height: 24),
             Row(
               children: [
@@ -126,9 +120,7 @@ class _NecessityEditSheetState extends ConsumerState<_NecessityEditSheet> {
                       }
                       final repo = ref.read(necessityRepoProvider);
                       final name = _name.trim();
-                      final color = _color?.trim().isEmpty == true
-                          ? null
-                          : _color?.trim();
+                      final color = colorToHex(_color);
                       if (widget.initial == null) {
                         final labels =
                             await ref.read(necessityLabelsFutureProvider.future);
@@ -160,6 +152,41 @@ class _NecessityEditSheetState extends ConsumerState<_NecessityEditSheet> {
           ],
         ),
       ),
+    );
+  }
+
+  Widget _colorRow(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    return Row(
+      children: [
+        CircleAvatar(
+          backgroundColor: _color ?? cs.surfaceVariant,
+          radius: 12,
+          child: _color == null
+              ? Icon(
+                  Icons.block,
+                  size: 14,
+                  color: cs.onSurfaceVariant,
+                )
+              : null,
+        ),
+        const SizedBox(width: 8),
+        TextButton.icon(
+          icon: const Icon(Icons.palette_outlined),
+          label: const Text('Выбрать цвет'),
+          onPressed: () => showColorPickerSheet(
+            context,
+            initial: _color,
+            onPicked: (c) => setState(() => _color = c),
+          ),
+        ),
+        const Spacer(),
+        if (_color != null)
+          TextButton(
+            onPressed: () => setState(() => _color = null),
+            child: const Text('Сбросить'),
+          ),
+      ],
     );
   }
 }
@@ -213,20 +240,28 @@ class _NecessitySettingsScreenState
               buildDefaultDragHandles: false,
               itemBuilder: (context, index) {
                 final label = labels[index];
+                final hasColor = label.color?.trim().isNotEmpty == true;
+                final color = hexToColor(label.color);
                 return Card(
                   key: ValueKey(label.id),
                   child: ListTile(
-                    leading: ReorderableDragStartListener(
-                      index: index,
-                      child: const Icon(Icons.drag_handle),
+                    leading: CircleAvatar(
+                      backgroundColor: color ??
+                          Theme.of(context).colorScheme.surfaceVariant,
+                      child: hasColor
+                          ? null
+                          : const Icon(Icons.block, size: 16),
                     ),
                     title: Text(label.name),
-                    subtitle: label.color?.trim().isNotEmpty == true
-                        ? Text('Цвет: ${label.color}')
-                        : null,
+                    subtitle:
+                        hasColor ? Text('Цвет: ${label.color}') : null,
                     trailing: Row(
                       mainAxisSize: MainAxisSize.min,
                       children: [
+                        ReorderableDragStartListener(
+                          index: index,
+                          child: const Icon(Icons.drag_handle),
+                        ),
                         IconButton(
                           tooltip: 'Переименовать',
                           onPressed: () =>
