@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../data/models/payout.dart';
 import '../../state/app_providers.dart';
 import '../../state/budget_providers.dart';
+import '../../state/db_refresh.dart';
 import '../../utils/formatting.dart';
 
 Future<bool> showAddPayoutSheet(
@@ -113,6 +114,7 @@ Future<bool> showAddPayoutSheet(
                   amountMinor,
                   accountId: accountId,
                 );
+                bumpDbTick(ref);
               } catch (error) {
                 setState(() {
                   errorText = 'Ошибка: $error';
@@ -212,13 +214,6 @@ Future<bool> showAddPayoutSheet(
 
   if (!context.mounted) {
     return saved;
-  }
-
-  if (saved) {
-    ref.invalidate(currentPayoutProvider);
-    ref.invalidate(currentPeriodProvider);
-    ref.invalidate(periodBudgetMinorProvider);
-    ref.invalidate(plannedPoolMinorProvider);
   }
 
   return saved;

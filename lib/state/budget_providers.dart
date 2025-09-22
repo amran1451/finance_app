@@ -6,6 +6,7 @@ import '../data/models/payout.dart';
 import '../data/models/transaction_record.dart';
 import '../data/repositories/transactions_repository.dart';
 import 'app_providers.dart';
+import 'db_refresh.dart';
 
 typedef BudgetPeriodInfo = ({DateTime start, DateTime end, int days});
 
@@ -16,6 +17,7 @@ typedef HalfPeriodBounds = ({DateTime start, DateTime endExclusive});
 final selectedHalfProvider = StateProvider<HalfPeriod>((_) => HalfPeriod.first);
 
 final anchorDaysProvider = FutureProvider<(int, int)>((ref) async {
+  ref.watch(dbTickProvider);
   final repository = ref.watch(settingsRepoProvider);
   final day1 = await repository.getAnchorDay1();
   final day2 = await repository.getAnchorDay2();
@@ -26,6 +28,7 @@ final anchorDaysProvider = FutureProvider<(int, int)>((ref) async {
 });
 
 final currentPayoutProvider = FutureProvider<Payout?>((ref) {
+  ref.watch(dbTickProvider);
   final repository = ref.watch(payoutsRepoProvider);
   return repository.getLast();
 });
@@ -56,6 +59,7 @@ final currentPeriodProvider = FutureProvider<BudgetPeriodInfo>((ref) async {
 });
 
 final dailyLimitProvider = FutureProvider<int?>((ref) async {
+  ref.watch(dbTickProvider);
   final repository = ref.watch(settingsRepoProvider);
   return repository.getDailyLimitMinor();
 });
@@ -116,6 +120,7 @@ final halfPeriodBoundsProvider = FutureProvider<HalfPeriodBounds>((ref) async {
 });
 
 final halfPeriodTransactionsProvider = FutureProvider<List<TransactionRecord>>((ref) async {
+  ref.watch(dbTickProvider);
   final bounds = await ref.watch(halfPeriodBoundsProvider.future);
   final repo = ref.watch(transactionsRepoProvider);
   final start = bounds.start;
@@ -160,6 +165,8 @@ class DailyLimitManager {
 
     final repository = _ref.read(settingsRepoProvider);
     await repository.setDailyLimitMinor(value);
+    final notifier = _ref.read(dbTickProvider.notifier);
+    notifier.state = notifier.state + 1;
     return null;
   }
 }
@@ -176,27 +183,25 @@ class AnchorDaysManager {
   Future<void> saveAnchorDay1(int value) async {
     final repository = _ref.read(settingsRepoProvider);
     await repository.setAnchorDay1(value);
-    _refreshPeriod();
+    _bumpTick();
   }
 
   Future<void> saveAnchorDay2(int value) async {
     final repository = _ref.read(settingsRepoProvider);
     await repository.setAnchorDay2(value);
-    _refreshPeriod();
+    _bumpTick();
   }
 
   Future<void> saveAnchorDays(int first, int second) async {
     final repository = _ref.read(settingsRepoProvider);
     await repository.setAnchorDay1(first);
     await repository.setAnchorDay2(second);
-    _refreshPeriod();
+    _bumpTick();
   }
 
-  void _refreshPeriod() {
-    _ref.invalidate(anchorDaysProvider);
-    _ref.invalidate(currentPeriodProvider);
-    _ref.invalidate(periodBudgetMinorProvider);
-    _ref.invalidate(plannedPoolMinorProvider);
+  void _bumpTick() {
+    final notifier = _ref.read(dbTickProvider.notifier);
+    notifier.state = notifier.state + 1;
   }
 }
 

@@ -272,8 +272,6 @@ class HomeScreen extends ConsumerWidget {
                   return;
                 }
 
-                ref.invalidate(dailyLimitProvider);
-                ref.invalidate(periodBudgetMinorProvider);
                 saved = true;
                 Navigator.of(sheetContext).pop();
               }

@@ -5,6 +5,7 @@ import '../../data/models/category.dart';
 import '../../data/models/transaction_record.dart';
 import '../../data/repositories/necessity_repository.dart';
 import '../../state/app_providers.dart';
+import '../../state/db_refresh.dart';
 import '../../state/planned_providers.dart';
 
 CategoryType _categoryTypeFor(PlannedType type) {
@@ -89,7 +90,6 @@ class _PlannedAddFormState extends State<_PlannedAddForm> {
 
   int? get _editingId => widget.initialRecord?.id;
 
-  late Future<List<Category>> _categoriesFuture;
   int? _selectedCategoryId;
   int? _selectedNecessityId;
   String? _legacyNecessityLabel;
@@ -116,8 +116,6 @@ class _PlannedAddFormState extends State<_PlannedAddForm> {
     } else {
       _legacyLabelResolved = true;
     }
-    final categoriesRepo = widget.ref.read(categoriesRepoProvider);
-    _categoriesFuture = categoriesRepo.getByType(_categoryTypeFor(widget.type));
   }
 
   @override
@@ -168,8 +166,14 @@ class _PlannedAddFormState extends State<_PlannedAddForm> {
 
     final selectedNecessityId = _selectedNecessityId;
 
+    final dbTick = widget.ref.watch(dbTickProvider);
+    final categoriesFuture = widget.ref
+        .read(categoriesRepoProvider)
+        .getByType(_categoryTypeFor(widget.type));
+
     return FutureBuilder<List<Category>>(
-      future: _categoriesFuture,
+      key: ValueKey(dbTick),
+      future: categoriesFuture,
       builder: (context, snapshot) {
         final categories = snapshot.data ?? <Category>[];
         final isLoading = snapshot.connectionState == ConnectionState.waiting && categories.isEmpty;
@@ -396,8 +400,7 @@ class _PlannedAddFormState extends State<_PlannedAddForm> {
       await actions.update(record);
     }
 
-    widget.ref.invalidate(plannedItemsByTypeProvider(widget.type));
-    widget.ref.invalidate(plannedTotalByTypeProvider(widget.type));
+    bumpDbTick(widget.ref);
 
     if (mounted) {
       Navigator.of(context).pop();

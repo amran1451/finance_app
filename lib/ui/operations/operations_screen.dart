@@ -7,6 +7,7 @@ import '../../state/app_providers.dart';
 import '../../data/repositories/necessity_repository.dart'
     as necessity_repo;
 import '../../state/budget_providers.dart';
+import '../../state/db_refresh.dart';
 import '../../utils/formatting.dart';
 
 enum OperationsFilter { all, income, expense, saving }
@@ -15,6 +16,7 @@ final _operationsFilterProvider =
     StateProvider<OperationsFilter>((_) => OperationsFilter.all);
 
 final _categoriesMapProvider = FutureProvider<Map<int, Category>>((ref) async {
+  ref.watch(dbTickProvider);
   final repository = ref.watch(categoriesRepoProvider);
   final categories = await repository.getAll();
   return {
@@ -232,7 +234,7 @@ class _OperationsSection extends ConsumerWidget {
                     return;
                   }
                   await repository.delete(id);
-                  ref.invalidate(halfPeriodTransactionsProvider);
+                  bumpDbTick(ref);
                   ScaffoldMessenger.of(context).showSnackBar(
                     const SnackBar(content: Text('Операция удалена')),
                   );

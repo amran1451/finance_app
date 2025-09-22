@@ -5,6 +5,7 @@ import '../data/models/transaction_record.dart';
 import '../data/repositories/categories_repository.dart';
 import '../data/repositories/transactions_repository.dart';
 import 'app_providers.dart';
+import 'db_refresh.dart';
 
 enum PlannedType { income, expense, saving }
 
@@ -51,6 +52,7 @@ class PlannedItemView {
 
 final plannedItemsByTypeProvider = FutureProvider.family
     <List<PlannedItemView>, PlannedType>((ref, type) async {
+  ref.watch(dbTickProvider);
   final transactionsRepo = ref.watch(transactionsRepoProvider);
   final categoriesRepo = ref.watch(categoriesRepoProvider);
   final records = await transactionsRepo.listPlanned(
@@ -73,12 +75,11 @@ final plannedItemsByTypeProvider = FutureProvider.family
   ];
 });
 
-final plannedTotalByTypeProvider = FutureProvider.family<int, PlannedType>((ref, type) async {
-  final transactionsRepo = ref.watch(transactionsRepoProvider);
-  final records = await transactionsRepo.listPlanned(
-    type: type.toTransactionType(),
-  );
-  return records.fold<int>(0, (sum, record) => sum + record.amountMinor);
+final plannedTotalByTypeProvider =
+    FutureProvider.family<int, PlannedType>((ref, type) async {
+  ref.watch(dbTickProvider);
+  final items = await ref.watch(plannedItemsByTypeProvider(type).future);
+  return items.fold<int>(0, (sum, item) => sum + item.record.amountMinor);
 });
 
 final plannedActionsProvider = Provider<PlannedActions>((ref) {

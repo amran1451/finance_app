@@ -8,6 +8,7 @@ import '../../data/models/transaction_record.dart';
 import '../../data/repositories/necessity_repository.dart';
 import '../../routing/app_router.dart';
 import '../../state/app_providers.dart';
+import '../../state/db_refresh.dart';
 import '../../state/entry_flow_providers.dart';
 import '../../utils/formatting.dart';
 
@@ -110,8 +111,7 @@ class ReviewScreen extends ConsumerWidget {
         record,
         asSavingPair: entryState.type == mock.OperationType.savings,
       );
-
-      ref.invalidate(computedBalanceProvider(accountId));
+      bumpDbTick(ref);
       controller.reset();
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Сохранено')),

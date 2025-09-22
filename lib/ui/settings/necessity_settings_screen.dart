@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../data/repositories/necessity_repository.dart';
 import '../../state/app_providers.dart';
+import '../../state/db_refresh.dart';
 
 class NecessitySettingsScreen extends ConsumerStatefulWidget {
   const NecessitySettingsScreen({super.key});
@@ -117,7 +118,7 @@ class _NecessitySettingsScreenState
     updated.insert(newIndex, moved);
     final repo = ref.read(necessityRepoProvider);
     await repo.reorder([for (final label in updated) label.id]);
-    ref.invalidate(necessityLabelsFutureProvider);
+    bumpDbTick(ref);
   }
 
   Future<void> _archiveLabel(NecessityLabel label) async {
@@ -146,7 +147,7 @@ class _NecessitySettingsScreenState
     }
     final repo = ref.read(necessityRepoProvider);
     await repo.archive(label.id);
-    ref.invalidate(necessityLabelsFutureProvider);
+    bumpDbTick(ref);
     if (!mounted) {
       return;
     }
@@ -230,6 +231,6 @@ class _NecessitySettingsScreenState
 
     nameController.dispose();
     colorController.dispose();
-    ref.invalidate(necessityLabelsFutureProvider);
+    bumpDbTick(ref);
   }
 }

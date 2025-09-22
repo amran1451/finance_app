@@ -1,9 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import '../../state/app_providers.dart';
 import '../../data/models/transaction_record.dart';
+import '../../state/app_providers.dart';
 import '../../state/planned_providers.dart';
+import '../../state/db_refresh.dart';
 import '../../utils/formatting.dart';
 import 'planned_add_form.dart';
 
@@ -124,10 +125,7 @@ Future<void> showPlannedSheet(
                         final id = item.record.id;
                         if (id != null) {
                           await actions.remove(id);
-                          sheetRef
-                              .invalidate(plannedItemsByTypeProvider(type));
-                          sheetRef
-                              .invalidate(plannedTotalByTypeProvider(type));
+                          bumpDbTick(sheetRef);
                         }
                       }
                     } else if (action == _PlannedItemAction.edit) {
@@ -190,10 +188,7 @@ Future<void> showPlannedSheet(
                                         return;
                                       }
                                       await actions.toggle(id, value ?? false);
-                                      sheetRef.invalidate(
-                                          plannedItemsByTypeProvider(type));
-                                      sheetRef.invalidate(
-                                          plannedTotalByTypeProvider(type));
+                                      bumpDbTick(sheetRef);
                                     },
                                     onLongPress: () => handleLongPress(item),
                                   );
