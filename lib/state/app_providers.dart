@@ -11,6 +11,7 @@ import '../data/repositories/payouts_repository.dart' as payouts_repo;
 import '../data/repositories/necessity_repository.dart' as necessity_repo;
 import '../data/repositories/settings_repository.dart' as settings_repo;
 import '../data/repositories/transactions_repository.dart' as transactions_repo;
+import 'db_refresh.dart';
 
 final appDatabaseProvider = Provider<AppDatabase>((ref) => AppDatabase.instance);
 
@@ -21,6 +22,7 @@ final accountsRepoProvider =
 });
 
 final accountsDbProvider = FutureProvider<List<db_models.Account>>((ref) {
+  ref.watch(dbTickProvider);
   final repository = ref.watch(accountsRepoProvider);
   return repository.getAll();
 });
@@ -54,6 +56,7 @@ final necessityRepoProvider = Provider<necessity_repo.NecessityRepository>((ref)
 
 final computedBalanceProvider =
     FutureProvider.family<int, int>((ref, accountId) async {
+  ref.watch(dbTickProvider);
   final repository = ref.watch(accountsRepoProvider);
   return repository.getComputedBalanceMinor(accountId);
 });
@@ -107,6 +110,7 @@ final isSheetOpenProvider = StateProvider<bool>((_) => false);
 
 final necessityLabelsFutureProvider =
     FutureProvider<List<necessity_repo.NecessityLabel>>((ref) {
+  ref.watch(dbTickProvider);
   final repository = ref.watch(necessityRepoProvider);
   return repository.list();
 });

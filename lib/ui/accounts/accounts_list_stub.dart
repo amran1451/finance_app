@@ -5,6 +5,7 @@ import 'package:go_router/go_router.dart';
 import '../../data/models/account.dart' as db_models;
 import '../../routing/app_router.dart';
 import '../../state/app_providers.dart';
+import '../../state/db_refresh.dart';
 import '../../utils/formatting.dart';
 
 class AccountsListStub extends ConsumerWidget {
@@ -115,8 +116,7 @@ class _AccountListTile extends ConsumerWidget {
                           child: TextButton(
                             onPressed: () async {
                               await reconcile(accountId);
-                              ref.invalidate(accountsDbProvider);
-                              ref.invalidate(computedBalanceProvider(accountId));
+                              bumpDbTick(ref);
                               ScaffoldMessenger.of(context).showSnackBar(
                                 const SnackBar(content: Text('Баланс выровнен')),
                               );
