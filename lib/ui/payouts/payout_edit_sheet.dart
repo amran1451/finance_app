@@ -1,0 +1,372 @@
+import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+
+import '../../data/models/account.dart' as db;
+import '../../data/models/payout.dart';
+import '../../state/app_providers.dart';
+import '../../state/db_refresh.dart';
+import '../../utils/formatting.dart';
+
+Future<bool> showPayoutEditSheet(
+  BuildContext context, {
+  Payout? initial,
+  PayoutType? presetType,
+}) async {
+  final result = await showModalBottomSheet<bool>(
+    context: context,
+    isScrollControlled: true,
+    useSafeArea: true,
+    shape: const RoundedRectangleBorder(
+      borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+    ),
+    builder: (_) => _PayoutEditSheet(
+      initial: initial,
+      presetType: presetType,
+    ),
+  );
+
+  return result ?? false;
+}
+
+class _PayoutEditSheet extends ConsumerStatefulWidget {
+  const _PayoutEditSheet({
+    this.initial,
+    this.presetType,
+    super.key,
+  });
+
+  final Payout? initial;
+  final PayoutType? presetType;
+
+  @override
+  ConsumerState<_PayoutEditSheet> createState() => _PayoutEditSheetState();
+}
+
+class _PayoutEditSheetState extends ConsumerState<_PayoutEditSheet> {
+  final _formKey = GlobalKey<FormState>();
+  late final TextEditingController _amountController;
+  late PayoutType _type;
+  late DateTime _date;
+  int? _accountId;
+  bool _accountInitialized = false;
+  bool _isProcessing = false;
+
+  @override
+  void initState() {
+    super.initState();
+    final initial = widget.initial;
+    _type = initial?.type ?? widget.presetType ?? PayoutType.salary;
+    _date = initial?.date ?? DateTime.now();
+    _accountId = initial?.accountId;
+    _accountInitialized = _accountId != null;
+    final amountText = initial == null ? '' : _formatAmountMinor(initial.amountMinor);
+    _amountController = TextEditingController(text: amountText);
+  }
+
+  @override
+  void dispose() {
+    _amountController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final accountsAsync = ref.watch(accountsDbProvider);
+    final accounts = accountsAsync.value ?? const <db.Account>[];
+    final availableAccounts = accounts
+        .where((account) {
+          final id = account.id;
+          if (id == null) {
+            return false;
+          }
+          if (account.isArchived && id != _accountId) {
+            return false;
+          }
+          return true;
+        })
+        .toList();
+
+    if (!_accountInitialized && availableAccounts.isNotEmpty) {
+      final defaultAccount = availableAccounts.firstWhere(
+        (account) => account.name.trim().toLowerCase() == 'карта',
+        orElse: () => availableAccounts.first,
+      );
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) {
+          return;
+        }
+        setState(() {
+          _accountId = defaultAccount.id;
+          _accountInitialized = true;
+        });
+      });
+    }
+
+    final theme = Theme.of(context);
+    final bottomInset = MediaQuery.of(context).viewInsets.bottom;
+    final isEditMode = widget.initial?.id != null;
+
+    return Padding(
+      padding: EdgeInsets.only(
+        left: 24,
+        right: 24,
+        top: 24,
+        bottom: 24 + bottomInset,
+      ),
+      child: Form(
+        key: _formKey,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Center(
+              child: Container(
+                width: 36,
+                height: 4,
+                decoration: BoxDecoration(
+                  color: theme.colorScheme.outlineVariant,
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
+            ),
+            const SizedBox(height: 16),
+            Text(
+              isEditMode ? 'Редактировать выплату' : 'Добавить выплату',
+              style: theme.textTheme.titleMedium,
+              textAlign: TextAlign.center,
+            ),
+            const SizedBox(height: 16),
+            SegmentedButton<PayoutType>(
+              segments: const [
+                ButtonSegment(
+                  value: PayoutType.advance,
+                  label: Text('Аванс'),
+                ),
+                ButtonSegment(
+                  value: PayoutType.salary,
+                  label: Text('Зарплата'),
+                ),
+              ],
+              selected: <PayoutType>{_type},
+              onSelectionChanged: (selection) {
+                if (selection.isEmpty) {
+                  return;
+                }
+                setState(() => _type = selection.first);
+              },
+            ),
+            const SizedBox(height: 16),
+            ListTile(
+              contentPadding: EdgeInsets.zero,
+              title: const Text('Дата'),
+              subtitle: Text(formatDate(_date)),
+              trailing: const Icon(Icons.calendar_today),
+              onTap: () async {
+                final picked = await showDatePicker(
+                  context: context,
+                  initialDate: _date,
+                  firstDate: DateTime.now().subtract(const Duration(days: 365)),
+                  lastDate: DateTime.now().add(const Duration(days: 365)),
+                );
+                if (picked != null) {
+                  setState(() {
+                    _date = DateTime(picked.year, picked.month, picked.day);
+                  });
+                }
+              },
+            ),
+            const SizedBox(height: 12),
+            TextFormField(
+              controller: _amountController,
+              keyboardType: const TextInputType.numberWithOptions(decimal: true),
+              decoration: const InputDecoration(
+                labelText: 'Сумма',
+              ),
+              validator: (value) {
+                final text = value?.trim();
+                if (text == null || text.isEmpty) {
+                  return 'Введите сумму';
+                }
+                final normalized = text.replaceAll(',', '.');
+                final parsed = double.tryParse(normalized);
+                if (parsed == null || parsed <= 0) {
+                  return 'Введите сумму больше нуля';
+                }
+                return null;
+              },
+            ),
+            const SizedBox(height: 12),
+            if (accountsAsync.isLoading && availableAccounts.isEmpty)
+              const Center(child: CircularProgressIndicator())
+            else if (availableAccounts.isEmpty)
+              const Text(
+                'Нет доступных счетов. Добавьте счёт, чтобы продолжить.',
+                style: TextStyle(color: Colors.redAccent),
+              )
+            else
+              DropdownButtonFormField<int>(
+                value: _accountId,
+                decoration: const InputDecoration(labelText: 'Счёт'),
+                items: [
+                  for (final account in availableAccounts)
+                    DropdownMenuItem(
+                      value: account.id!,
+                      child: Text(account.name),
+                    ),
+                ],
+                onChanged: (value) => setState(() => _accountId = value),
+                validator: (value) {
+                  if (value == null) {
+                    return 'Выберите счёт';
+                  }
+                  return null;
+                },
+              ),
+            const SizedBox(height: 16),
+            Row(
+              children: [
+                Expanded(
+                  child: isEditMode
+                      ? TextButton(
+                          onPressed:
+                              _isProcessing ? null : () => _deletePayout(context),
+                          style: TextButton.styleFrom(
+                            foregroundColor: theme.colorScheme.error,
+                          ),
+                          child: const Text('Удалить'),
+                        )
+                      : OutlinedButton(
+                          onPressed: _isProcessing
+                              ? null
+                              : () {
+                                  if (!mounted) {
+                                    return;
+                                  }
+                                  Navigator.of(context).pop(false);
+                                },
+                          child: const Text('Отмена'),
+                        ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: FilledButton(
+                    onPressed: _isProcessing || availableAccounts.isEmpty
+                        ? null
+                        : () => _savePayout(context),
+                    child: _isProcessing
+                        ? const SizedBox(
+                            width: 16,
+                            height: 16,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          )
+                        : const Text('Сохранить'),
+                  ),
+                ),
+              ],
+            ),
+            if (isEditMode) ...[
+              const SizedBox(height: 8),
+              OutlinedButton(
+                onPressed: _isProcessing
+                    ? null
+                    : () {
+                        if (!mounted) {
+                          return;
+                        }
+                        Navigator.of(context).pop(false);
+                      },
+                child: const Text('Отмена'),
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+
+  Future<void> _savePayout(BuildContext context) async {
+    if (!_formKey.currentState!.validate()) {
+      return;
+    }
+    final accountId = _accountId;
+    if (accountId == null) {
+      return;
+    }
+    final text = _amountController.text.trim().replaceAll(',', '.');
+    final amount = double.parse(text);
+    final amountMinor = (amount * 100).round();
+    setState(() => _isProcessing = true);
+
+    try {
+      final payoutsRepo = ref.read(payoutsRepoProvider);
+      final normalizedDate = DateTime(_date.year, _date.month, _date.day);
+      final initial = widget.initial;
+      if (initial?.id != null) {
+        await payoutsRepo.update(
+          id: initial!.id!,
+          type: _type,
+          date: normalizedDate,
+          amountMinor: amountMinor,
+          accountId: accountId,
+        );
+      } else {
+        await payoutsRepo.add(
+          _type,
+          normalizedDate,
+          amountMinor,
+          accountId: accountId,
+        );
+      }
+      bumpDbTick(ref);
+      if (!mounted) {
+        return;
+      }
+      Navigator.of(context).pop(true);
+    } catch (error) {
+      if (!mounted) {
+        return;
+      }
+      setState(() => _isProcessing = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Ошибка: $error')),
+      );
+    }
+  }
+
+  Future<void> _deletePayout(BuildContext context) async {
+    final id = widget.initial?.id;
+    if (id == null) {
+      return;
+    }
+    setState(() => _isProcessing = true);
+    try {
+      final payoutsRepo = ref.read(payoutsRepoProvider);
+      await payoutsRepo.delete(id);
+      bumpDbTick(ref);
+      if (!mounted) {
+        return;
+      }
+      Navigator.of(context).pop(true);
+    } catch (error) {
+      if (!mounted) {
+        return;
+      }
+      setState(() => _isProcessing = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Ошибка: $error')),
+      );
+    }
+  }
+
+  String _formatAmountMinor(int amountMinor) {
+    final major = amountMinor / 100;
+    final formatted = major.toStringAsFixed(2);
+    if (formatted.endsWith('.00')) {
+      return formatted.substring(0, formatted.length - 3);
+    }
+    if (formatted.endsWith('0')) {
+      return formatted.substring(0, formatted.length - 1);
+    }
+    return formatted;
+  }
+}

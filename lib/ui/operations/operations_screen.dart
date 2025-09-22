@@ -10,14 +10,10 @@ import '../../data/repositories/necessity_repository.dart'
 import '../../data/repositories/reason_repository.dart' as reason_repo;
 import '../../state/budget_providers.dart';
 import '../../state/db_refresh.dart';
+import '../../state/operations_filters.dart';
 import '../../state/reason_providers.dart';
 import '../../utils/formatting.dart';
 import '../../routing/app_router.dart';
-
-enum OperationsFilter { all, income, expense, saving }
-
-final _operationsFilterProvider =
-    StateProvider<OperationsFilter>((_) => OperationsFilter.all);
 
 final _categoriesMapProvider = FutureProvider<Map<int, Category>>((ref) async {
   ref.watch(dbTickProvider);
@@ -34,12 +30,14 @@ class OperationsScreen extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final transactionsAsync = ref.watch(halfPeriodTransactionsProvider);
     final periodBounds = ref.watch(halfPeriodBoundsProvider);
+    final transactionsAsync = ref.watch(
+      periodOperationsProvider((start: periodBounds.start, endExclusive: periodBounds.endExclusive)),
+    );
     final periodStart = periodBounds.start;
     final periodEndExclusive = periodBounds.endExclusive;
     final categoriesAsync = ref.watch(_categoriesMapProvider);
-    final filter = ref.watch(_operationsFilterProvider);
+    final filter = ref.watch(opTypeFilterProvider);
 
     final rawEnd = periodEndExclusive.subtract(const Duration(days: 1));
     final endInclusive =
@@ -83,8 +81,7 @@ class OperationsScreen extends ConsumerWidget {
         ),
         data: (transactions) {
           final categories = categoriesAsync.asData?.value ?? const <int, Category>{};
-          final filtered = _applyFilter(transactions, filter);
-          if (filtered.isEmpty) {
+          if (transactions.isEmpty) {
             return Center(
               child: Padding(
                 padding: const EdgeInsets.all(24),
@@ -94,7 +91,7 @@ class OperationsScreen extends ConsumerWidget {
                     const Icon(Icons.receipt_long, size: 64),
                     const SizedBox(height: 16),
                     Text(
-                      filter == OperationsFilter.all
+                      filter == OpTypeFilter.all
                           ? 'Операций пока нет'
                           : 'Нет операций выбранного типа',
                       textAlign: TextAlign.center,
@@ -105,7 +102,7 @@ class OperationsScreen extends ConsumerWidget {
             );
           }
 
-          final grouped = _groupByDate(filtered);
+          final grouped = _groupByDate(transactions);
           final dates = grouped.keys.toList()..sort((a, b) => b.compareTo(a));
 
           return Column(
@@ -117,22 +114,22 @@ class OperationsScreen extends ConsumerWidget {
               ),
               Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                child: SegmentedButton<OperationsFilter>(
+                child: SegmentedButton<OpTypeFilter>(
                   segments: const [
                     ButtonSegment(
-                      value: OperationsFilter.all,
+                      value: OpTypeFilter.all,
                       label: Text('Все'),
                     ),
                     ButtonSegment(
-                      value: OperationsFilter.expense,
+                      value: OpTypeFilter.expense,
                       label: Text('Расходы'),
                     ),
                     ButtonSegment(
-                      value: OperationsFilter.income,
+                      value: OpTypeFilter.income,
                       label: Text('Доходы'),
                     ),
                     ButtonSegment(
-                      value: OperationsFilter.saving,
+                      value: OpTypeFilter.saving,
                       label: Text('Сбережения'),
                     ),
                   ],
@@ -142,7 +139,7 @@ class OperationsScreen extends ConsumerWidget {
                     if (selection.isEmpty) {
                       return;
                     }
-                    ref.read(_operationsFilterProvider.notifier).state = selection.first;
+                    ref.read(opTypeFilterProvider.notifier).state = selection.first;
                   },
                 ),
               ),
@@ -285,28 +282,6 @@ Map<DateTime, List<TransactionRecord>> _groupByDate(
     grouped.putIfAbsent(date, () => []).add(record);
   }
   return grouped;
-}
-
-List<TransactionRecord> _applyFilter(
-  List<TransactionRecord> source,
-  OperationsFilter filter,
-) {
-  switch (filter) {
-    case OperationsFilter.all:
-      return source;
-    case OperationsFilter.income:
-      return source
-          .where((record) => record.type == TransactionType.income)
-          .toList();
-    case OperationsFilter.expense:
-      return source
-          .where((record) => record.type == TransactionType.expense)
-          .toList();
-    case OperationsFilter.saving:
-      return source
-          .where((record) => record.type == TransactionType.saving)
-          .toList();
-  }
 }
 
 Color _colorForType(TransactionType type) {
