@@ -205,13 +205,25 @@ class _ReviewScreenState extends ConsumerState<ReviewScreen> {
       if (isQuickAddKind) {
         ref.read(lastEntryKindProvider.notifier).state = operationKind;
       }
+      ProviderContainer? containerForSnack;
+      if (kReturnToOperationsAfterSave && isQuickAddKind) {
+        containerForSnack = ProviderScope.containerOf(
+          context,
+          listen: false,
+        );
+      }
       if (kReturnToOperationsAfterSave) {
         context.goNamed(RouteNames.operations);
         if (isQuickAddKind) {
+          final container = containerForSnack ??
+              ProviderScope.containerOf(
+                context,
+                listen: false,
+              );
           showAddAnotherSnackGlobal(
             seconds: 5,
             onTap: (ctx) {
-              ref
+              container
                   .read(entryFlowControllerProvider.notifier)
                   .resetForQuickAdd(operationKind);
               GoRouter.of(ctx).goNamed(RouteNames.entryAmount);
