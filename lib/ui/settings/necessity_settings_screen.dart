@@ -253,8 +253,6 @@ class _NecessitySettingsScreenState
                           : const Icon(Icons.block, size: 16),
                     ),
                     title: Text(label.name),
-                    subtitle:
-                        hasColor ? Text('Цвет: ${label.color}') : null,
                     trailing: Row(
                       mainAxisSize: MainAxisSize.min,
                       children: [
