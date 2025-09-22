@@ -7,7 +7,6 @@ import '../../data/models/category.dart' as db_models;
 import '../../data/models/transaction_record.dart';
 import '../../data/repositories/necessity_repository.dart';
 import '../../data/repositories/reason_repository.dart';
-import '../../app.dart' show scaffoldMessengerKey;
 import '../../routing/app_router.dart';
 import '../../state/app_providers.dart';
 import '../../state/db_refresh.dart';
@@ -207,19 +206,15 @@ class _ReviewScreenState extends ConsumerState<ReviewScreen> {
         ref.read(lastEntryKindProvider.notifier).state = operationKind;
       }
       if (kReturnToOperationsAfterSave) {
+        final entryFlowControllerNotifier =
+            ref.read(entryFlowControllerProvider.notifier);
         context.goNamed(RouteNames.operations);
         if (isQuickAddKind) {
           showAddAnotherSnackGlobal(
             seconds: 5,
-            onTap: () {
-              ref
-                  .read(entryFlowControllerProvider.notifier)
-                  .resetForQuickAdd(operationKind);
-              scaffoldMessengerKey.currentState?.clearSnackBars();
-              final targetContext = scaffoldMessengerKey.currentContext;
-              if (targetContext != null) {
-                targetContext.goNamed(RouteNames.entryAmount);
-              }
+            onTap: (ctx) {
+              entryFlowControllerNotifier.resetForQuickAdd(operationKind);
+              GoRouter.of(ctx).goNamed(RouteNames.entryAmount);
             },
           );
         }

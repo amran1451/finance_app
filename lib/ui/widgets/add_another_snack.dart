@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../app.dart';
 
-typedef AddAnotherTap = void Function();
+typedef AddAnotherTap = void Function(BuildContext context);
 
 void showAddAnotherSnackGlobal({
   required int seconds,
@@ -52,7 +52,7 @@ class _AddAnotherContentState extends State<_AddAnotherContent>
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
     return InkWell(
-      onTap: widget.onTap,
+      onTap: () => widget.onTap(context),
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
