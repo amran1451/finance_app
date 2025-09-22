@@ -27,7 +27,7 @@ class HomeScreen extends ConsumerWidget {
     final hideFab = ref.watch(isSheetOpenProvider);
     final entryController = ref.read(entryFlowControllerProvider.notifier);
     final transactionsAsync = ref.watch(halfPeriodTransactionsProvider);
-    final boundsAsync = ref.watch(halfPeriodBoundsProvider);
+    final (periodStart, periodEndExclusive) = ref.watch(halfPeriodBoundsProvider);
 
     final transactions = transactionsAsync.asData?.value ?? const [];
     final isTransactionsLoading = transactionsAsync.isLoading;
@@ -75,14 +75,11 @@ class HomeScreen extends ConsumerWidget {
             ? 'Ошибка'
             : formatCurrencyMinor(periodIncomeMinor);
 
-    final boundsLabel = boundsAsync.when(
-      data: (bounds) {
-        final endInclusive = bounds.endExclusive.subtract(const Duration(days: 1));
-        return '${formatDayMonth(bounds.start)} – ${formatDayMonth(endInclusive)}';
-      },
-      loading: () => 'Выбранный период',
-      error: (error, _) => 'Период недоступен',
-    );
+    final rawEnd = periodEndExclusive.subtract(const Duration(days: 1));
+    final endInclusive =
+        rawEnd.isBefore(periodStart) ? periodStart : rawEnd;
+    final boundsLabel =
+        '${formatDayMonth(periodStart)} – ${formatDayMonth(endInclusive)}';
 
     return Scaffold(
       floatingActionButtonLocation: FloatingActionButtonLocation.centerFloat,
