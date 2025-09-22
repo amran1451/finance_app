@@ -23,7 +23,6 @@ class HomeScreen extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final dailyLimitAsync = ref.watch(dailyLimitProvider);
-    final periodBudgetAsync = ref.watch(periodBudgetMinorProvider);
     final accountsAsync = ref.watch(accountsDbProvider);
     final hideFab = ref.watch(isSheetOpenProvider);
     final entryController = ref.read(entryFlowControllerProvider.notifier);
@@ -107,8 +106,6 @@ class HomeScreen extends ConsumerWidget {
                 context,
                 ref,
                 hasOperations,
-                dailyLimitAsync,
-                periodBudgetAsync,
               ),
               const SizedBox(height: 16),
               CalloutCard(
@@ -347,8 +344,6 @@ class HomeScreen extends ConsumerWidget {
     BuildContext context,
     WidgetRef ref,
     bool hasOperations,
-    AsyncValue<int?> dailyLimitAsync,
-    AsyncValue<int> periodBudgetAsync,
   ) {
     if (!hasOperations) {
       return CalloutCard(
@@ -357,15 +352,18 @@ class HomeScreen extends ConsumerWidget {
       );
     }
 
-    final dailyLimitLabel = dailyLimitAsync.when(
-      data: (value) => formatCurrencyMinorNullable(value),
-      loading: () => '…',
-      error: (e, st) => '—',
-    );
-    final periodBudgetLabel = periodBudgetAsync.when(
+    final leftTodayAsync = ref.watch(leftTodayMinorProvider);
+    final leftPeriodAsync = ref.watch(leftInPeriodMinorProvider);
+
+    final leftTodayLabel = leftTodayAsync.when(
       data: (value) => formatCurrencyMinor(value),
       loading: () => '…',
-      error: (e, st) => '—',
+      error: (_, __) => '—',
+    );
+    final leftPeriodLabel = leftPeriodAsync.when(
+      data: (value) => formatCurrencyMinor(value),
+      loading: () => '…',
+      error: (_, __) => '—',
     );
 
     return Row(
@@ -373,7 +371,7 @@ class HomeScreen extends ConsumerWidget {
         Expanded(
           child: _RemainingInfoCard(
             label: 'Осталось на день',
-            value: dailyLimitLabel,
+            value: leftTodayLabel,
             alignment: TextAlign.left,
             onEdit: () => _showDailyLimitSheet(context, ref),
           ),
@@ -382,7 +380,7 @@ class HomeScreen extends ConsumerWidget {
         Expanded(
           child: _RemainingInfoCard(
             label: 'Осталось в этом бюджете',
-            value: periodBudgetLabel,
+            value: leftPeriodLabel,
             alignment: TextAlign.right,
           ),
         ),

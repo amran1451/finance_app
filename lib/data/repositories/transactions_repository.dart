@@ -29,6 +29,12 @@ abstract class TransactionsRepository {
   Future<List<TransactionRecord>> listPlanned({TransactionType? type});
 
   Future<void> setPlannedCompletion(int id, bool isCompleted);
+
+  /// Сумма внеплановых расходов в [date] (учитывая границы активного периода)
+  Future<int> sumUnplannedExpensesOnDate(DateTime date);
+
+  /// Сумма внеплановых расходов в интервале [from, toExclusive)
+  Future<int> sumUnplannedExpensesInRange(DateTime from, DateTime toExclusive);
 }
 
 class SqliteTransactionsRepository implements TransactionsRepository {
@@ -190,6 +196,51 @@ class SqliteTransactionsRepository implements TransactionsRepository {
       where: 'id = ?',
       whereArgs: [id],
     );
+  }
+
+  @override
+  Future<int> sumUnplannedExpensesOnDate(DateTime date) {
+    final dayStart = DateTime(date.year, date.month, date.day);
+    final dayEnd = dayStart.add(const Duration(days: 1));
+    return sumUnplannedExpensesInRange(dayStart, dayEnd);
+  }
+
+  @override
+  Future<int> sumUnplannedExpensesInRange(
+    DateTime from,
+    DateTime toExclusive,
+  ) async {
+    final normalizedFrom = DateTime(from.year, from.month, from.day);
+    final normalizedTo = DateTime(toExclusive.year, toExclusive.month, toExclusive.day);
+    if (!normalizedFrom.isBefore(normalizedTo)) {
+      return 0;
+    }
+
+    final db = await _db;
+    final endInclusive = normalizedTo.subtract(const Duration(days: 1));
+    if (endInclusive.isBefore(normalizedFrom)) {
+      return 0;
+    }
+
+    final rows = await db.rawQuery(
+      'SELECT SUM(amount_minor) AS total '
+      'FROM transactions '
+      "WHERE type = 'expense' AND is_planned = 0 AND date BETWEEN ? AND ?",
+      [_formatDate(normalizedFrom), _formatDate(endInclusive)],
+    );
+
+    if (rows.isEmpty) {
+      return 0;
+    }
+
+    final value = rows.first['total'];
+    if (value is int) {
+      return value;
+    }
+    if (value is num) {
+      return value.toInt();
+    }
+    return 0;
   }
 
   Future<CategoryType> _getCategoryType(DatabaseExecutor executor, int id) async {

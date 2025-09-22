@@ -64,6 +64,74 @@ final dailyLimitProvider = FutureProvider<int?>((ref) async {
   return repository.getDailyLimitMinor();
 });
 
+/// Сколько внеплановых расходов сегодня (в пределах активного периода)
+final todayUnplannedExpensesMinorProvider = FutureProvider<int>((ref) async {
+  ref.watch(dbTickProvider);
+  final repo = ref.watch(transactionsRepoProvider);
+  final period = await ref.watch(currentPeriodProvider.future);
+
+  final today = DateTime.now();
+  final dayStart = DateTime(today.year, today.month, today.day);
+  final periodStart =
+      DateTime(period.start.year, period.start.month, period.start.day);
+  final periodEnd = DateTime(period.end.year, period.end.month, period.end.day);
+  final within = !dayStart.isBefore(periodStart) && dayStart.isBefore(periodEnd);
+  if (!within) {
+    return 0;
+  }
+
+  return repo.sumUnplannedExpensesOnDate(dayStart);
+});
+
+/// Остаток на день = дневной лимит - расходы сегодня
+final leftTodayMinorProvider = FutureProvider<int>((ref) async {
+  ref.watch(dbTickProvider);
+  final dailyLimit = await ref.watch(dailyLimitProvider.future) ?? 0;
+  if (dailyLimit <= 0) {
+    return 0;
+  }
+  final spentToday = await ref.watch(todayUnplannedExpensesMinorProvider.future);
+  final left = dailyLimit - spentToday;
+  return left > 0 ? left : 0;
+});
+
+/// Остаток в бюджете на оставшуюся часть периода
+final leftInPeriodMinorProvider = FutureProvider<int>((ref) async {
+  ref.watch(dbTickProvider);
+  final period = await ref.watch(currentPeriodProvider.future);
+  final dailyLimit = await ref.watch(dailyLimitProvider.future) ?? 0;
+  if (dailyLimit <= 0) {
+    return 0;
+  }
+
+  final now = DateTime.now();
+  final today = DateTime(now.year, now.month, now.day);
+  final periodStart =
+      DateTime(period.start.year, period.start.month, period.start.day);
+  final periodEnd = DateTime(period.end.year, period.end.month, period.end.day);
+
+  if (today.isBefore(periodStart) || !today.isBefore(periodEnd)) {
+    return 0;
+  }
+
+  final rawRemainingDays = periodEnd.difference(today).inDays;
+  var remainingDays = rawRemainingDays;
+  if (remainingDays < 0) {
+    remainingDays = 0;
+  } else if (remainingDays > 365) {
+    remainingDays = 365;
+  }
+
+  final remainingBudget = remainingDays * dailyLimit;
+  if (remainingBudget <= 0) {
+    return 0;
+  }
+
+  final spentToday = await ref.watch(todayUnplannedExpensesMinorProvider.future);
+  final left = remainingBudget - spentToday;
+  return left > 0 ? left : 0;
+});
+
 final periodBudgetMinorProvider = FutureProvider<int>((ref) async {
   final dailyLimit = await ref.watch(dailyLimitProvider.future) ?? 0;
   if (dailyLimit <= 0) {
