@@ -105,7 +105,7 @@ final categoriesRepositoryProvider =
 
 final isSheetOpenProvider = StateProvider<bool>((_) => false);
 
-final necessityLabelsProvider =
+final necessityLabelsFutureProvider =
     FutureProvider<List<necessity_repo.NecessityLabel>>((ref) {
   final repository = ref.watch(necessityRepoProvider);
   return repository.list();
@@ -113,7 +113,7 @@ final necessityLabelsProvider =
 
 final necessityMapProvider =
     FutureProvider<Map<int, necessity_repo.NecessityLabel>>((ref) async {
-  final labels = await ref.watch(necessityLabelsProvider.future);
+  final labels = await ref.watch(necessityLabelsFutureProvider.future);
   return {
     for (final label in labels) label.id: label,
   };

@@ -129,7 +129,7 @@ class _PlannedAddFormState extends State<_PlannedAddForm> {
 
   @override
   Widget build(BuildContext context) {
-    final necessityLabelsAsync = widget.ref.watch(necessityLabelsProvider);
+    final necessityLabelsAsync = widget.ref.watch(necessityLabelsFutureProvider);
     final necessityLabels =
         necessityLabelsAsync.value ?? <NecessityLabel>[];
 
@@ -356,7 +356,7 @@ class _PlannedAddFormState extends State<_PlannedAddForm> {
     final amount = double.parse(amountText);
     final amountMinor = (amount * 100).round();
 
-    final labelsAsync = widget.ref.read(necessityLabelsProvider);
+    final labelsAsync = widget.ref.read(necessityLabelsFutureProvider);
     final labels = labelsAsync.value ?? <NecessityLabel>[];
     NecessityLabel? selectedLabel;
     for (final label in labels) {
