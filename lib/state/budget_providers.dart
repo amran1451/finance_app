@@ -14,9 +14,7 @@ enum HalfPeriod { first, second }
 
 typedef HalfPeriodBounds = ({DateTime start, DateTime endExclusive});
 
-final selectedHalfProvider = StateProvider<HalfPeriod>((_) => HalfPeriod.first);
-
-final anchorDaysProvider = FutureProvider<(int, int)>((ref) async {
+final anchorDaysFutureProvider = FutureProvider<(int, int)>((ref) async {
   ref.watch(dbTickProvider);
   final repository = ref.watch(settingsRepoProvider);
   final day1 = await repository.getAnchorDay1();
@@ -27,6 +25,21 @@ final anchorDaysProvider = FutureProvider<(int, int)>((ref) async {
   return (first, second);
 });
 
+final anchorDaysProvider = Provider<(int, int)>((ref) {
+  final asyncAnchors = ref.watch(anchorDaysFutureProvider);
+  return asyncAnchors.when(
+    data: (value) => value,
+    loading: () => (1, 15),
+    error: (_, __) => (1, 15),
+  );
+});
+
+final selectedHalfProvider = StateProvider<HalfPeriod>((ref) {
+  final (a1, a2) = ref.watch(anchorDaysProvider);
+  final today = DateTime.now().day;
+  return today <= a2 ? HalfPeriod.first : HalfPeriod.second;
+});
+
 final currentPayoutProvider = FutureProvider<Payout?>((ref) {
   ref.watch(dbTickProvider);
   final repository = ref.watch(payoutsRepoProvider);
@@ -34,7 +47,7 @@ final currentPayoutProvider = FutureProvider<Payout?>((ref) {
 });
 
 final currentPeriodProvider = FutureProvider<BudgetPeriodInfo>((ref) async {
-  final (anchor1, anchor2) = await ref.watch(anchorDaysProvider.future);
+  final (anchor1, anchor2) = await ref.watch(anchorDaysFutureProvider.future);
   final payout = await ref.watch(currentPayoutProvider.future);
   final now = _normalizeDate(DateTime.now());
   final start = payout != null
@@ -157,39 +170,27 @@ final plannedPoolMinorProvider = FutureProvider<int>((ref) async {
   return math.max(pool, 0);
 });
 
-final halfPeriodBoundsProvider = FutureProvider<HalfPeriodBounds>((ref) async {
-  final (anchor1, anchor2) = await ref.watch(anchorDaysProvider.future);
+final halfPeriodBoundsProvider = Provider<HalfPeriodBounds>((ref) {
+  final (anchor1, anchor2) = ref.watch(anchorDaysProvider);
   final half = ref.watch(selectedHalfProvider);
   final now = DateTime.now();
-  final baseMonth = DateTime(now.year, now.month, 1);
-  final firstStart = _anchorDate(baseMonth.year, baseMonth.month, anchor1);
-  final secondStart = _anchorDate(baseMonth.year, baseMonth.month, anchor2);
-  final nextMonth = DateTime(baseMonth.year, baseMonth.month + 1, 1);
-  final nextFirst = _anchorDate(nextMonth.year, nextMonth.month, anchor1);
+  final year = now.year;
+  final month = now.month;
 
   if (half == HalfPeriod.first) {
-    var endExclusive = _anchorDate(baseMonth.year, baseMonth.month, anchor2);
-    if (!endExclusive.isAfter(firstStart)) {
-      endExclusive = nextFirst;
-    }
-    return (start: firstStart, endExclusive: endExclusive);
+    final start = _anchorDate(year, month, anchor1);
+    final endExclusive = _anchorDate(year, month, anchor2);
+    return (start: start, endExclusive: endExclusive);
   } else {
-    var start = secondStart;
-    if (!start.isAfter(firstStart)) {
-      start = _anchorDate(nextMonth.year, nextMonth.month, anchor2);
-    }
-    var endExclusive = nextFirst;
-    if (!endExclusive.isAfter(start)) {
-      final followingMonth = DateTime(nextMonth.year, nextMonth.month + 1, 1);
-      endExclusive = _anchorDate(followingMonth.year, followingMonth.month, anchor1);
-    }
+    final start = _anchorDate(year, month, anchor2);
+    final endExclusive = _anchorDate(year, month + 1, anchor1);
     return (start: start, endExclusive: endExclusive);
   }
 });
 
 final halfPeriodTransactionsProvider = FutureProvider<List<TransactionRecord>>((ref) async {
   ref.watch(dbTickProvider);
-  final bounds = await ref.watch(halfPeriodBoundsProvider.future);
+  final bounds = ref.watch(halfPeriodBoundsProvider);
   final repo = ref.watch(transactionsRepoProvider);
   final start = bounds.start;
   final endExclusive = bounds.endExclusive;

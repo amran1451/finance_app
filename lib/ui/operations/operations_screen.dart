@@ -31,19 +31,15 @@ class OperationsScreen extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final transactionsAsync = ref.watch(halfPeriodTransactionsProvider);
-    final boundsAsync = ref.watch(halfPeriodBoundsProvider);
+    final (periodStart, periodEndExclusive) = ref.watch(halfPeriodBoundsProvider);
     final categoriesAsync = ref.watch(_categoriesMapProvider);
     final filter = ref.watch(_operationsFilterProvider);
 
-    final boundsLabel = boundsAsync.when(
-      data: (bounds) {
-        final endInclusive =
-            bounds.endExclusive.subtract(const Duration(days: 1));
-        return '${formatDayMonth(bounds.start)} – ${formatDayMonth(endInclusive)}';
-      },
-      loading: () => 'Загрузка периода…',
-      error: (error, _) => 'Период недоступен',
-    );
+    final rawEnd = periodEndExclusive.subtract(const Duration(days: 1));
+    final endInclusive =
+        rawEnd.isBefore(periodStart) ? periodStart : rawEnd;
+    final boundsLabel =
+        '${formatDayMonth(periodStart)} – ${formatDayMonth(endInclusive)}';
 
     return Scaffold(
       appBar: AppBar(
