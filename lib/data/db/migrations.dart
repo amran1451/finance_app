@@ -5,7 +5,7 @@ class AppMigrations {
   AppMigrations._();
 
   /// Latest schema version supported by the application.
-  static const int latestVersion = 3;
+  static const int latestVersion = 4;
 
   static final Map<int, List<String>> _migrationScripts = {
     1: [
@@ -68,6 +68,18 @@ class AppMigrations {
       'ALTER TABLE transactions ADD COLUMN necessity_id INTEGER NULL',
       'CREATE INDEX IF NOT EXISTS idx_transactions_necessity_id ON transactions(necessity_id)',
     ],
+    4: [
+      'CREATE TABLE IF NOT EXISTS reason_labels('
+          'id INTEGER PRIMARY KEY AUTOINCREMENT, '
+          'name TEXT NOT NULL, '
+          'color TEXT NULL, '
+          'sort_order INTEGER NOT NULL, '
+          'archived INTEGER NOT NULL DEFAULT 0'
+          ')',
+      'ALTER TABLE transactions ADD COLUMN reason_id INTEGER NULL',
+      'ALTER TABLE transactions ADD COLUMN reason_label TEXT NULL',
+      'CREATE INDEX IF NOT EXISTS idx_transactions_reason_id ON transactions(reason_id)',
+    ],
   };
 
   /// Applies migrations from [oldVersion] (exclusive) up to [newVersion] (inclusive).
@@ -85,6 +97,9 @@ class AppMigrations {
       switch (version) {
         case 3:
           await _seedNecessityLabels(db);
+          break;
+        case 4:
+          await _seedReasonLabels(db);
           break;
         default:
           break;
@@ -176,4 +191,34 @@ class AppMigrations {
     'надо',
     'можно отложить',
   ];
+
+  static Future<void> _seedReasonLabels(Database db) async {
+    final existingCountResult =
+        await db.rawQuery('SELECT COUNT(*) AS count FROM reason_labels');
+    final existingCount = existingCountResult.isNotEmpty
+        ? _readInt(existingCountResult.first['count'])
+        : 0;
+    if (existingCount > 0) {
+      return;
+    }
+
+    const defaultReasons = [
+      'Необходимо',
+      'Эмоции',
+      'Вынуждено',
+      'Социальное',
+      'Импульс',
+      'Статус',
+      'Избегание',
+    ];
+
+    for (var i = 0; i < defaultReasons.length; i++) {
+      await db.insert('reason_labels', {
+        'name': defaultReasons[i],
+        'color': null,
+        'sort_order': i,
+        'archived': 0,
+      });
+    }
+  }
 }

@@ -7,8 +7,10 @@ import '../../data/models/transaction_record.dart';
 import '../../state/app_providers.dart';
 import '../../data/repositories/necessity_repository.dart'
     as necessity_repo;
+import '../../data/repositories/reason_repository.dart' as reason_repo;
 import '../../state/budget_providers.dart';
 import '../../state/db_refresh.dart';
+import '../../state/reason_providers.dart';
 import '../../utils/formatting.dart';
 import '../../routing/app_router.dart';
 
@@ -183,6 +185,8 @@ class _OperationsSection extends ConsumerWidget {
     final repository = ref.watch(transactionsRepoProvider);
     final necessityMapAsync = ref.watch(necessityMapProvider);
     final necessityMap = necessityMapAsync.value ?? const <int, necessity_repo.NecessityLabel>{};
+    final reasonMapAsync = ref.watch(reasonMapProvider);
+    final reasonMap = reasonMapAsync.value ?? const <int, reason_repo.ReasonLabel>{};
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -208,11 +212,13 @@ class _OperationsSection extends ConsumerWidget {
                   ),
                 ),
                 title: Text(category?.name ?? 'Категория #${record.categoryId}'),
-                subtitle: Text(record.note?.isNotEmpty == true
-                    ? record.note!
-                    : record.necessityLabel ??
-                        necessityMap[record.necessityId]?.name ??
-                            'Без комментария'),
+                subtitle: Text(
+                  _subtitleForRecord(
+                    record,
+                    necessityMap,
+                    reasonMap,
+                  ),
+                ),
                 trailing: Column(
                   mainAxisAlignment: MainAxisAlignment.center,
                   crossAxisAlignment: CrossAxisAlignment.end,
@@ -334,4 +340,30 @@ String _labelForType(TransactionType type) {
     case TransactionType.saving:
       return 'Сбережение';
   }
+}
+
+String _subtitleForRecord(
+  TransactionRecord record,
+  Map<int, necessity_repo.NecessityLabel> necessityMap,
+  Map<int, reason_repo.ReasonLabel> reasonMap,
+) {
+  final note = record.note?.trim();
+  if (note != null && note.isNotEmpty) {
+    return note;
+  }
+
+  if (record.type == TransactionType.expense) {
+    if (record.isPlanned) {
+      return record.necessityLabel ??
+          necessityMap[record.necessityId]?.name ??
+          'Без комментария';
+    }
+    return record.reasonLabel ??
+        reasonMap[record.reasonId]?.name ??
+        'Без комментария';
+  }
+
+  return record.necessityLabel ??
+      necessityMap[record.necessityId]?.name ??
+      'Без комментария';
 }

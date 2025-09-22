@@ -18,6 +18,8 @@ class TransactionRecord {
     this.criticality = 0,
     this.necessityId,
     this.necessityLabel,
+    this.reasonId,
+    this.reasonLabel,
   });
 
   final int? id;
@@ -34,6 +36,8 @@ class TransactionRecord {
   final int criticality;
   final int? necessityId;
   final String? necessityLabel;
+  final int? reasonId;
+  final String? reasonLabel;
 
   TransactionRecord copyWith({
     int? id,
@@ -50,6 +54,8 @@ class TransactionRecord {
     int? criticality,
     Object? necessityId = _unset,
     Object? necessityLabel = _unset,
+    Object? reasonId = _unset,
+    Object? reasonLabel = _unset,
   }) {
     return TransactionRecord(
       id: id ?? this.id,
@@ -70,6 +76,11 @@ class TransactionRecord {
       necessityLabel: necessityLabel == _unset
           ? this.necessityLabel
           : necessityLabel as String?,
+      reasonId:
+          reasonId == _unset ? this.reasonId : reasonId as int?,
+      reasonLabel: reasonLabel == _unset
+          ? this.reasonLabel
+          : reasonLabel as String?,
     );
   }
 
@@ -89,6 +100,8 @@ class TransactionRecord {
       criticality: map['criticality'] as int? ?? 0,
       necessityId: map['necessity_id'] as int?,
       necessityLabel: map['necessity_label'] as String?,
+      reasonId: map['reason_id'] as int?,
+      reasonLabel: map['reason_label'] as String?,
     );
   }
 
@@ -108,6 +121,8 @@ class TransactionRecord {
       'criticality': criticality,
       'necessity_id': necessityId,
       'necessity_label': necessityLabel,
+      'reason_id': reasonId,
+      'reason_label': reasonLabel,
     };
   }
 
