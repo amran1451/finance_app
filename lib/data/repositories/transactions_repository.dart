@@ -33,9 +33,17 @@ abstract class TransactionsRepository {
 
   Future<void> delete(int id);
 
-  Future<List<TransactionRecord>> listPlanned({TransactionType? type});
+  Future<List<TransactionRecord>> listPlanned({
+    TransactionType? type,
+    bool onlyIncluded = false,
+  });
 
   Future<void> setPlannedCompletion(int id, bool isCompleted);
+
+  Future<void> setIncludedInPeriod({
+    required int transactionId,
+    required bool value,
+  });
 
   /// Сумма внеплановых расходов в [date] (учитывая границы активного периода)
   Future<int> sumUnplannedExpensesOnDate(DateTime date);
@@ -71,6 +79,9 @@ class SqliteTransactionsRepository implements TransactionsRepository {
         ..remove('id');
       if (includedInPeriod != null) {
         primaryValues['included_in_period'] = includedInPeriod ? 1 : 0;
+      } else if (adjustedRecord.isPlanned) {
+        primaryValues['included_in_period'] =
+            adjustedRecord.includedInPeriod ? 1 : 0;
       }
       final primaryId = await txn.insert('transactions', primaryValues);
 
@@ -90,6 +101,9 @@ class SqliteTransactionsRepository implements TransactionsRepository {
             ..remove('id');
           if (includedInPeriod != null) {
             pairValues['included_in_period'] = includedInPeriod ? 1 : 0;
+          } else if (adjustedRecord.isPlanned) {
+            pairValues['included_in_period'] =
+                adjustedRecord.includedInPeriod ? 1 : 0;
           }
           await txn.insert('transactions', pairValues);
         }
@@ -194,13 +208,19 @@ class SqliteTransactionsRepository implements TransactionsRepository {
   }
 
   @override
-  Future<List<TransactionRecord>> listPlanned({TransactionType? type}) async {
+  Future<List<TransactionRecord>> listPlanned({
+    TransactionType? type,
+    bool onlyIncluded = false,
+  }) async {
     final db = await _db;
     final where = StringBuffer('is_planned = 1');
     final args = <Object?>[];
     if (type != null) {
       where.write(' AND type = ?');
       args.add(_typeToString(type));
+    }
+    if (onlyIncluded) {
+      where.write(' AND included_in_period = 1');
     }
     final rows = await db.query(
       'transactions',
@@ -219,6 +239,20 @@ class SqliteTransactionsRepository implements TransactionsRepository {
       {'included_in_period': isCompleted ? 1 : 0},
       where: 'id = ?',
       whereArgs: [id],
+    );
+  }
+
+  @override
+  Future<void> setIncludedInPeriod({
+    required int transactionId,
+    required bool value,
+  }) async {
+    final db = await _db;
+    await db.update(
+      'transactions',
+      {'included_in_period': value ? 1 : 0},
+      where: 'id = ?',
+      whereArgs: [transactionId],
     );
   }
 

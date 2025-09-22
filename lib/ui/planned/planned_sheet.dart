@@ -209,7 +209,11 @@ class _PlannedSheetContentState extends ConsumerState<_PlannedSheetContent> {
                             if (id == null) {
                               return;
                             }
-                            await actions.toggle(id, value ?? false);
+                            final ok = value ?? false;
+                            await ref.read(transactionsRepoProvider).setIncludedInPeriod(
+                                  transactionId: id,
+                                  value: ok,
+                                );
                             bumpDbTick(ref);
                           },
                           onLongPress: () => handleLongPress(item),
@@ -312,7 +316,7 @@ class _PlannedItemTile extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.center,
               children: [
                 Checkbox(
-                  value: item.isDone,
+                  value: item.includedInPeriod,
                   onChanged: onToggle,
                 ),
                 const SizedBox(width: 8),
@@ -331,7 +335,7 @@ class _PlannedItemTile extends StatelessWidget {
             ),
             const SizedBox(height: 8),
             LinearProgressIndicator(
-              value: item.isDone ? 1 : 0,
+              value: item.includedInPeriod ? 1 : 0,
             ),
           ],
         ),
