@@ -6,11 +6,13 @@ import '../../data/mock/mock_models.dart' as mock;
 import '../../data/models/category.dart' as db_models;
 import '../../data/models/transaction_record.dart';
 import '../../data/repositories/necessity_repository.dart';
+import '../../app.dart' show scaffoldMessengerKey;
 import '../../routing/app_router.dart';
 import '../../state/app_providers.dart';
 import '../../state/db_refresh.dart';
 import '../../state/entry_flow_providers.dart';
 import '../../utils/formatting.dart';
+import '../widgets/add_another_snack.dart';
 
 class ReviewScreen extends ConsumerWidget {
   const ReviewScreen({super.key});
@@ -113,11 +115,29 @@ class ReviewScreen extends ConsumerWidget {
       );
       bumpDbTick(ref);
       controller.reset();
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Сохранено')),
-      );
+      final operationKind = operationKindFromType(entryState.type);
+      final isQuickAddKind = operationKind == OperationKind.expense ||
+          operationKind == OperationKind.income;
+      if (isQuickAddKind) {
+        ref.read(lastEntryKindProvider.notifier).state = operationKind;
+      }
       if (kReturnToOperationsAfterSave) {
         context.goNamed(RouteNames.operations);
+        if (isQuickAddKind) {
+          showAddAnotherSnackGlobal(
+            seconds: 5,
+            onTap: () {
+              ref
+                  .read(entryFlowControllerProvider.notifier)
+                  .resetForQuickAdd(operationKind);
+              scaffoldMessengerKey.currentState?.clearSnackBars();
+              final targetContext = scaffoldMessengerKey.currentContext;
+              if (targetContext != null) {
+                targetContext.goNamed(RouteNames.entryAmount);
+              }
+            },
+          );
+        }
       } else {
         context.goNamed(RouteNames.home);
       }
