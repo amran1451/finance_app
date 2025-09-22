@@ -18,7 +18,7 @@ class ReviewScreen extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final entryState = ref.watch(entryFlowControllerProvider);
     final controller = ref.read(entryFlowControllerProvider.notifier);
-    final necessityLabelsAsync = ref.watch(necessityLabelsProvider);
+    final necessityLabelsAsync = ref.watch(necessityLabelsFutureProvider);
     final necessityLabels =
         necessityLabelsAsync.value ?? <NecessityLabel>[];
 

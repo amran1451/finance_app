@@ -16,7 +16,7 @@ class _NecessitySettingsScreenState
     extends ConsumerState<NecessitySettingsScreen> {
   @override
   Widget build(BuildContext context) {
-    final labelsAsync = ref.watch(necessityLabelsProvider);
+    final labelsAsync = ref.watch(necessityLabelsFutureProvider);
 
     return Scaffold(
       appBar: AppBar(title: const Text('Критичность/Необходимость')),
@@ -108,7 +108,7 @@ class _NecessitySettingsScreenState
     if (newIndex > oldIndex) {
       newIndex -= 1;
     }
-    final labels = await ref.read(necessityLabelsProvider.future);
+    final labels = await ref.read(necessityLabelsFutureProvider.future);
     if (oldIndex < 0 || oldIndex >= labels.length) {
       return;
     }
@@ -117,7 +117,7 @@ class _NecessitySettingsScreenState
     updated.insert(newIndex, moved);
     final repo = ref.read(necessityRepoProvider);
     await repo.reorder([for (final label in updated) label.id]);
-    ref.invalidate(necessityLabelsProvider);
+    ref.invalidate(necessityLabelsFutureProvider);
   }
 
   Future<void> _archiveLabel(NecessityLabel label) async {
@@ -146,7 +146,7 @@ class _NecessitySettingsScreenState
     }
     final repo = ref.read(necessityRepoProvider);
     await repo.archive(label.id);
-    ref.invalidate(necessityLabelsProvider);
+    ref.invalidate(necessityLabelsFutureProvider);
     if (!mounted) {
       return;
     }
@@ -221,7 +221,7 @@ class _NecessitySettingsScreenState
         : colorController.text.trim();
 
     if (label == null) {
-      final labels = await ref.read(necessityLabelsProvider.future);
+      final labels = await ref.read(necessityLabelsFutureProvider.future);
       final sortOrder = labels.isEmpty ? 0 : labels.last.sortOrder + 1;
       await repo.create(name: name, color: color, sortOrder: sortOrder);
     } else {
@@ -230,6 +230,6 @@ class _NecessitySettingsScreenState
 
     nameController.dispose();
     colorController.dispose();
-    ref.invalidate(necessityLabelsProvider);
+    ref.invalidate(necessityLabelsFutureProvider);
   }
 }
