@@ -11,6 +11,7 @@ import '../../state/budget_providers.dart';
 import '../../state/entry_flow_providers.dart';
 import '../../state/planned_providers.dart';
 import '../../utils/formatting.dart';
+import '../../utils/ru_plural.dart';
 import '../planned/planned_sheet.dart';
 import '../payouts/add_payout_sheet.dart';
 import '../widgets/callout_card.dart';
@@ -30,6 +31,7 @@ class HomeScreen extends ConsumerWidget {
     final periodBounds = ref.watch(halfPeriodBoundsProvider);
     final periodStart = periodBounds.start;
     final periodEndExclusive = periodBounds.endExclusive;
+    final daysLeft = ref.watch(daysToPeriodEndProvider);
 
     final transactions = transactionsAsync.asData?.value ?? const [];
     final isTransactionsLoading = transactionsAsync.isLoading;
@@ -99,7 +101,19 @@ class HomeScreen extends ConsumerWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              const PeriodSelector(),
+              Padding(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                child: Row(
+                  children: [
+                    const Expanded(
+                      child: PeriodSelector(dense: true),
+                    ),
+                    const SizedBox(width: 12),
+                    _DaysLeftBadge(days: daysLeft),
+                  ],
+                ),
+              ),
               const SizedBox(height: 16),
               _buildRemainingSection(
                 context,
@@ -205,6 +219,54 @@ class HomeScreen extends ConsumerWidget {
           ),
         ),
       ),
+    );
+  }
+
+  Widget _buildRemainingSection(
+    BuildContext context,
+    WidgetRef ref,
+    bool hasOperations,
+  ) {
+    if (!hasOperations) {
+      return CalloutCard(
+        title: 'Остаток бюджета',
+        subtitle: 'Здесь появятся данные, когда вы добавите операции.',
+      );
+    }
+
+    final leftTodayAsync = ref.watch(leftTodayMinorProvider);
+    final leftPeriodAsync = ref.watch(leftInPeriodMinorProvider);
+
+    final leftTodayLabel = leftTodayAsync.when(
+      data: (value) => formatCurrencyMinor(value),
+      loading: () => '…',
+      error: (_, __) => '—',
+    );
+    final leftPeriodLabel = leftPeriodAsync.when(
+      data: (value) => formatCurrencyMinor(value),
+      loading: () => '…',
+      error: (_, __) => '—',
+    );
+
+    return Row(
+      children: [
+        Expanded(
+          child: _RemainingInfoCard(
+            label: 'Осталось на день',
+            value: leftTodayLabel,
+            alignment: TextAlign.left,
+            onEdit: () => _showDailyLimitSheet(context, ref),
+          ),
+        ),
+        const SizedBox(width: 12),
+        Expanded(
+          child: _RemainingInfoCard(
+            label: 'Осталось в этом бюджете',
+            value: leftPeriodLabel,
+            alignment: TextAlign.right,
+          ),
+        ),
+      ],
     );
   }
 
@@ -338,52 +400,31 @@ class HomeScreen extends ConsumerWidget {
       );
     }
   }
+}
 
-  Widget _buildRemainingSection(
-    BuildContext context,
-    WidgetRef ref,
-    bool hasOperations,
-  ) {
-    if (!hasOperations) {
-      return CalloutCard(
-        title: 'Остаток бюджета',
-        subtitle: 'Здесь появятся данные, когда вы добавите операции.',
-      );
-    }
+class _DaysLeftBadge extends StatelessWidget {
+  final int? days;
 
-    final leftTodayAsync = ref.watch(leftTodayMinorProvider);
-    final leftPeriodAsync = ref.watch(leftInPeriodMinorProvider);
+  const _DaysLeftBadge({required this.days});
 
-    final leftTodayLabel = leftTodayAsync.when(
-      data: (value) => formatCurrencyMinor(value),
-      loading: () => '…',
-      error: (_, __) => '—',
-    );
-    final leftPeriodLabel = leftPeriodAsync.when(
-      data: (value) => formatCurrencyMinor(value),
-      loading: () => '…',
-      error: (_, __) => '—',
-    );
-
-    return Row(
-      children: [
-        Expanded(
-          child: _RemainingInfoCard(
-            label: 'Осталось на день',
-            value: leftTodayLabel,
-            alignment: TextAlign.left,
-            onEdit: () => _showDailyLimitSheet(context, ref),
-          ),
-        ),
-        const SizedBox(width: 12),
-        Expanded(
-          child: _RemainingInfoCard(
-            label: 'Осталось в этом бюджете',
-            value: leftPeriodLabel,
-            alignment: TextAlign.right,
-          ),
-        ),
-      ],
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    final txt = days == null ? '—' : ruDaysShort(days!);
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+      decoration: BoxDecoration(
+        color: cs.surfaceVariant,
+        borderRadius: BorderRadius.circular(999),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          const Icon(Icons.event_outlined, size: 16),
+          const SizedBox(width: 6),
+          Text(txt, style: Theme.of(context).textTheme.labelLarge),
+        ],
+      ),
     );
   }
 }

@@ -71,6 +71,21 @@ final currentPeriodProvider = FutureProvider<BudgetPeriodInfo>((ref) async {
   return (start: start, end: end, days: days);
 });
 
+/// Количество дней до конца активного периода (>=0).
+/// Период берём из currentPeriodProvider: [start; endExclusive).
+final daysToPeriodEndProvider = Provider<int?>((ref) {
+  final period = ref.watch(currentPeriodProvider).value;
+  if (period == null) {
+    return null;
+  }
+
+  final now = DateTime.now();
+  final today0 = DateTime(now.year, now.month, now.day);
+  final end0 = DateTime(period.end.year, period.end.month, period.end.day);
+  final diff = end0.difference(today0).inDays;
+  return diff < 0 ? 0 : diff;
+});
+
 final dailyLimitProvider = FutureProvider<int?>((ref) async {
   ref.watch(dbTickProvider);
   final repository = ref.watch(settingsRepoProvider);
