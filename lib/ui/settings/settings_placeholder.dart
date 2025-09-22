@@ -7,6 +7,7 @@ import '../../state/db_refresh.dart';
 import '../payouts/add_payout_sheet.dart';
 import 'categories_manage_screen.dart';
 import 'necessity_settings_screen.dart';
+import 'reasons_settings_screen.dart';
 
 class SettingsPlaceholder extends ConsumerStatefulWidget {
   const SettingsPlaceholder({super.key});
@@ -193,6 +194,18 @@ class _SettingsPlaceholderState extends ConsumerState<SettingsPlaceholder> {
                     Navigator.of(context).push(
                       MaterialPageRoute(
                         builder: (_) => const NecessitySettingsScreen(),
+                      ),
+                    );
+                  },
+                ),
+                const Divider(height: 0),
+                ListTile(
+                  title: const Text('Причины расходов'),
+                  trailing: const Icon(Icons.chevron_right),
+                  onTap: () {
+                    Navigator.of(context).push(
+                      MaterialPageRoute(
+                        builder: (_) => const ReasonsSettingsScreen(),
                       ),
                     );
                   },

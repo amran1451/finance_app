@@ -9,6 +9,7 @@ import '../data/repositories/accounts_repository.dart' as accounts_repo;
 import '../data/repositories/categories_repository.dart' as categories_repo;
 import '../data/repositories/payouts_repository.dart' as payouts_repo;
 import '../data/repositories/necessity_repository.dart' as necessity_repo;
+import '../data/repositories/reason_repository.dart' as reason_repo;
 import '../data/repositories/settings_repository.dart' as settings_repo;
 import '../data/repositories/transactions_repository.dart' as transactions_repo;
 import 'db_refresh.dart';
@@ -52,6 +53,11 @@ final settingsRepoProvider = Provider<settings_repo.SettingsRepository>((ref) {
 final necessityRepoProvider = Provider<necessity_repo.NecessityRepository>((ref) {
   final database = ref.watch(appDatabaseProvider);
   return necessity_repo.NecessityRepositorySqlite(database: database);
+});
+
+final reasonRepoProvider = Provider<reason_repo.ReasonRepository>((ref) {
+  final database = ref.watch(appDatabaseProvider);
+  return reason_repo.ReasonRepositorySqlite(database: database);
 });
 
 final computedBalanceProvider =
