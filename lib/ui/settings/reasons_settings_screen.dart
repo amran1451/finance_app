@@ -254,7 +254,6 @@ class _ReasonsSettingsScreenState extends ConsumerState<ReasonsSettingsScreen> {
                       child: hasColor ? null : const Icon(Icons.block, size: 16),
                     ),
                     title: Text(label.name),
-                    subtitle: hasColor ? Text('Цвет: ${label.color}') : null,
                     trailing: Row(
                       mainAxisSize: MainAxisSize.min,
                       children: [
