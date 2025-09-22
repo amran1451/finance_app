@@ -51,7 +51,11 @@ class AmountScreen extends ConsumerWidget {
           icon: const Icon(Icons.close),
           onPressed: () {
             controller.reset();
-            context.pop();
+            if (context.canPop()) {
+              context.pop();
+            } else {
+              context.goNamed(RouteNames.home);
+            }
           },
         ),
         title: const Text('Сумма операции'),
