@@ -37,8 +37,8 @@ flutter_icons:
   min_sdk_android: 21
   android_12:
     image: assets/icons/app_icon.png
-    icon_background_color: "#121212"
     image_dark: assets/icons/app_icon.png
+    icon_background_color: "#121212"
     icon_background_color_dark: "#000000"
 
 flutter_native_splash:
