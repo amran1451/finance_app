@@ -27,7 +27,9 @@ class HomeScreen extends ConsumerWidget {
     final hideFab = ref.watch(isSheetOpenProvider);
     final entryController = ref.read(entryFlowControllerProvider.notifier);
     final transactionsAsync = ref.watch(halfPeriodTransactionsProvider);
-    final (periodStart, periodEndExclusive) = ref.watch(halfPeriodBoundsProvider);
+    final periodBounds = ref.watch(halfPeriodBoundsProvider);
+    final periodStart = periodBounds.start;
+    final periodEndExclusive = periodBounds.endExclusive;
 
     final transactions = transactionsAsync.asData?.value ?? const [];
     final isTransactionsLoading = transactionsAsync.isLoading;

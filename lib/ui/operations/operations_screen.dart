@@ -31,7 +31,9 @@ class OperationsScreen extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final transactionsAsync = ref.watch(halfPeriodTransactionsProvider);
-    final (periodStart, periodEndExclusive) = ref.watch(halfPeriodBoundsProvider);
+    final periodBounds = ref.watch(halfPeriodBoundsProvider);
+    final periodStart = periodBounds.start;
+    final periodEndExclusive = periodBounds.endExclusive;
     final categoriesAsync = ref.watch(_categoriesMapProvider);
     final filter = ref.watch(_operationsFilterProvider);
 
