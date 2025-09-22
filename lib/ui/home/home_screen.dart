@@ -472,11 +472,11 @@ class _PlannedOverview extends StatelessWidget {
         }
 
         final incomeTotalAsync =
-            ref.watch(plannedTotalByTypeProvider(PlannedType.income));
+            ref.watch(plannedIncludedTotalProvider(PlannedType.income));
         final expenseTotalAsync =
-            ref.watch(plannedTotalByTypeProvider(PlannedType.expense));
+            ref.watch(plannedIncludedTotalProvider(PlannedType.expense));
         final savingTotalAsync =
-            ref.watch(plannedTotalByTypeProvider(PlannedType.saving));
+            ref.watch(plannedIncludedTotalProvider(PlannedType.saving));
         final plannedPool = ref.watch(plannedPoolMinorProvider);
 
         return Column(

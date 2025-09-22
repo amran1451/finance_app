@@ -33,6 +33,8 @@ class PlannedItemView {
 
   double get amount => record.amountMinor / 100;
 
+  bool get includedInPeriod => record.includedInPeriod;
+
   bool get isCompleted => record.includedInPeriod;
 
   bool get isDone => isCompleted;
@@ -50,13 +52,17 @@ class PlannedItemView {
   int get criticality => record.criticality;
 }
 
-final plannedItemsByTypeProvider = FutureProvider.family
-    <List<PlannedItemView>, PlannedType>((ref, type) async {
+Future<List<PlannedItemView>> _loadPlannedItems(
+  Ref ref,
+  PlannedType type, {
+  required bool onlyIncluded,
+}) async {
   ref.watch(dbTickProvider);
   final transactionsRepo = ref.watch(transactionsRepoProvider);
   final categoriesRepo = ref.watch(categoriesRepoProvider);
   final records = await transactionsRepo.listPlanned(
     type: type.toTransactionType(),
+    onlyIncluded: onlyIncluded,
   );
   if (records.isEmpty) {
     return const [];
@@ -73,12 +79,29 @@ final plannedItemsByTypeProvider = FutureProvider.family
         category: categoriesById[record.categoryId],
       ),
   ];
+}
+
+final plannedItemsByTypeProvider = FutureProvider.family
+    <List<PlannedItemView>, PlannedType>((ref, type) async {
+  return _loadPlannedItems(ref, type, onlyIncluded: false);
+});
+
+final plannedIncludedByTypeProvider = FutureProvider.family
+    <List<PlannedItemView>, PlannedType>((ref, type) async {
+  return _loadPlannedItems(ref, type, onlyIncluded: true);
 });
 
 final plannedTotalByTypeProvider =
     FutureProvider.family<int, PlannedType>((ref, type) async {
   ref.watch(dbTickProvider);
   final items = await ref.watch(plannedItemsByTypeProvider(type).future);
+  return items.fold<int>(0, (sum, item) => sum + item.record.amountMinor);
+});
+
+final plannedIncludedTotalProvider =
+    FutureProvider.family<int, PlannedType>((ref, type) async {
+  ref.watch(dbTickProvider);
+  final items = await ref.watch(plannedIncludedByTypeProvider(type).future);
   return items.fold<int>(0, (sum, item) => sum + item.record.amountMinor);
 });
 
@@ -105,6 +128,9 @@ class PlannedActions {
   }
 
   Future<void> toggle(int id, bool value) {
-    return _repository.setPlannedCompletion(id, value);
+    return _repository.setIncludedInPeriod(
+      transactionId: id,
+      value: value,
+    );
   }
 }
