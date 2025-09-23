@@ -29,9 +29,8 @@ class HomeScreen extends ConsumerWidget {
     final hideFab = ref.watch(isSheetOpenProvider);
     final entryController = ref.read(entryFlowControllerProvider.notifier);
     final transactionsAsync = ref.watch(halfPeriodTransactionsProvider);
-    final periodBounds = ref.watch(halfPeriodBoundsProvider);
-    final periodStart = periodBounds.start;
-    final periodEndExclusive = periodBounds.endExclusive;
+    final (periodStart, periodEndExclusive) = ref.watch(periodBoundsProvider);
+    final label = ref.watch(periodLabelProvider);
     final daysLeft = ref.watch(daysToPeriodEndProvider);
 
     final transactions = transactionsAsync.asData?.value ?? const [];
@@ -107,8 +106,8 @@ class HomeScreen extends ConsumerWidget {
                     const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
                 child: Row(
                   children: [
-                    const Expanded(
-                      child: PeriodSelector(dense: true),
+                    Expanded(
+                      child: PeriodSelector(dense: true, label: label),
                     ),
                     const SizedBox(width: 12),
                     _DaysLeftBadge(days: daysLeft),

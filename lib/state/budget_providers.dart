@@ -12,7 +12,17 @@ typedef BudgetPeriodInfo = ({DateTime start, DateTime end, int days});
 
 enum HalfPeriod { first, second }
 
-typedef HalfPeriodBounds = ({DateTime start, DateTime endExclusive});
+// TODO: Persist selected period in Settings (ui.selected_period_ref).
+class PeriodRef {
+  final int year;
+  final int month; // 1..12
+  final HalfPeriod half;
+
+  const PeriodRef({required this.year, required this.month, required this.half});
+
+  PeriodRef copyWith({int? year, int? month, HalfPeriod? half}) =>
+      PeriodRef(year: year ?? this.year, month: month ?? this.month, half: half ?? this.half);
+}
 
 final anchorDaysFutureProvider = FutureProvider<(int, int)>((ref) async {
   ref.watch(dbTickProvider);
@@ -34,10 +44,78 @@ final anchorDaysProvider = Provider<(int, int)>((ref) {
   );
 });
 
-final selectedHalfProvider = StateProvider<HalfPeriod>((ref) {
+final selectedPeriodRefProvider = StateProvider<PeriodRef>((ref) {
   final (a1, a2) = ref.watch(anchorDaysProvider);
-  final today = DateTime.now().day;
-  return today <= a2 ? HalfPeriod.first : HalfPeriod.second;
+  final now = DateTime.now();
+  final half = (now.day <= a2) ? HalfPeriod.first : HalfPeriod.second;
+  return PeriodRef(year: now.year, month: now.month, half: half);
+});
+
+/// (start, endExclusive) для выбранного периода (конкретный месяц)
+final periodBoundsProvider = Provider<(DateTime start, DateTime endExclusive)>((ref) {
+  final (a1, a2) = ref.watch(anchorDaysProvider);
+  final sel = ref.watch(selectedPeriodRefProvider);
+  // TODO: При смене месяца автоматически создавать новый период, прошлый считать архивным.
+  // TODO: Дать экран выбора других месячных периодов (история).
+  // TODO: Перенести планы в новый период по правилам (отдельная миграция).
+  if (sel.half == HalfPeriod.first) {
+    final start = DateTime(sel.year, sel.month, a1);
+    final endEx = DateTime(sel.year, sel.month, a2); // [a1; a2)
+    return (start, endEx);
+  } else {
+    final start = DateTime(sel.year, sel.month, a2);
+    final endEx = DateTime(sel.year, sel.month + 1, a1); // [a2; nextMonth.a1)
+    return (start, endEx);
+  }
+});
+
+@Deprecated('Use periodBoundsProvider')
+final halfPeriodBoundsProvider = periodBoundsProvider;
+
+String _ruMonthShort(int month) {
+  const m = ['янв', 'фев', 'мар', 'апр', 'май', 'июн', 'июл', 'авг', 'сен', 'окт', 'ноя', 'дек'];
+  return m[(month - 1).clamp(0, 11)];
+}
+
+/// "сен 1–15" / "сен 15–30/31"
+final periodLabelProvider = Provider<String>((ref) {
+  final (start, endEx) = ref.watch(periodBoundsProvider);
+  final monthShort = _ruMonthShort(start.month);
+  final startDay = start.day;
+  final endDayInclusive = endEx.subtract(const Duration(days: 1)).day;
+  return '$monthShort $startDay–$endDayInclusive';
+});
+
+extension PeriodNav on StateController<PeriodRef> {
+  void goPrev(int anchor2) {
+    final cur = state;
+    if (cur.half == HalfPeriod.second) {
+      state = cur.copyWith(half: HalfPeriod.first);
+    } else {
+      final prevMonth = DateTime(cur.year, cur.month - 1, anchor2);
+      state = PeriodRef(year: prevMonth.year, month: prevMonth.month, half: HalfPeriod.second);
+    }
+  }
+
+  void goNext(int anchor1, int anchor2) {
+    final cur = state;
+    if (cur.half == HalfPeriod.first) {
+      state = cur.copyWith(half: HalfPeriod.second);
+    } else {
+      final nextMonth = DateTime(cur.year, cur.month + 1, anchor1);
+      state = PeriodRef(year: nextMonth.year, month: nextMonth.month, half: HalfPeriod.first);
+    }
+  }
+}
+
+/// Удобный notifer с доступом к якорям
+final periodNavProvider = Provider((ref) {
+  final (a1, a2) = ref.watch(anchorDaysProvider);
+  final ctrl = ref.read(selectedPeriodRefProvider.notifier);
+  return (
+    prev: () => ctrl.goPrev(a2),
+    next: () => ctrl.goNext(a1, a2),
+  );
 });
 
 final currentPayoutProvider = FutureProvider<Payout?>((ref) {
@@ -197,30 +275,10 @@ final plannedPoolMinorProvider = FutureProvider<int>((ref) async {
   return math.max(pool, 0);
 });
 
-final halfPeriodBoundsProvider = Provider<HalfPeriodBounds>((ref) {
-  final (anchor1, anchor2) = ref.watch(anchorDaysProvider);
-  final half = ref.watch(selectedHalfProvider);
-  final now = DateTime.now();
-  final year = now.year;
-  final month = now.month;
-
-  if (half == HalfPeriod.first) {
-    final start = _anchorDate(year, month, anchor1);
-    final endExclusive = _anchorDate(year, month, anchor2);
-    return (start: start, endExclusive: endExclusive);
-  } else {
-    final start = _anchorDate(year, month, anchor2);
-    final endExclusive = _anchorDate(year, month + 1, anchor1);
-    return (start: start, endExclusive: endExclusive);
-  }
-});
-
 final halfPeriodTransactionsProvider = FutureProvider<List<TransactionRecord>>((ref) async {
   ref.watch(dbTickProvider);
-  final bounds = ref.watch(halfPeriodBoundsProvider);
+  final (start, endExclusive) = ref.watch(periodBoundsProvider);
   final repo = ref.watch(transactionsRepoProvider);
-  final start = bounds.start;
-  final endExclusive = bounds.endExclusive;
   var endInclusive = endExclusive.subtract(const Duration(days: 1));
   if (endInclusive.isBefore(start)) {
     endInclusive = start;
