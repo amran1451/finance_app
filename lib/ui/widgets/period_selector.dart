@@ -12,7 +12,7 @@ class PeriodSelector extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final nav = ref.watch(periodNavProvider);
-    final displayLabel = label ?? ref.watch(periodLabelProvider);
+    final String displayLabel = label ?? ref.watch(periodLabelProvider);
     final padding = dense
         ? const EdgeInsets.symmetric(horizontal: 10, vertical: 6)
         : const EdgeInsets.symmetric(horizontal: 12, vertical: 8);
