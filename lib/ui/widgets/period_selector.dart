@@ -12,7 +12,7 @@ class PeriodSelector extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final nav = ref.watch(periodNavProvider);
-    final String displayLabel = label ?? ref.watch(periodLabelProvider);
+    final String displayLabel = label ?? _formatSelectedPeriodLabel(ref);
     final padding = dense
         ? const EdgeInsets.symmetric(horizontal: 10, vertical: 6)
         : const EdgeInsets.symmetric(horizontal: 12, vertical: 8);
@@ -58,4 +58,73 @@ class PeriodSelector extends ConsumerWidget {
       ],
     );
   }
+}
+
+String _formatSelectedPeriodLabel(WidgetRef ref) {
+  final (anchor1, anchor2) = ref.watch(anchorDaysProvider);
+  final period = ref.watch(selectedPeriodRefProvider);
+  final range = _selectedPeriodRange(period, anchor1, anchor2);
+  return _formatRangeLabel(range.start, range.endInclusive);
+}
+
+({DateTime start, DateTime endInclusive}) _selectedPeriodRange(
+  PeriodRef period,
+  int anchor1,
+  int anchor2,
+) {
+  final isAscending = anchor1 <= anchor2;
+  late DateTime start;
+  late DateTime endExclusive;
+
+  if (period.half == HalfPeriod.first) {
+    start = DateTime(period.year, period.month, anchor1);
+    endExclusive = isAscending
+        ? DateTime(period.year, period.month, anchor2)
+        : DateTime(period.year, period.month + 1, anchor2);
+  } else {
+    start = DateTime(period.year, period.month, anchor2);
+    endExclusive = isAscending
+        ? DateTime(period.year, period.month + 1, anchor1)
+        : DateTime(period.year, period.month, anchor1);
+  }
+
+  if (!endExclusive.isAfter(start)) {
+    endExclusive = start.add(const Duration(days: 1));
+  }
+
+  return (
+    start: start,
+    endInclusive: endExclusive.subtract(const Duration(days: 1)),
+  );
+}
+
+String _formatRangeLabel(DateTime start, DateTime endInclusive) {
+  final startMonth = _ruMonthShort(start.month);
+  final endMonth = _ruMonthShort(endInclusive.month);
+  final sameMonth = start.year == endInclusive.year && start.month == endInclusive.month;
+
+  if (sameMonth) {
+    return '$startMonth ${start.day}–${endInclusive.day}';
+  }
+
+  return '$startMonth ${start.day} – $endMonth ${endInclusive.day}';
+}
+
+String _ruMonthShort(int month) {
+  const months = [
+    'янв',
+    'фев',
+    'мар',
+    'апр',
+    'май',
+    'июн',
+    'июл',
+    'авг',
+    'сен',
+    'окт',
+    'ноя',
+    'дек',
+  ];
+  final index = (month - 1).clamp(0, months.length - 1);
+  return months[index];
 }
