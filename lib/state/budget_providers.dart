@@ -125,6 +125,7 @@ final currentPayoutProvider = FutureProvider<Payout?>((ref) {
 });
 
 final currentPeriodProvider = FutureProvider<BudgetPeriodInfo>((ref) async {
+  ref.watch(dbTickProvider);
   final (anchor1, anchor2) = await ref.watch(anchorDaysFutureProvider.future);
   final payout = await ref.watch(currentPayoutProvider.future);
   final now = _normalizeDate(DateTime.now());
@@ -289,41 +290,6 @@ final halfPeriodTransactionsProvider = FutureProvider<List<TransactionRecord>>((
     isPlanned: false,
   );
 });
-
-final dailyLimitManagerProvider = Provider<DailyLimitManager>((ref) {
-  return DailyLimitManager(ref);
-});
-
-class DailyLimitManager {
-  DailyLimitManager(this._ref);
-
-  final Ref _ref;
-
-  Future<String?> saveDailyLimitMinor(int? value) async {
-    if (value != null) {
-      final payout = await _ref.read(currentPayoutProvider.future);
-      if (payout != null) {
-        final period = await _ref.read(currentPeriodProvider.future);
-        final today = _normalizeDate(DateTime.now());
-        final rawRemaining = period.end.difference(today).inDays;
-        var remainingDays = _clampRemainingDays(rawRemaining, period.days);
-        if (remainingDays <= 0) {
-          remainingDays = 1;
-        }
-        final maxDaily = payout.amountMinor ~/ remainingDays;
-        if (value > maxDaily) {
-          return 'Лимит не может превышать $maxDaily';
-        }
-      }
-    }
-
-    final repository = _ref.read(settingsRepoProvider);
-    await repository.setDailyLimitMinor(value);
-    final notifier = _ref.read(dbTickProvider.notifier);
-    notifier.state = notifier.state + 1;
-    return null;
-  }
-}
 
 final anchorDaysManagerProvider = Provider<AnchorDaysManager>((ref) {
   return AnchorDaysManager(ref);
