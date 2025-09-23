@@ -131,9 +131,21 @@ class _SettingsPlaceholderState extends ConsumerState<SettingsPlaceholder> {
                     ],
                     selected: {themeMode},
                     onSelectionChanged: (modes) {
-                      if (modes.isNotEmpty) {
-                        themeModeNotifier.state = modes.first;
+                      if (modes.isEmpty) {
+                        return;
                       }
+
+                      final selectedMode = modes.first;
+                      if (selectedMode == themeModeNotifier.state) {
+                        return;
+                      }
+
+                      WidgetsBinding.instance.addPostFrameCallback((_) {
+                        if (!mounted) {
+                          return;
+                        }
+                        themeModeNotifier.state = selectedMode;
+                      });
                     },
                   ),
                 ],
