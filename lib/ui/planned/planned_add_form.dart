@@ -467,11 +467,18 @@ class _PlannedAddFormState extends ConsumerState<_PlannedAddForm> {
   }
 
   String _titleForType(PlannedType type) {
-    final base = switch (type) {
-      PlannedType.income => 'доход',
-      PlannedType.expense => 'расход',
-      PlannedType.saving => 'сбережение',
-    };
+    String base;
+    switch (type) {
+      case PlannedType.income:
+        base = 'доход';
+        break;
+      case PlannedType.expense:
+        base = 'расход';
+        break;
+      case PlannedType.saving:
+        base = 'сбережение';
+        break;
+    }
     return _editingId == null
         ? 'Добавить $base'
         : 'Редактировать $base';
