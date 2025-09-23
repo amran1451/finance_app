@@ -77,6 +77,13 @@ class SqliteTransactionsRepository implements TransactionsRepository {
       );
       final primaryValues = Map<String, Object?>.from(adjustedRecord.toMap())
         ..remove('id');
+      if (adjustedRecord.type == TransactionType.income) {
+        primaryValues['necessity_id'] = null;
+        primaryValues['necessity_label'] = null;
+        primaryValues['reason_id'] = null;
+        primaryValues['reason_label'] = null;
+        primaryValues['criticality'] = 0;
+      }
       if (includedInPeriod != null) {
         primaryValues['included_in_period'] = includedInPeriod ? 1 : 0;
       } else if (adjustedRecord.isPlanned) {
@@ -196,6 +203,13 @@ class SqliteTransactionsRepository implements TransactionsRepository {
     }
     final db = await _db;
     final values = Map<String, Object?>.from(record.toMap());
+    if (record.type == TransactionType.income) {
+      values['necessity_id'] = null;
+      values['necessity_label'] = null;
+      values['reason_id'] = null;
+      values['reason_label'] = null;
+      values['criticality'] = 0;
+    }
     if (includedInPeriod != null) {
       values['included_in_period'] = includedInPeriod ? 1 : 0;
     }

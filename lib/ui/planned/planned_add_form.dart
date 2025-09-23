@@ -120,6 +120,13 @@ class _PlannedAddFormState extends ConsumerState<_PlannedAddForm> {
     } else {
       _legacyLabelResolved = true;
     }
+
+    if (widget.type == PlannedType.income) {
+      _selectedNecessityId = null;
+      _legacyNecessityLabel = null;
+      _legacyLabelResolved = true;
+      _defaultLabelApplied = true;
+    }
   }
 
   @override
@@ -131,11 +138,17 @@ class _PlannedAddFormState extends ConsumerState<_PlannedAddForm> {
 
   @override
   Widget build(BuildContext context) {
-    final necessityLabelsAsync = ref.watch(necessityLabelsFutureProvider);
+    final isIncome = widget.type == PlannedType.income;
+    final necessityLabelsAsync = isIncome
+        ? const AsyncValue<List<NecessityLabel>>.data(
+            <NecessityLabel>[],
+          )
+        : ref.watch(necessityLabelsFutureProvider);
     final necessityLabels =
         necessityLabelsAsync.value ?? <NecessityLabel>[];
 
-    if (!_legacyLabelResolved &&
+    if (!isIncome &&
+        !_legacyLabelResolved &&
         _legacyNecessityLabel != null &&
         necessityLabels.isNotEmpty) {
       final match = _findLabelByName(necessityLabels, _legacyNecessityLabel!);
@@ -153,7 +166,7 @@ class _PlannedAddFormState extends ConsumerState<_PlannedAddForm> {
       });
     }
 
-    if (!_defaultLabelApplied && necessityLabels.isNotEmpty) {
+    if (!isIncome && !_defaultLabelApplied && necessityLabels.isNotEmpty) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (!mounted) {
           return;
@@ -168,7 +181,7 @@ class _PlannedAddFormState extends ConsumerState<_PlannedAddForm> {
       });
     }
 
-    final selectedNecessityId = _selectedNecessityId;
+    final selectedNecessityId = isIncome ? null : _selectedNecessityId;
 
     final dbTick = ref.watch(dbTickProvider);
     final categoriesFuture = ref
@@ -270,56 +283,59 @@ class _PlannedAddFormState extends ConsumerState<_PlannedAddForm> {
                     },
                   ),
                 const SizedBox(height: 16),
-                if (necessityLabelsAsync.isLoading && necessityLabels.isEmpty)
-                  const Center(child: CircularProgressIndicator())
-                else if (necessityLabels.isNotEmpty) ...[
-                  Text(
-                    'Критичность/необходимость',
-                    style: Theme.of(context).textTheme.titleSmall,
-                  ),
-                  const SizedBox(height: 8),
-                  Wrap(
-                    spacing: 8,
-                    runSpacing: 8,
-                    children: [
-                      for (final label in necessityLabels)
-                        ChoiceChip(
-                          label: Text(label.name),
-                          selected: label.id == selectedNecessityId,
-                          onSelected: (_) {
-                            setState(() {
-                              _selectedNecessityId = label.id;
-                              _legacyNecessityLabel = label.name;
-                              _legacyLabelResolved = true;
-                              _defaultLabelApplied = true;
-                            });
-                          },
+                if (!isIncome) ...[
+                  if (necessityLabelsAsync.isLoading &&
+                      necessityLabels.isEmpty)
+                    const Center(child: CircularProgressIndicator())
+                  else if (necessityLabels.isNotEmpty) ...[
+                    Text(
+                      'Критичность/необходимость',
+                      style: Theme.of(context).textTheme.titleSmall,
+                    ),
+                    const SizedBox(height: 8),
+                    Wrap(
+                      spacing: 8,
+                      runSpacing: 8,
+                      children: [
+                        for (final label in necessityLabels)
+                          ChoiceChip(
+                            label: Text(label.name),
+                            selected: label.id == selectedNecessityId,
+                            onSelected: (_) {
+                              setState(() {
+                                _selectedNecessityId = label.id;
+                                _legacyNecessityLabel = label.name;
+                                _legacyLabelResolved = true;
+                                _defaultLabelApplied = true;
+                              });
+                            },
+                          ),
+                      ],
+                    ),
+                    if (selectedNecessityId == null &&
+                        _legacyLabelResolved &&
+                        _legacyNecessityLabel != null)
+                      Padding(
+                        padding: const EdgeInsets.only(top: 8),
+                        child: Text(
+                          'Метка "${_legacyNecessityLabel!}" недоступна. Выберите новую.',
+                          style: TextStyle(
+                            color: Theme.of(context).colorScheme.error,
+                          ),
                         ),
-                    ],
-                  ),
-                  if (selectedNecessityId == null &&
-                      _legacyLabelResolved &&
-                      _legacyNecessityLabel != null)
+                      ),
+                  ]
+                  else if (necessityLabelsAsync.hasError)
                     Padding(
                       padding: const EdgeInsets.only(top: 8),
                       child: Text(
-                        'Метка "${_legacyNecessityLabel!}" недоступна. Выберите новую.',
+                        'Не удалось загрузить метки необходимости',
                         style: TextStyle(
                           color: Theme.of(context).colorScheme.error,
                         ),
                       ),
                     ),
-                ]
-                else if (necessityLabelsAsync.hasError)
-                  Padding(
-                    padding: const EdgeInsets.only(top: 8),
-                    child: Text(
-                      'Не удалось загрузить метки необходимости',
-                      style: TextStyle(
-                        color: Theme.of(context).colorScheme.error,
-                      ),
-                    ),
-                  ),
+                },
                 const SizedBox(height: 24),
                 Row(
                   children: [
@@ -364,20 +380,31 @@ class _PlannedAddFormState extends ConsumerState<_PlannedAddForm> {
     final amount = double.parse(amountText);
     final amountMinor = (amount * 100).round();
 
-    final labelsAsync = ref.read(necessityLabelsFutureProvider);
+    final isIncome = widget.type == PlannedType.income;
+    final AsyncValue<List<NecessityLabel>> labelsAsync = isIncome
+        ? const AsyncValue<List<NecessityLabel>>.data(
+            <NecessityLabel>[],
+          )
+        : ref.read(necessityLabelsFutureProvider);
     final labels = labelsAsync.value ?? <NecessityLabel>[];
     NecessityLabel? selectedLabel;
-    for (final label in labels) {
-      if (label.id == _selectedNecessityId) {
-        selectedLabel = label;
-        break;
+    if (!isIncome) {
+      for (final label in labels) {
+        if (label.id == _selectedNecessityId) {
+          selectedLabel = label;
+          break;
+        }
       }
     }
-    final necessityLabel = selectedLabel?.name ?? _legacyNecessityLabel;
-    final necessityId = selectedLabel?.id;
-    final criticality = selectedLabel != null
-        ? labels.indexOf(selectedLabel)
-        : widget.initialRecord?.criticality ?? 0;
+    final necessityLabel = isIncome
+        ? null
+        : selectedLabel?.name ?? _legacyNecessityLabel;
+    final necessityId = isIncome ? null : selectedLabel?.id;
+    final criticality = isIncome
+        ? 0
+        : selectedLabel != null
+            ? labels.indexOf(selectedLabel)
+            : widget.initialRecord?.criticality ?? 0;
 
     final accountId = await _resolveAccountId();
     final actions = ref.read(plannedActionsProvider);
