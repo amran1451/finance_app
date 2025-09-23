@@ -335,7 +335,7 @@ class _PlannedAddFormState extends ConsumerState<_PlannedAddForm> {
                         ),
                       ),
                     ),
-                },
+                ],
                 const SizedBox(height: 24),
                 Row(
                   children: [
