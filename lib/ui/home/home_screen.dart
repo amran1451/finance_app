@@ -208,7 +208,10 @@ class HomeScreen extends ConsumerWidget {
                     }
                   },
                 ),
-                child: _PlannedOverview(ref: ref),
+                child: _PlannedOverview(
+                  ref: ref,
+                  onOpenPlanned: openPlannedSheet,
+                ),
               ),
               const SizedBox(height: 16),
               CalloutCard(
@@ -420,9 +423,11 @@ class _DaysLeftBadge extends StatelessWidget {
 class _PlannedOverview extends StatelessWidget {
   const _PlannedOverview({
     required this.ref,
+    required this.onOpenPlanned,
   });
 
   final WidgetRef ref;
+  final void Function(PlannedType type) onOpenPlanned;
 
   @override
   Widget build(BuildContext context) {
@@ -493,7 +498,7 @@ class _PlannedOverview extends StatelessWidget {
                 loading: () => const Text('Загрузка…'),
                 error: (error, _) => Text('Ошибка: $error'),
               ),
-              onTap: () => openPlannedSheet(PlannedType.income),
+              onTap: () => onOpenPlanned(PlannedType.income),
             ),
             const Divider(height: 0),
             ListTile(
@@ -504,7 +509,7 @@ class _PlannedOverview extends StatelessWidget {
                 loading: () => const Text('Загрузка…'),
                 error: (error, _) => Text('Ошибка: $error'),
               ),
-              onTap: () => openPlannedSheet(PlannedType.expense),
+              onTap: () => onOpenPlanned(PlannedType.expense),
             ),
             const Divider(height: 0),
             ListTile(
@@ -515,7 +520,7 @@ class _PlannedOverview extends StatelessWidget {
                 loading: () => const Text('Загрузка…'),
                 error: (error, _) => Text('Ошибка: $error'),
               ),
-              onTap: () => openPlannedSheet(PlannedType.saving),
+              onTap: () => onOpenPlanned(PlannedType.saving),
             ),
           ],
         );
