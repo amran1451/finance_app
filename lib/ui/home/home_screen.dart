@@ -584,7 +584,7 @@ class _HomeAccountTile extends ConsumerWidget {
       trailing: const Icon(Icons.chevron_right),
       onTap: () => context.pushNamed(
         RouteNames.accountEdit,
-        pathParameters: {'id': accountId.toString()},
+        queryParameters: {'id': accountId.toString()},
         extra: account.name,
       ),
     );

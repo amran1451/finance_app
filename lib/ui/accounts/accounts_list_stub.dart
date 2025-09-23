@@ -117,7 +117,7 @@ class _AccountListTile extends ConsumerWidget {
                 onPressed: () async {
                   final result = await context.pushNamed(
                     RouteNames.accountEdit,
-                    pathParameters: {'id': accountId.toString()},
+                    queryParameters: {'id': accountId.toString()},
                   );
                   _handleFormResult(context, result);
                 },
