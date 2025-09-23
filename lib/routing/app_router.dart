@@ -103,10 +103,10 @@ final appRouterProvider = Provider<GoRouter>((ref) {
         builder: (context, state) => const AccountCreateStub(),
       ),
       GoRoute(
-        path: '/accounts/:id/edit',
+        path: '/accounts/edit',
         name: RouteNames.accountEdit,
         builder: (context, state) {
-          final rawId = state.pathParameters['id'];
+          final rawId = state.uri.queryParameters['id'];
           final accountId = int.tryParse(rawId ?? '');
           if (accountId == null) {
             return const Scaffold(
