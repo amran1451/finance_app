@@ -336,7 +336,11 @@ String _subtitleForRecord(
         'Без комментария';
   }
 
-  return record.necessityLabel ??
-      necessityMap[record.necessityId]?.name ??
-      'Без комментария';
+  if (record.type == TransactionType.saving) {
+    return record.necessityLabel ??
+        necessityMap[record.necessityId]?.name ??
+        'Без комментария';
+  }
+
+  return 'Без комментария';
 }
