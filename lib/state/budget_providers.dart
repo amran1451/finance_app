@@ -51,6 +51,14 @@ final selectedPeriodRefProvider = StateProvider<PeriodRef>((ref) {
   return PeriodRef(year: now.year, month: now.month, half: half);
 });
 
+final payoutSuggestedTypeProvider = Provider<PayoutType>((ref) {
+  final sel = ref.watch(selectedPeriodRefProvider);
+  return sel.half == HalfPeriod.first ? PayoutType.salary : PayoutType.advance;
+});
+
+String payoutTypeLabel(PayoutType type) =>
+    type == PayoutType.salary ? 'Зарплата' : 'Аванс';
+
 /// (start, endExclusive) для выбранного периода (конкретный месяц)
 final periodBoundsProvider = Provider<(DateTime start, DateTime endExclusive)>((ref) {
   final (a1, a2) = ref.watch(anchorDaysProvider);

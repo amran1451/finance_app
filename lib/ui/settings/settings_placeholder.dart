@@ -30,6 +30,10 @@ class _SettingsPlaceholderState extends ConsumerState<SettingsPlaceholder> {
     final themeMode = ref.watch(themeModeProvider);
     final themeModeNotifier = ref.read(themeModeProvider.notifier);
 
+    final suggestedType = ref.watch(payoutSuggestedTypeProvider);
+    final generalPayoutLabel =
+        'Добавить выплату (по периоду: ${payoutTypeLabel(suggestedType)})';
+
     return Scaffold(
       appBar: AppBar(title: const Text('Настройки')),
       body: ListView(
@@ -164,19 +168,35 @@ class _SettingsPlaceholderState extends ConsumerState<SettingsPlaceholder> {
                     style: Theme.of(context).textTheme.titleMedium,
                   ),
                   const SizedBox(height: 12),
-                  Wrap(
-                    spacing: 12,
-                    runSpacing: 12,
+                  Column(
+                    mainAxisSize: MainAxisSize.min,
                     children: [
-                      FilledButton.tonal(
-                        onPressed: () =>
-                            _showPayoutSheet(context, presetType: PayoutType.advance),
-                        child: const Text('Добавить аванс'),
+                      ListTile(
+                        contentPadding: EdgeInsets.zero,
+                        leading: const Icon(Icons.payments_outlined),
+                        title: Text(generalPayoutLabel),
+                        subtitle: const Text(
+                          'Тип выбирается автоматически по текущему полупериоду.',
+                        ),
+                        onTap: () => _showPayoutSheet(context),
                       ),
-                      FilledButton.tonal(
-                        onPressed: () =>
-                            _showPayoutSheet(context, presetType: PayoutType.salary),
-                        child: const Text('Добавить зарплату'),
+                      const Divider(height: 0),
+                      ListTile(
+                        contentPadding: EdgeInsets.zero,
+                        leading: const Icon(Icons.trending_up_outlined),
+                        title: const Text('Добавить аванс'),
+                        subtitle: const Text('Тип фиксирован как аванс.'),
+                        onTap: () =>
+                            _showPayoutSheet(context, forcedType: PayoutType.advance),
+                      ),
+                      const Divider(height: 0),
+                      ListTile(
+                        contentPadding: EdgeInsets.zero,
+                        leading: const Icon(Icons.attach_money_outlined),
+                        title: const Text('Добавить зарплату'),
+                        subtitle: const Text('Тип фиксирован как зарплата.'),
+                        onTap: () =>
+                            _showPayoutSheet(context, forcedType: PayoutType.salary),
                       ),
                     ],
                   ),
@@ -235,50 +255,53 @@ class _SettingsPlaceholderState extends ConsumerState<SettingsPlaceholder> {
 
   Future<void> _showPayoutSheet(
     BuildContext context, {
-    PayoutType? presetType,
+    PayoutType? forcedType,
   }) async {
-    final saved = await showPayoutEditSheet(
+    final tickBefore = ref.read(dbTickProvider);
+    await showPayoutEditSheet(
       context,
-      presetType: presetType,
+      forcedType: forcedType,
     );
 
     if (!mounted) {
       return;
     }
 
-    if (saved) {
-      bumpDbTick(ref);
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Выплата добавлена')),
-      );
-      final dailyLimitValue = ref
-          .read(dailyLimitProvider)
-          .maybeWhen(data: (value) => value ?? 0, orElse: () => 0);
-      if (dailyLimitValue == 0) {
-        ref.postFrame(() {
-          if (!mounted) {
-            return;
-          }
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: const Text('Назначьте дневной лимит'),
-              action: SnackBarAction(
-                label: 'Задать',
-                onPressed: () {
-                  showEditDailyLimitSheet(context, ref).then((saved) {
-                    if (!mounted || !saved) {
-                      return;
-                    }
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(content: Text('Лимит сохранён')),
-                    );
-                  });
-                },
-              ),
+    final tickAfter = ref.read(dbTickProvider);
+    if (tickAfter == tickBefore) {
+      return;
+    }
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('Выплата добавлена')),
+    );
+    final dailyLimitValue = ref
+        .read(dailyLimitProvider)
+        .maybeWhen(data: (value) => value ?? 0, orElse: () => 0);
+    if (dailyLimitValue == 0) {
+      ref.postFrame(() {
+        if (!mounted) {
+          return;
+        }
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: const Text('Назначьте дневной лимит'),
+            action: SnackBarAction(
+              label: 'Задать',
+              onPressed: () {
+                showEditDailyLimitSheet(context, ref).then((saved) {
+                  if (!mounted || !saved) {
+                    return;
+                  }
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text('Лимит сохранён')),
+                  );
+                });
+              },
             ),
-          );
-        });
-      }
+          ),
+        );
+      });
     }
   }
 

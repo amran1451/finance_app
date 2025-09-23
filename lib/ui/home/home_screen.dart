@@ -34,6 +34,9 @@ class HomeScreen extends ConsumerWidget {
     final label = ref.watch(periodLabelProvider);
     final daysLeft = ref.watch(daysToPeriodEndProvider);
     final payoutAsync = ref.watch(currentPayoutProvider);
+    final suggestedType = ref.watch(payoutSuggestedTypeProvider);
+    final generalPayoutLabel =
+        'Добавить выплату (по периоду: ${payoutTypeLabel(suggestedType)})';
 
     void openPlannedSheet(PlannedType type) {
       final notifier = ref.read(isSheetOpenProvider.notifier);
@@ -135,14 +138,19 @@ class HomeScreen extends ConsumerWidget {
                 data: (payout) {
                   if (payout == null) {
                     return _AddPayoutCTA(
+                      buttonLabel: generalPayoutLabel,
                       onTap: () async {
-                        final saved = await showPayoutEditSheet(context);
-                        if (!context.mounted || !saved) {
+                        final tickBefore = ref.read(dbTickProvider);
+                        await showPayoutEditSheet(context);
+                        if (!context.mounted) {
                           return;
                         }
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(content: Text('Выплата добавлена')),
-                        );
+                        final tickAfter = ref.read(dbTickProvider);
+                        if (tickAfter != tickBefore) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(content: Text('Выплата добавлена')),
+                          );
+                        }
                       },
                     );
                   }
@@ -193,15 +201,16 @@ class HomeScreen extends ConsumerWidget {
                       );
                       return;
                     }
-                    final updated = await showPayoutEditSheet(
+                    final tickBefore = ref.read(dbTickProvider);
+                    await showPayoutEditSheet(
                       context,
                       initial: last,
                     );
                     if (!context.mounted) {
                       return;
                     }
-                    if (updated) {
-                      bumpDbTick(ref);
+                    final tickAfter = ref.read(dbTickProvider);
+                    if (tickAfter != tickBefore) {
                       ScaffoldMessenger.of(context).showSnackBar(
                         const SnackBar(content: Text('Изменения применены')),
                       );
@@ -328,9 +337,11 @@ class _EmptyLimitPlaceholder extends StatelessWidget {
 class _AddPayoutCTA extends StatelessWidget {
   const _AddPayoutCTA({
     required this.onTap,
+    required this.buttonLabel,
   });
 
   final VoidCallback onTap;
+  final String buttonLabel;
 
   @override
   Widget build(BuildContext context) {
@@ -342,7 +353,7 @@ class _AddPayoutCTA extends StatelessWidget {
         child: FilledButton.tonalIcon(
           onPressed: onTap,
           icon: const Icon(Icons.payments_outlined),
-          label: const Text('Добавить выплату'),
+          label: Text(buttonLabel),
         ),
       ),
     );
@@ -435,24 +446,28 @@ class _PlannedOverview extends StatelessWidget {
     return payoutAsync.when(
       data: (payout) {
         if (payout == null) {
+          final suggestedType = ref.watch(payoutSuggestedTypeProvider);
+          final buttonLabel =
+              'Добавить выплату (по периоду: ${payoutTypeLabel(suggestedType)})';
           return Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
               FilledButton.tonalIcon(
                 onPressed: () async {
-                  final saved = await showPayoutEditSheet(context);
+                  final tickBefore = ref.read(dbTickProvider);
+                  await showPayoutEditSheet(context);
                   if (!context.mounted) {
                     return;
                   }
-                  if (saved) {
-                    bumpDbTick(ref);
+                  final tickAfter = ref.read(dbTickProvider);
+                  if (tickAfter != tickBefore) {
                     ScaffoldMessenger.of(context).showSnackBar(
                       const SnackBar(content: Text('Выплата добавлена')),
                     );
                   }
                 },
                 icon: const Icon(Icons.payments),
-                label: const Text('Добавить выплату'),
+                label: Text(buttonLabel),
               ),
               const SizedBox(height: 12),
               const Text(
