@@ -2,9 +2,10 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../data/db/app_database.dart';
-import '../data/models/account.dart' as db_models;
+import '../data/models/account.dart' as account_models;
 import '../data/mock/mock_models.dart' as mock;
 import '../data/mock/mock_repositories.dart' as mock_repo;
+import '../data/models/category.dart' as category_models;
 import '../data/repositories/accounts_repository.dart' as accounts_repo;
 import '../data/repositories/categories_repository.dart' as categories_repo;
 import '../data/repositories/payouts_repository.dart' as payouts_repo;
@@ -22,16 +23,52 @@ final accountsRepoProvider =
   return accounts_repo.SqliteAccountsRepository(database: database);
 });
 
-final accountsDbProvider = FutureProvider<List<db_models.Account>>((ref) {
+final accountsDbProvider =
+    FutureProvider<List<account_models.Account>>((ref) {
   ref.watch(dbTickProvider);
   final repository = ref.watch(accountsRepoProvider);
   return repository.getAll();
 });
 
-final categoriesRepoProvider =
+final categoriesRepositoryProvider =
     Provider<categories_repo.CategoriesRepository>((ref) {
   final database = ref.watch(appDatabaseProvider);
   return categories_repo.SqliteCategoriesRepository(database: database);
+});
+
+final categoryGroupsProvider = FutureProvider.family<
+    List<category_models.Category>, category_models.CategoryType>((ref, type) {
+  ref.watch(dbTickProvider);
+  final repository = ref.watch(categoriesRepositoryProvider);
+  return repository.groupsByType(type);
+});
+
+final categoriesByTypeProvider = FutureProvider.family<
+    List<category_models.Category>, category_models.CategoryType>((ref, type) {
+  ref.watch(dbTickProvider);
+  final repository = ref.watch(categoriesRepositoryProvider);
+  return repository.getByType(type);
+});
+
+final categoryChildrenProvider = FutureProvider.family<
+    List<category_models.Category>, int>((ref, groupId) {
+  ref.watch(dbTickProvider);
+  final repository = ref.watch(categoriesRepositoryProvider);
+  return repository.childrenOf(groupId);
+});
+
+typedef CategoryTree = ({
+  List<category_models.Category> groups,
+  List<category_models.Category> categories,
+});
+
+final categoryTreeProvider = FutureProvider.family<
+    CategoryTree, category_models.CategoryType>((ref, type) async {
+  ref.watch(dbTickProvider);
+  final repository = ref.watch(categoriesRepositoryProvider);
+  final groups = await repository.groupsByType(type);
+  final categories = await repository.getByType(type);
+  return (groups: groups, categories: categories);
 });
 
 final transactionsRepoProvider =
@@ -105,11 +142,6 @@ final periodsProvider = Provider<List<mock.BudgetPeriod>>((ref) {
 final accountsRepositoryProvider =
     Provider<mock_repo.AccountsRepository>((ref) {
   return mock_repo.AccountsRepository();
-});
-
-final categoriesRepositoryProvider =
-    ChangeNotifierProvider<mock_repo.CategoriesRepository>((ref) {
-  return mock_repo.CategoriesRepository();
 });
 
 final isSheetOpenProvider = StateProvider<bool>((_) => false);

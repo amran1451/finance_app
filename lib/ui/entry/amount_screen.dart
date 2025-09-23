@@ -2,9 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
-import '../../data/mock/mock_models.dart';
 import '../../routing/app_router.dart';
 import '../../state/entry_flow_providers.dart';
+import '../../utils/category_type_extensions.dart';
 import '../../utils/formatting.dart';
 import '../widgets/amount_keypad.dart';
 

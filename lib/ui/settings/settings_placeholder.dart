@@ -334,7 +334,7 @@ class _SettingsPlaceholderState extends ConsumerState<SettingsPlaceholder> {
       return;
     }
 
-    final repository = ref.read(categoriesRepoProvider);
+    final repository = ref.read(categoriesRepositoryProvider);
 
     try {
       await repository.restoreDefaults();

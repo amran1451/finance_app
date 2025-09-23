@@ -1,8 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import '../../data/mock/mock_models.dart';
+import '../../data/models/category.dart';
 import '../../state/app_providers.dart';
+import '../../state/db_refresh.dart';
 
 Future<void> showCategoryEditForm(
   BuildContext context, {
@@ -57,7 +58,7 @@ class _CategoryEditFormSheetState
     extends ConsumerState<_CategoryEditFormSheet> {
   final _formKey = GlobalKey<FormState>();
   late String _name;
-  String? _parentId;
+  int? _parentId;
 
   @override
   void initState() {
@@ -69,10 +70,11 @@ class _CategoryEditFormSheetState
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final repository = ref.watch(categoriesRepositoryProvider);
-    final availableGroups = repository.groupsByType(widget.type);
+    final groupsAsync = ref.watch(categoryGroupsProvider(widget.type));
+    final availableGroups = groupsAsync.value ?? const <Category>[];
     final hasParent =
         availableGroups.any((group) => group.id == _parentId);
+    final isLoadingGroups = groupsAsync.isLoading && availableGroups.isEmpty;
 
     return Form(
       key: _formKey,
@@ -117,28 +119,43 @@ class _CategoryEditFormSheetState
           ),
           if (!widget.isGroup) ...[
             const SizedBox(height: 16),
-            DropdownButtonFormField<String?>(
-              value: hasParent ? _parentId : null,
-              items: [
-                const DropdownMenuItem<String?>(
-                  value: null,
-                  child: Text('Без папки'),
+            if (isLoadingGroups)
+              const Center(child: CircularProgressIndicator())
+            else if (groupsAsync.hasError && availableGroups.isEmpty)
+              Padding(
+                padding: const EdgeInsets.symmetric(vertical: 8),
+                child: Text(
+                  'Не удалось загрузить папки: ${groupsAsync.error}',
+                  style: Theme.of(context)
+                      .textTheme
+                      .bodySmall
+                      ?.copyWith(color: Theme.of(context).colorScheme.error),
                 ),
-                for (final group in availableGroups)
-                  DropdownMenuItem<String?>(
-                    value: group.id,
-                    child: Text(group.name),
+              )
+            else
+              DropdownButtonFormField<int?>(
+                value: hasParent ? _parentId : null,
+                items: [
+                  const DropdownMenuItem<int?>(
+                    value: null,
+                    child: Text('Без папки'),
                   ),
-              ],
-              onChanged: (value) {
-                setState(() {
-                  _parentId = value;
-                });
-              },
-              decoration: const InputDecoration(
-                labelText: 'Папка',
+                  for (final group in availableGroups)
+                    if (group.id != null)
+                      DropdownMenuItem<int?>(
+                        value: group.id,
+                        child: Text(group.name),
+                      ),
+                ],
+                onChanged: (value) {
+                  setState(() {
+                    _parentId = value;
+                  });
+                },
+                decoration: const InputDecoration(
+                  labelText: 'Папка',
+                ),
               ),
-            ),
           ],
           const SizedBox(height: 24),
           Row(
@@ -154,33 +171,52 @@ class _CategoryEditFormSheetState
               ),
               const Spacer(),
               FilledButton(
-                onPressed: () {
+                onPressed: () async {
                   if (!_formKey.currentState!.validate()) {
                     return;
                   }
                   final trimmed = _name.trim();
                   final repo = ref.read(categoriesRepositoryProvider);
-                  if (widget.initial == null) {
-                    if (widget.isGroup) {
-                      repo.addGroup(type: widget.type, name: trimmed);
+                  try {
+                    if (widget.initial == null) {
+                      if (widget.isGroup) {
+                        await repo.create(
+                          Category(
+                            type: widget.type,
+                            name: trimmed,
+                            isGroup: true,
+                          ),
+                        );
+                      } else {
+                        await repo.create(
+                          Category(
+                            type: widget.type,
+                            name: trimmed,
+                            parentId: _parentId,
+                          ),
+                        );
+                      }
                     } else {
-                      repo.addCategory(
-                        type: widget.type,
-                        name: trimmed,
-                        parentId: _parentId,
+                      await repo.update(
+                        widget.initial!.copyWith(
+                          name: trimmed,
+                          parentId: widget.isGroup ? null : _parentId,
+                        ),
                       );
                     }
-                  } else {
-                    repo.updateCategory(
-                      widget.initial!.id,
-                      name: trimmed,
-                      parentId: widget.isGroup ? null : _parentId,
+                    bumpDbTick(ref);
+                    if (!mounted) {
+                      return;
+                    }
+                    Navigator.of(context).pop();
+                  } catch (error) {
+                    if (!mounted) {
+                      return;
+                    }
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(content: Text('Не удалось сохранить: $error')),
                     );
                   }
-                  if (!mounted) {
-                    return;
-                  }
-                  Navigator.of(context).pop();
                 },
                 child: const Text('Сохранить'),
               ),

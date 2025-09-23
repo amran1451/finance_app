@@ -1,6 +1,6 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import '../data/mock/mock_models.dart';
+import '../data/models/category.dart';
 
 const bool kReturnToOperationsAfterSave = true;
 
@@ -8,25 +8,25 @@ const Object _entryFlowUnset = Object();
 
 enum OperationKind { expense, income, saving }
 
-OperationKind operationKindFromType(OperationType type) {
+OperationKind operationKindFromType(CategoryType type) {
   switch (type) {
-    case OperationType.expense:
+    case CategoryType.expense:
       return OperationKind.expense;
-    case OperationType.income:
+    case CategoryType.income:
       return OperationKind.income;
-    case OperationType.savings:
+    case CategoryType.saving:
       return OperationKind.saving;
   }
 }
 
-OperationType operationTypeFromKind(OperationKind kind) {
+CategoryType operationTypeFromKind(OperationKind kind) {
   switch (kind) {
     case OperationKind.expense:
-      return OperationType.expense;
+      return CategoryType.expense;
     case OperationKind.income:
-      return OperationType.income;
+      return CategoryType.income;
     case OperationKind.saving:
-      return OperationType.savings;
+      return CategoryType.saving;
   }
 }
 
@@ -37,7 +37,7 @@ class EntryFlowState {
     this.expression = '',
     this.result,
     this.previewResult,
-    this.type = OperationType.expense,
+    this.type = CategoryType.expense,
     this.category,
     DateTime? selectedDate,
     this.note = '',
@@ -51,7 +51,7 @@ class EntryFlowState {
   final String expression;
   final double? result;
   final double? previewResult;
-  final OperationType type;
+  final CategoryType type;
   final Category? category;
   final DateTime selectedDate;
   final String note;
@@ -74,7 +74,7 @@ class EntryFlowState {
 
   EntryFlowState copyWith({
     Object? expression = _entryFlowUnset,
-    OperationType? type,
+    CategoryType? type,
     Object? category = _entryFlowUnset,
     DateTime? selectedDate,
     String? note,
@@ -121,7 +121,7 @@ class EntryFlowState {
 class EntryFlowController extends StateNotifier<EntryFlowState> {
   EntryFlowController() : super(EntryFlowState());
 
-  void startNew({OperationType type = OperationType.expense}) {
+  void startNew({CategoryType type = CategoryType.expense}) {
     state = EntryFlowState(type: type);
   }
 
@@ -257,7 +257,7 @@ class EntryFlowController extends StateNotifier<EntryFlowState> {
     tryFinalizeExpression();
   }
 
-  void setType(OperationType type) {
+  void setType(CategoryType type) {
     if (type == state.type) {
       return;
     }

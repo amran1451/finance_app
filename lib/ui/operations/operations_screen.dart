@@ -17,7 +17,7 @@ import '../../routing/app_router.dart';
 
 final _categoriesMapProvider = FutureProvider<Map<int, Category>>((ref) async {
   ref.watch(dbTickProvider);
-  final repository = ref.watch(categoriesRepoProvider);
+  final repository = ref.watch(categoriesRepositoryProvider);
   final categories = await repository.getAll();
   return {
     for (final category in categories)

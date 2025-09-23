@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
-import '../../data/mock/mock_models.dart';
+import '../../data/models/category.dart';
+import '../../utils/category_type_extensions.dart';
 
 typedef CategoryCallback = void Function(Category category);
 
@@ -17,7 +18,7 @@ class CategoryTreeView extends StatelessWidget {
   });
 
   final List<Category> groups;
-  final Map<String, List<Category>> childrenByGroup;
+  final Map<int, List<Category>> childrenByGroup;
   final List<Category> ungrouped;
   final CategoryCallback? onCategoryTap;
   final CategoryCallback? onCategoryLongPress;
@@ -39,10 +40,12 @@ class CategoryTreeView extends StatelessWidget {
     final items = <Widget>[];
 
     for (final group in groups) {
+      final groupId = group.id;
       items.add(_GroupCard(
-        key: ValueKey(group.id),
+        key: ValueKey(groupId ?? 'group-${group.name}'),
         group: group,
-        children: childrenByGroup[group.id] ?? const <Category>[],
+        children:
+            groupId != null ? childrenByGroup[groupId] ?? const <Category>[] : const [],
         onCategoryTap: onCategoryTap,
         onCategoryLongPress: onCategoryLongPress,
         onGroupTap: onGroupTap != null ? () => onGroupTap!(group) : null,
