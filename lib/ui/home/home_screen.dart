@@ -35,6 +35,18 @@ class HomeScreen extends ConsumerWidget {
     final daysLeft = ref.watch(daysToPeriodEndProvider);
     final payoutAsync = ref.watch(currentPayoutProvider);
 
+    void openPlannedSheet(PlannedType type) {
+      final notifier = ref.read(isSheetOpenProvider.notifier);
+      notifier.state = true;
+      showPlannedSheet(
+        context,
+        type: type,
+        onClosed: () {
+          notifier.state = false;
+        },
+      );
+    }
+
     final transactions = transactionsAsync.asData?.value ?? const [];
     final isTransactionsLoading = transactionsAsync.isLoading;
     final transactionsError = transactionsAsync is AsyncError
@@ -481,8 +493,7 @@ class _PlannedOverview extends StatelessWidget {
                 loading: () => const Text('Загрузка…'),
                 error: (error, _) => Text('Ошибка: $error'),
               ),
-              onTap: () =>
-                  showPlannedSheet(context, type: PlannedType.income),
+              onTap: () => openPlannedSheet(PlannedType.income),
             ),
             const Divider(height: 0),
             ListTile(
@@ -493,8 +504,7 @@ class _PlannedOverview extends StatelessWidget {
                 loading: () => const Text('Загрузка…'),
                 error: (error, _) => Text('Ошибка: $error'),
               ),
-              onTap: () =>
-                  showPlannedSheet(context, type: PlannedType.expense),
+              onTap: () => openPlannedSheet(PlannedType.expense),
             ),
             const Divider(height: 0),
             ListTile(
@@ -505,8 +515,7 @@ class _PlannedOverview extends StatelessWidget {
                 loading: () => const Text('Загрузка…'),
                 error: (error, _) => Text('Ошибка: $error'),
               ),
-              onTap: () =>
-                  showPlannedSheet(context, type: PlannedType.saving),
+              onTap: () => openPlannedSheet(PlannedType.saving),
             ),
           ],
         );
