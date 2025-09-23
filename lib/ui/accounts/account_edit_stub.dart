@@ -7,9 +7,9 @@ import '../../state/db_refresh.dart';
 import 'account_form_result.dart';
 
 class AccountEditStub extends ConsumerStatefulWidget {
-  const AccountEditStub({super.key, required this.accountId});
+  const AccountEditStub({super.key, this.accountId});
 
-  final int accountId;
+  final int? accountId;
 
   @override
   ConsumerState<AccountEditStub> createState() => _AccountEditStubState();
@@ -22,6 +22,7 @@ class _AccountEditStubState extends ConsumerState<AccountEditStub> {
   static const List<String> _currencyOptions = ['RUB', 'USD', 'EUR'];
 
   late Future<Account?> _accountFuture;
+  bool _invalidAccountId = false;
   String? _currency;
   bool _isArchived = false;
   bool _initialized = false;
@@ -31,7 +32,13 @@ class _AccountEditStubState extends ConsumerState<AccountEditStub> {
   @override
   void initState() {
     super.initState();
-    _accountFuture = ref.read(accountsRepoProvider).getById(widget.accountId);
+    final accountId = widget.accountId;
+    if (accountId == null) {
+      _invalidAccountId = true;
+      _accountFuture = Future.value(null);
+      return;
+    }
+    _accountFuture = ref.read(accountsRepoProvider).getById(accountId);
   }
 
   @override
@@ -203,6 +210,14 @@ class _AccountEditStubState extends ConsumerState<AccountEditStub> {
             }
             final account = snapshot.data;
             if (account == null) {
+              if (_invalidAccountId) {
+                return const Center(
+                  child: Padding(
+                    padding: EdgeInsets.all(24),
+                    child: Text('Некорректный идентификатор счёта'),
+                  ),
+                );
+              }
               return const Center(
                 child: Padding(
                   padding: EdgeInsets.all(24),
