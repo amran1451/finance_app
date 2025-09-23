@@ -185,7 +185,7 @@ class _PlannedAddFormState extends ConsumerState<_PlannedAddForm> {
 
     final dbTick = ref.watch(dbTickProvider);
     final categoriesFuture = ref
-        .read(categoriesRepoProvider)
+        .read(categoriesRepositoryProvider)
         .getByType(_categoryTypeFor(widget.type));
 
     return FutureBuilder<List<Category>>(

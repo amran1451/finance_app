@@ -2,10 +2,11 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
-import '../../data/mock/mock_models.dart';
+import '../../data/models/category.dart';
 import '../../routing/app_router.dart';
 import '../../state/app_providers.dart';
 import '../../state/entry_flow_providers.dart';
+import '../../state/db_refresh.dart';
 import '../categories/category_actions.dart';
 import '../categories/category_edit_form.dart';
 import '../categories/category_tree_view.dart';
@@ -17,15 +18,8 @@ class CategoryScreen extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final entryState = ref.watch(entryFlowControllerProvider);
     final controller = ref.read(entryFlowControllerProvider.notifier);
-    final categoriesRepo = ref.watch(categoriesRepositoryProvider);
     final type = entryState.type;
-    final groups = categoriesRepo.groupsByType(type);
-    final categories = categoriesRepo.getByType(type);
-    final ungrouped =
-        categories.where((category) => category.parentId == null).toList();
-    final childrenByGroup = {
-      for (final group in groups) group.id: categoriesRepo.childrenOf(group.id)
-    };
+    final treeAsync = ref.watch(categoryTreeProvider(type));
 
     Future<void> showAddMenu() async {
       final option = await showAddCategoryOptions(context);
@@ -47,6 +41,25 @@ class CategoryScreen extends ConsumerWidget {
       }
     }
 
+    Future<void> removeCategory(Category category) async {
+      final id = category.id;
+      if (id == null) {
+        return;
+      }
+      try {
+        final repository = ref.read(categoriesRepositoryProvider);
+        await repository.delete(id);
+        bumpDbTick(ref);
+      } catch (error) {
+        if (!context.mounted) {
+          return;
+        }
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Не удалось удалить категорию: $error')),
+        );
+      }
+    }
+
     Future<void> handleCategoryLongPress(Category category) async {
       final action = await showCategoryActions(context, isGroup: false);
       if (action == null) {
@@ -60,7 +73,7 @@ class CategoryScreen extends ConsumerWidget {
           initial: category,
         );
       } else {
-        ref.read(categoriesRepositoryProvider).removeCategory(category.id);
+        await removeCategory(category);
       }
     }
 
@@ -77,7 +90,7 @@ class CategoryScreen extends ConsumerWidget {
           initial: group,
         );
       } else {
-        ref.read(categoriesRepositoryProvider).removeCategory(group.id);
+        await removeCategory(group);
       }
     }
 
@@ -98,20 +111,20 @@ class CategoryScreen extends ConsumerWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            SegmentedButton<OperationType>(
+            SegmentedButton<CategoryType>(
               segments: const [
                 ButtonSegment(
-                  value: OperationType.income,
+                  value: CategoryType.income,
                   label: Text('Доходы'),
                   icon: Icon(Icons.trending_up),
                 ),
                 ButtonSegment(
-                  value: OperationType.expense,
+                  value: CategoryType.expense,
                   label: Text('Расходы'),
                   icon: Icon(Icons.trending_down),
                 ),
                 ButtonSegment(
-                  value: OperationType.savings,
+                  value: CategoryType.saving,
                   label: Text('Сбережения'),
                   icon: Icon(Icons.savings),
                 ),
@@ -123,16 +136,45 @@ class CategoryScreen extends ConsumerWidget {
             ),
             const SizedBox(height: 24),
             Expanded(
-              child: CategoryTreeView(
-                groups: groups,
-                childrenByGroup: childrenByGroup,
-                ungrouped: ungrouped,
-                onCategoryTap: (category) {
-                  controller.setCategory(category);
-                  context.pushNamed(RouteNames.entryReview);
+              child: treeAsync.when(
+                loading: () => const Center(
+                  child: CircularProgressIndicator(),
+                ),
+                error: (error, _) => Center(
+                  child: Padding(
+                    padding: const EdgeInsets.all(24),
+                    child: Text('Не удалось загрузить категории: $error'),
+                  ),
+                ),
+                data: (tree) {
+                  final groups = tree.groups;
+                  final categories = tree.categories;
+                  final ungrouped = categories
+                      .where((category) => category.parentId == null)
+                      .toList();
+                  final childrenByGroup = <int, List<Category>>{
+                    for (final group in groups)
+                      if (group.id != null)
+                        group.id!: categories
+                            .where((category) => category.parentId == group.id)
+                            .toList(),
+                  };
+
+                  return CategoryTreeView(
+                    groups: groups,
+                    childrenByGroup: childrenByGroup,
+                    ungrouped: ungrouped,
+                    onCategoryTap: (category) {
+                      if (category.id == null) {
+                        return;
+                      }
+                      controller.setCategory(category);
+                      context.pushNamed(RouteNames.entryReview);
+                    },
+                    onCategoryLongPress: handleCategoryLongPress,
+                    onGroupLongPress: handleGroupLongPress,
+                  );
                 },
-                onCategoryLongPress: handleCategoryLongPress,
-                onGroupLongPress: handleGroupLongPress,
               ),
             ),
           ],

@@ -1,8 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import '../../data/mock/mock_models.dart';
+import '../../data/models/category.dart';
 import '../../state/app_providers.dart';
+import '../../state/db_refresh.dart';
 import '../categories/category_actions.dart';
 import '../categories/category_edit_form.dart';
 import '../categories/category_tree_view.dart';
@@ -17,7 +18,7 @@ class CategoriesManageScreen extends ConsumerStatefulWidget {
 
 class _CategoriesManageScreenState
     extends ConsumerState<CategoriesManageScreen> {
-  OperationType _selectedType = OperationType.income;
+  CategoryType _selectedType = CategoryType.income;
 
   Future<void> _showAddMenu() async {
     final option = await showAddCategoryOptions(context);
@@ -54,20 +55,28 @@ class _CategoriesManageScreenState
     if (action == CategoryAction.rename) {
       await _editCategory(category);
     } else {
-      ref.read(categoriesRepositoryProvider).removeCategory(category.id);
+      final id = category.id;
+      if (id == null) {
+        return;
+      }
+      try {
+        final repository = ref.read(categoriesRepositoryProvider);
+        await repository.delete(id);
+        bumpDbTick(ref);
+      } catch (error) {
+        if (!mounted) {
+          return;
+        }
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Не удалось удалить: $error')),
+        );
+      }
     }
   }
 
   @override
   Widget build(BuildContext context) {
-    final repository = ref.watch(categoriesRepositoryProvider);
-    final groups = repository.groupsByType(_selectedType);
-    final categories = repository.getByType(_selectedType);
-    final ungrouped =
-        categories.where((category) => category.parentId == null).toList();
-    final childrenByGroup = {
-      for (final group in groups) group.id: repository.childrenOf(group.id)
-    };
+    final treeAsync = ref.watch(categoryTreeProvider(_selectedType));
 
     return Scaffold(
       appBar: AppBar(
@@ -84,20 +93,20 @@ class _CategoriesManageScreenState
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            SegmentedButton<OperationType>(
+            SegmentedButton<CategoryType>(
               segments: const [
                 ButtonSegment(
-                  value: OperationType.income,
+                  value: CategoryType.income,
                   label: Text('Доходы'),
                   icon: Icon(Icons.trending_up),
                 ),
                 ButtonSegment(
-                  value: OperationType.expense,
+                  value: CategoryType.expense,
                   label: Text('Расходы'),
                   icon: Icon(Icons.trending_down),
                 ),
                 ButtonSegment(
-                  value: OperationType.savings,
+                  value: CategoryType.saving,
                   label: Text('Сбережения'),
                   icon: Icon(Icons.savings),
                 ),
@@ -109,14 +118,40 @@ class _CategoriesManageScreenState
             ),
             const SizedBox(height: 24),
             Expanded(
-              child: CategoryTreeView(
-                groups: groups,
-                childrenByGroup: childrenByGroup,
-                ungrouped: ungrouped,
-                onCategoryTap: _editCategory,
-                onCategoryLongPress: _onLongPress,
-                onGroupTap: _editCategory,
-                onGroupLongPress: _onLongPress,
+              child: treeAsync.when(
+                loading: () => const Center(
+                  child: CircularProgressIndicator(),
+                ),
+                error: (error, _) => Center(
+                  child: Padding(
+                    padding: const EdgeInsets.all(24),
+                    child: Text('Не удалось загрузить категории: $error'),
+                  ),
+                ),
+                data: (tree) {
+                  final groups = tree.groups;
+                  final categories = tree.categories;
+                  final ungrouped = categories
+                      .where((category) => category.parentId == null)
+                      .toList();
+                  final childrenByGroup = <int, List<Category>>{
+                    for (final group in groups)
+                      if (group.id != null)
+                        group.id!: categories
+                            .where((category) => category.parentId == group.id)
+                            .toList(),
+                  };
+
+                  return CategoryTreeView(
+                    groups: groups,
+                    childrenByGroup: childrenByGroup,
+                    ungrouped: ungrouped,
+                    onCategoryTap: _editCategory,
+                    onCategoryLongPress: _onLongPress,
+                    onGroupTap: _editCategory,
+                    onGroupLongPress: _onLongPress,
+                  );
+                },
               ),
             ),
           ],

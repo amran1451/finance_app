@@ -59,7 +59,7 @@ Future<List<PlannedItemView>> _loadPlannedItems(
 }) async {
   ref.watch(dbTickProvider);
   final transactionsRepo = ref.watch(transactionsRepoProvider);
-  final categoriesRepo = ref.watch(categoriesRepoProvider);
+  final categoriesRepo = ref.watch(categoriesRepositoryProvider);
   final records = await transactionsRepo.listPlanned(
     type: type.toTransactionType(),
     onlyIncluded: onlyIncluded,

@@ -2,8 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
-import '../../data/mock/mock_models.dart' as mock;
-import '../../data/models/category.dart' as db_models;
+import '../../data/models/category.dart';
 import '../../data/models/transaction_record.dart';
 import '../../data/repositories/necessity_repository.dart';
 import '../../data/repositories/reason_repository.dart';
@@ -13,6 +12,7 @@ import '../../state/budget_providers.dart';
 import '../../state/db_refresh.dart';
 import '../../state/entry_flow_providers.dart';
 import '../../state/reason_providers.dart';
+import '../../utils/category_type_extensions.dart';
 import '../../utils/formatting.dart';
 import '../../utils/color_hex.dart';
 import '../../utils/date_format_short.dart';
@@ -36,12 +36,12 @@ class _ReviewScreenState extends ConsumerState<ReviewScreen> {
     super.initState();
     final entryState = ref.read(entryFlowControllerProvider);
     _forcePlanned = _shouldForcePlanned(entryState);
-    _asPlanned = _forcePlanned && entryState.type == mock.OperationType.expense;
+    _asPlanned = _forcePlanned && entryState.type == CategoryType.expense;
     _selectedDate = entryState.selectedDate;
   }
 
   bool _shouldForcePlanned(EntryFlowState state) {
-    if (state.type != mock.OperationType.expense) {
+    if (state.type != CategoryType.expense) {
       return false;
     }
     return state.attachToPlanned;
@@ -150,8 +150,17 @@ class _ReviewScreenState extends ConsumerState<ReviewScreen> {
         return;
       }
 
-      final categoryId =
-          await _resolveCategoryId(ref, entryState.category!);
+      final category = entryState.category!;
+      final categoryId = category.id;
+      if (categoryId == null) {
+        if (!mounted) {
+          return;
+        }
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Не удалось определить категорию')), 
+        );
+        return;
+      }
       final accountId = await _defaultAccountId(ref);
       final transactionType = _mapTransactionType(entryState.type);
       final amountMinor = (entryState.amount * 100).round();
@@ -208,7 +217,7 @@ class _ReviewScreenState extends ConsumerState<ReviewScreen> {
       final transactionsRepository = ref.read(transactionsRepoProvider);
       await transactionsRepository.add(
         record,
-        asSavingPair: entryState.type == mock.OperationType.savings,
+        asSavingPair: entryState.type == CategoryType.saving,
         includedInPeriod: isPlannedExpense ? null : inCurrent,
       );
       bumpDbTick(ref);
@@ -219,8 +228,8 @@ class _ReviewScreenState extends ConsumerState<ReviewScreen> {
       final newState = ref.read(entryFlowControllerProvider);
       setState(() {
         _forcePlanned = _shouldForcePlanned(newState);
-        _asPlanned = _forcePlanned &&
-            newState.type == mock.OperationType.expense;
+        _asPlanned =
+            _forcePlanned && newState.type == CategoryType.expense;
         _reasonId = null;
       });
       if (isQuickAddKind) {
@@ -606,20 +615,6 @@ bool _isSameDay(DateTime a, DateTime b) {
   return a.year == b.year && a.month == b.month && a.day == b.day;
 }
 
-Future<int> _resolveCategoryId(WidgetRef ref, mock.Category category) async {
-  final repository = ref.read(categoriesRepoProvider);
-  final type = _mapCategoryType(category.type);
-  final existing = await repository.getByType(type);
-  for (final item in existing) {
-    if (item.name == category.name && item.id != null) {
-      return item.id!;
-    }
-  }
-  return repository.create(
-    db_models.Category(type: type, name: category.name),
-  );
-}
-
 Future<int> _defaultAccountId(WidgetRef ref) async {
   final accountsRepository = ref.read(accountsRepoProvider);
   final accounts = await accountsRepository.getAll();
@@ -634,24 +629,14 @@ Future<int> _defaultAccountId(WidgetRef ref) async {
   return preferred.id ?? accounts.first.id!;
 }
 
-TransactionType _mapTransactionType(mock.OperationType type) {
+TransactionType _mapTransactionType(CategoryType type) {
   switch (type) {
-    case mock.OperationType.income:
+    case CategoryType.income:
       return TransactionType.income;
-    case mock.OperationType.expense:
+    case CategoryType.expense:
       return TransactionType.expense;
-    case mock.OperationType.savings:
+    case CategoryType.saving:
       return TransactionType.saving;
   }
 }
 
-db_models.CategoryType _mapCategoryType(mock.CategoryType type) {
-  switch (type) {
-    case mock.OperationType.income:
-      return db_models.CategoryType.income;
-    case mock.OperationType.expense:
-      return db_models.CategoryType.expense;
-    case mock.OperationType.savings:
-      return db_models.CategoryType.saving;
-  }
-}
