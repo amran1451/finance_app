@@ -7,6 +7,7 @@ import '../../routing/app_router.dart';
 import '../../state/app_providers.dart';
 import '../../state/db_refresh.dart';
 import '../../utils/formatting.dart';
+import 'account_form_result.dart';
 
 class AccountsListStub extends ConsumerWidget {
   const AccountsListStub({super.key});
@@ -20,7 +21,10 @@ class AccountsListStub extends ConsumerWidget {
         title: const Text('Мои счета'),
         actions: [
           IconButton(
-            onPressed: () => context.pushNamed(RouteNames.accountCreate),
+            onPressed: () async {
+              final result = await context.pushNamed(RouteNames.accountCreate);
+              _handleFormResult(context, result);
+            },
             icon: const Icon(Icons.add),
             tooltip: 'Добавить счёт',
           ),
@@ -57,6 +61,29 @@ class AccountsListStub extends ConsumerWidget {
   }
 }
 
+void _handleFormResult(BuildContext context, Object? result) {
+  if (result is! AccountFormResult) {
+    return;
+  }
+  final messenger = ScaffoldMessenger.of(context);
+  messenger.hideCurrentSnackBar();
+
+  String message;
+  switch (result) {
+    case AccountFormResult.created:
+      message = 'Счёт создан';
+      break;
+    case AccountFormResult.updated:
+      message = 'Изменения сохранены';
+      break;
+    case AccountFormResult.deleted:
+      message = 'Счёт удалён';
+      break;
+  }
+
+  messenger.showSnackBar(SnackBar(content: Text(message)));
+}
+
 class _AccountListTile extends ConsumerWidget {
   const _AccountListTile({required this.account});
 
@@ -87,10 +114,13 @@ class _AccountListTile extends ConsumerWidget {
               ),
               trailing: IconButton(
                 icon: const Icon(Icons.chevron_right),
-                onPressed: () => context.pushNamed(
-                  RouteNames.accountEdit,
-                  extra: account.name,
-                ),
+                onPressed: () async {
+                  final result = await context.pushNamed(
+                    RouteNames.accountEdit,
+                    pathParameters: {'id': accountId.toString()},
+                  );
+                  _handleFormResult(context, result);
+                },
               ),
             ),
             computedAsync.when(
