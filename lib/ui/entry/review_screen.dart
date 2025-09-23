@@ -55,17 +55,32 @@ class _ReviewScreenState extends ConsumerState<ReviewScreen> {
     if (_selectedDate == null || !_isSameDay(_selectedDate!, entrySelectedDate)) {
       _selectedDate = entrySelectedDate;
     }
-    final necessityLabelsAsync = ref.watch(necessityLabelsFutureProvider);
-    final necessityLabels =
-        necessityLabelsAsync.value ?? <NecessityLabel>[];
-    final reasonLabelsAsync = ref.watch(reasonLabelsProvider);
-    final reasonLabels = reasonLabelsAsync.value ?? <ReasonLabel>[];
 
-    final isExpense = entryState.type == mock.OperationType.expense;
+    final operationKind = operationKindFromType(entryState.type);
+    final isIncome = operationKind == OperationKind.income;
+    final isExpense = operationKind == OperationKind.expense;
+    final isSaving = operationKind == OperationKind.saving;
+    final isQuickAddKind = isExpense || isIncome;
     final isPlannedExpense = isExpense && (_forcePlanned || _asPlanned);
     final showPlanToggle = isExpense && !_forcePlanned;
-    final showNecessitySection = !isExpense || isPlannedExpense;
+    final showNecessitySection = isSaving || isPlannedExpense;
     final showReasonSection = isExpense && !isPlannedExpense;
+
+    final AsyncValue<List<NecessityLabel>> necessityLabelsAsync =
+        showNecessitySection
+            ? ref.watch(necessityLabelsFutureProvider)
+            : const AsyncValue<List<NecessityLabel>>.data(
+                <NecessityLabel>[],
+              );
+    final necessityLabels =
+        necessityLabelsAsync.value ?? <NecessityLabel>[];
+
+    final AsyncValue<List<ReasonLabel>> reasonLabelsAsync = showReasonSection
+        ? ref.watch(reasonLabelsProvider)
+        : const AsyncValue<List<ReasonLabel>>.data(
+            <ReasonLabel>[],
+          );
+    final reasonLabels = reasonLabelsAsync.value ?? <ReasonLabel>[];
 
     if (showReasonSection &&
         _reasonId != null &&
@@ -208,9 +223,6 @@ class _ReviewScreenState extends ConsumerState<ReviewScreen> {
             newState.type == mock.OperationType.expense;
         _reasonId = null;
       });
-      final operationKind = operationKindFromType(entryState.type);
-      final isQuickAddKind = operationKind == OperationKind.expense ||
-          operationKind == OperationKind.income;
       if (isQuickAddKind) {
         ref.read(lastEntryKindProvider.notifier).state = operationKind;
       }
