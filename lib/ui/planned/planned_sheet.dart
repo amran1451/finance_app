@@ -6,12 +6,12 @@ import '../../state/app_providers.dart';
 import '../../state/planned_providers.dart';
 import '../../state/db_refresh.dart';
 import '../../utils/formatting.dart';
-import '../../utils/ref_postframe.dart';
 import 'planned_add_form.dart';
 
 Future<void> showPlannedSheet(
   BuildContext context, {
   required PlannedType type,
+  VoidCallback? onClosed,
 }) {
   return showModalBottomSheet(
     context: context,
@@ -31,7 +31,9 @@ Future<void> showPlannedSheet(
         ),
       );
     },
-  );
+  ).whenComplete(() {
+    onClosed?.call();
+  });
 }
 
 class _PlannedSheetContent extends ConsumerStatefulWidget {
@@ -47,20 +49,6 @@ class _PlannedSheetContent extends ConsumerStatefulWidget {
 }
 
 class _PlannedSheetContentState extends ConsumerState<_PlannedSheetContent> {
-  @override
-  void initState() {
-    super.initState();
-    ref.postFrame(() {
-      ref.read(isSheetOpenProvider.notifier).state = true;
-    });
-  }
-
-  @override
-  void dispose() {
-    ref.read(isSheetOpenProvider.notifier).state = false;
-    super.dispose();
-  }
-
   @override
   Widget build(BuildContext context) {
     return DraggableScrollableSheet(
