@@ -79,29 +79,14 @@ class OperationsScreen extends ConsumerWidget {
         ),
         data: (transactions) {
           final categories = categoriesAsync.asData?.value ?? const <int, Category>{};
-          if (transactions.isEmpty) {
-            return Center(
-              child: Padding(
-                padding: const EdgeInsets.all(24),
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    const Icon(Icons.receipt_long, size: 64),
-                    const SizedBox(height: 16),
-                    Text(
-                      filter == OpTypeFilter.all
-                          ? 'Операций пока нет'
-                          : 'Нет операций выбранного типа',
-                      textAlign: TextAlign.center,
-                    ),
-                  ],
-                ),
-              ),
-            );
-          }
+          final grouped = <DateTime, List<TransactionRecord>>{};
+          final dates = <DateTime>[];
 
-          final grouped = _groupByDate(transactions);
-          final dates = grouped.keys.toList()..sort((a, b) => b.compareTo(a));
+          if (transactions.isNotEmpty) {
+            grouped.addAll(_groupByDate(transactions));
+            dates.addAll(grouped.keys);
+            dates.sort((a, b) => b.compareTo(a));
+          }
 
           return Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -142,19 +127,38 @@ class OperationsScreen extends ConsumerWidget {
                 ),
               ),
               Expanded(
-                child: ListView.builder(
-                  padding: const EdgeInsets.all(16),
-                  itemCount: dates.length,
-                  itemBuilder: (context, index) {
-                    final date = dates[index];
-                    final items = grouped[date]!;
-                    return _OperationsSection(
-                      title: formatDate(date),
-                      transactions: items,
-                      categories: categories,
-                    );
-                  },
-                ),
+                child: transactions.isEmpty
+                    ? Center(
+                        child: Padding(
+                          padding: const EdgeInsets.all(24),
+                          child: Column(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              const Icon(Icons.receipt_long, size: 64),
+                              const SizedBox(height: 16),
+                              Text(
+                                filter == OpTypeFilter.all
+                                    ? 'Операций пока нет'
+                                    : 'Нет операций выбранного типа',
+                                textAlign: TextAlign.center,
+                              ),
+                            ],
+                          ),
+                        ),
+                      )
+                    : ListView.builder(
+                        padding: const EdgeInsets.all(16),
+                        itemCount: dates.length,
+                        itemBuilder: (context, index) {
+                          final date = dates[index];
+                          final items = grouped[date]!;
+                          return _OperationsSection(
+                            title: formatDate(date),
+                            transactions: items,
+                            categories: categories,
+                          );
+                        },
+                      ),
               ),
             ],
           );
