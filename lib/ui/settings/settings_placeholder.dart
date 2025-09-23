@@ -3,11 +3,14 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../data/models/payout.dart';
 import '../../state/app_providers.dart';
+import '../../state/budget_providers.dart';
 import '../../state/db_refresh.dart';
+import '../../utils/ref_postframe.dart';
 import '../payouts/payout_edit_sheet.dart';
 import 'categories_manage_screen.dart';
 import 'necessity_settings_screen.dart';
 import 'reasons_settings_screen.dart';
+import '../home/daily_limit_sheet.dart';
 
 class SettingsPlaceholder extends ConsumerStatefulWidget {
   const SettingsPlaceholder({super.key});
@@ -236,6 +239,34 @@ class _SettingsPlaceholderState extends ConsumerState<SettingsPlaceholder> {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Выплата добавлена')),
       );
+      final dailyLimitValue = ref
+          .read(dailyLimitProvider)
+          .maybeWhen(data: (value) => value ?? 0, orElse: () => 0);
+      if (dailyLimitValue == 0) {
+        ref.postFrame(() {
+          if (!mounted) {
+            return;
+          }
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: const Text('Назначьте дневной лимит'),
+              action: SnackBarAction(
+                label: 'Задать',
+                onPressed: () {
+                  showEditDailyLimitSheet(context, ref).then((saved) {
+                    if (!mounted || !saved) {
+                      return;
+                    }
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(content: Text('Лимит сохранён')),
+                    );
+                  });
+                },
+              ),
+            ),
+          );
+        });
+      }
     }
   }
 

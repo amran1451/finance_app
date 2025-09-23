@@ -15,6 +15,7 @@ import '../../utils/formatting.dart';
 import '../../utils/ru_plural.dart';
 import '../planned/planned_sheet.dart';
 import '../payouts/payout_edit_sheet.dart';
+import 'daily_limit_sheet.dart';
 import '../widgets/callout_card.dart';
 import '../widgets/period_selector.dart';
 import '../widgets/progress_line.dart';
@@ -32,6 +33,7 @@ class HomeScreen extends ConsumerWidget {
     final (periodStart, periodEndExclusive) = ref.watch(periodBoundsProvider);
     final label = ref.watch(periodLabelProvider);
     final daysLeft = ref.watch(daysToPeriodEndProvider);
+    final payoutAsync = ref.watch(currentPayoutProvider);
 
     final transactions = transactionsAsync.asData?.value ?? const [];
     final isTransactionsLoading = transactionsAsync.isLoading;
@@ -115,10 +117,37 @@ class HomeScreen extends ConsumerWidget {
                 ),
               ),
               const SizedBox(height: 16),
-              _buildRemainingSection(
-                context,
-                ref,
-                hasOperations,
+              payoutAsync.when(
+                loading: () => const _EmptyLimitPlaceholder(),
+                error: (_, __) => const _EmptyLimitPlaceholder(),
+                data: (payout) {
+                  if (payout == null) {
+                    return _AddPayoutCTA(
+                      onTap: () async {
+                        final saved = await showPayoutEditSheet(context);
+                        if (!context.mounted || !saved) {
+                          return;
+                        }
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(content: Text('Выплата добавлена')),
+                        );
+                      },
+                    );
+                  }
+                  return _LimitCards(
+                    leftToday: ref.watch(leftTodayMinorProvider),
+                    leftPeriod: ref.watch(leftInPeriodMinorProvider),
+                    onEditLimit: () async {
+                      final saved = await showEditDailyLimitSheet(context, ref);
+                      if (!context.mounted || !saved) {
+                        return;
+                      }
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(content: Text('Лимит сохранён')),
+                      );
+                    },
+                  );
+                },
               ),
               const SizedBox(height: 16),
               CalloutCard(
@@ -252,183 +281,100 @@ class HomeScreen extends ConsumerWidget {
     );
   }
 
-  Widget _buildRemainingSection(
-    BuildContext context,
-    WidgetRef ref,
-    bool hasOperations,
-  ) {
-    if (!hasOperations) {
-      return CalloutCard(
-        title: 'Остаток бюджета',
-        subtitle: 'Здесь появятся данные, когда вы добавите операции.',
-      );
-    }
+}
 
-    final leftTodayAsync = ref.watch(leftTodayMinorProvider);
-    final leftPeriodAsync = ref.watch(leftInPeriodMinorProvider);
+class _EmptyLimitPlaceholder extends StatelessWidget {
+  const _EmptyLimitPlaceholder();
 
-    final leftTodayLabel = leftTodayAsync.when(
-      data: (value) => formatCurrencyMinor(value),
-      loading: () => '…',
-      error: (_, __) => '—',
-    );
-    final leftPeriodLabel = leftPeriodAsync.when(
-      data: (value) => formatCurrencyMinor(value),
-      loading: () => '…',
-      error: (_, __) => '—',
-    );
-
+  @override
+  Widget build(BuildContext context) {
     return Row(
-      children: [
+      children: const [
         Expanded(
           child: _RemainingInfoCard(
             label: 'Осталось на день',
-            value: leftTodayLabel,
+            value: '—',
             alignment: TextAlign.left,
-            onEdit: () => _showDailyLimitSheet(context, ref),
           ),
         ),
-        const SizedBox(width: 12),
+        SizedBox(width: 12),
         Expanded(
           child: _RemainingInfoCard(
             label: 'Осталось в этом бюджете',
-            value: leftPeriodLabel,
+            value: '—',
             alignment: TextAlign.right,
           ),
         ),
       ],
     );
   }
+}
 
-  Future<void> _showDailyLimitSheet(BuildContext context, WidgetRef ref) async {
-    final currentValue = await ref.read(dailyLimitProvider.future);
+class _AddPayoutCTA extends StatelessWidget {
+  const _AddPayoutCTA({
+    required this.onTap,
+  });
 
-    final controller = TextEditingController(
-      text: currentValue != null
-          ? (currentValue / 100).toStringAsFixed(2)
-          : '',
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return CalloutCard(
+      title: 'Добавьте ближайшую выплату',
+      subtitle: 'Чтобы отслеживать бюджет, укажите дату и сумму.',
+      child: Align(
+        alignment: Alignment.centerLeft,
+        child: FilledButton.tonalIcon(
+          onPressed: onTap,
+          icon: const Icon(Icons.payments_outlined),
+          label: const Text('Добавить выплату'),
+        ),
+      ),
     );
-    String? errorText;
-    var isSaving = false;
-    var saved = false;
+  }
+}
 
-    await showModalBottomSheet<void>(
-      context: context,
-      isScrollControlled: true,
-      builder: (sheetContext) {
-        return Padding(
-          padding: EdgeInsets.only(
-            left: 24,
-            right: 24,
-            top: 24,
-            bottom: MediaQuery.of(sheetContext).viewInsets.bottom + 24,
-          ),
-          child: StatefulBuilder(
-            builder: (context, setState) {
-              Future<void> save() async {
-                if (isSaving) {
-                  return;
-                }
-                setState(() {
-                  errorText = null;
-                  isSaving = true;
-                });
+class _LimitCards extends StatelessWidget {
+  const _LimitCards({
+    required this.leftToday,
+    required this.leftPeriod,
+    required this.onEditLimit,
+  });
 
-                final raw = controller.text.trim().replaceAll(',', '.');
-                int? minorValue;
-                if (raw.isEmpty) {
-                  minorValue = null;
-                } else {
-                  final parsed = double.tryParse(raw);
-                  if (parsed == null) {
-                    setState(() {
-                      errorText = 'Введите число';
-                      isSaving = false;
-                    });
-                    return;
-                  }
-                  minorValue = (parsed * 100).round();
-                }
+  final AsyncValue<int> leftToday;
+  final AsyncValue<int> leftPeriod;
+  final VoidCallback onEditLimit;
 
-                final manager = ref.read(dailyLimitManagerProvider);
-                final message = await manager.saveDailyLimitMinor(minorValue);
-                if (message != null) {
-                  setState(() {
-                    errorText = message;
-                    isSaving = false;
-                  });
-                  return;
-                }
-
-                saved = true;
-                Navigator.of(sheetContext).pop();
-              }
-
-              return Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  Text(
-                    'Лимит на день',
-                    style: Theme.of(context).textTheme.titleMedium,
-                  ),
-                  const SizedBox(height: 12),
-                  TextField(
-                    controller: controller,
-                    keyboardType:
-                        const TextInputType.numberWithOptions(decimal: true),
-                    decoration: InputDecoration(
-                      labelText: 'Сумма',
-                      prefixText: '₽ ',
-                      hintText: 'Например, 1500',
-                      errorText: errorText,
-                    ),
-                    onChanged: (_) {
-                      if (errorText != null) {
-                        setState(() {
-                          errorText = null;
-                        });
-                      }
-                    },
-                  ),
-                  const SizedBox(height: 16),
-                  Row(
-                    children: [
-                      TextButton(
-                        onPressed: isSaving
-                            ? null
-                            : () {
-                                controller.clear();
-                                setState(() => errorText = null);
-                              },
-                        child: const Text('Очистить'),
-                      ),
-                      const Spacer(),
-                      FilledButton(
-                        onPressed: isSaving ? null : save,
-                        child: isSaving
-                            ? const SizedBox(
-                                width: 16,
-                                height: 16,
-                                child: CircularProgressIndicator(strokeWidth: 2),
-                              )
-                            : const Text('Сохранить'),
-                      ),
-                    ],
-                  ),
-                ],
-              );
-            },
-          ),
-        );
-      },
-    );
-
-    if (saved) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Лимит сохранён')),
+  @override
+  Widget build(BuildContext context) {
+    String buildLabel(AsyncValue<int> value) {
+      return value.when(
+        data: (v) => formatCurrencyMinor(v),
+        loading: () => '…',
+        error: (_, __) => '—',
       );
     }
+
+    return Row(
+      children: [
+        Expanded(
+          child: _RemainingInfoCard(
+            label: 'Осталось на день',
+            value: buildLabel(leftToday),
+            alignment: TextAlign.left,
+            onEdit: onEditLimit,
+          ),
+        ),
+        const SizedBox(width: 12),
+        Expanded(
+          child: _RemainingInfoCard(
+            label: 'Осталось в этом бюджете',
+            value: buildLabel(leftPeriod),
+            alignment: TextAlign.right,
+          ),
+        ),
+      ],
+    );
   }
 }
 
