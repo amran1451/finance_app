@@ -4,15 +4,16 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../data/models/account.dart' as db;
 import '../../data/models/payout.dart';
 import '../../state/app_providers.dart';
+import '../../state/budget_providers.dart';
 import '../../state/db_refresh.dart';
 import '../../utils/formatting.dart';
 
-Future<bool> showPayoutEditSheet(
+Future<void> showPayoutEditSheet(
   BuildContext context, {
+  PayoutType? forcedType,
   Payout? initial,
-  PayoutType? presetType,
-}) async {
-  final result = await showModalBottomSheet<bool>(
+}) {
+  return showModalBottomSheet<void>(
     context: context,
     isScrollControlled: true,
     useSafeArea: true,
@@ -21,22 +22,20 @@ Future<bool> showPayoutEditSheet(
     ),
     builder: (_) => _PayoutEditSheet(
       initial: initial,
-      presetType: presetType,
+      forcedType: forcedType,
     ),
   );
-
-  return result ?? false;
 }
 
 class _PayoutEditSheet extends ConsumerStatefulWidget {
   const _PayoutEditSheet({
     this.initial,
-    this.presetType,
+    this.forcedType,
     super.key,
   });
 
   final Payout? initial;
-  final PayoutType? presetType;
+  final PayoutType? forcedType;
 
   @override
   ConsumerState<_PayoutEditSheet> createState() => _PayoutEditSheetState();
@@ -45,7 +44,7 @@ class _PayoutEditSheet extends ConsumerStatefulWidget {
 class _PayoutEditSheetState extends ConsumerState<_PayoutEditSheet> {
   final _formKey = GlobalKey<FormState>();
   late final TextEditingController _amountController;
-  late PayoutType _type;
+  PayoutType? _type;
   late DateTime _date;
   int? _accountId;
   bool _accountInitialized = false;
@@ -55,12 +54,33 @@ class _PayoutEditSheetState extends ConsumerState<_PayoutEditSheet> {
   void initState() {
     super.initState();
     final initial = widget.initial;
-    _type = initial?.type ?? widget.presetType ?? PayoutType.salary;
+    _type = initial?.type ?? widget.forcedType;
     _date = initial?.date ?? DateTime.now();
     _accountId = initial?.accountId;
     _accountInitialized = _accountId != null;
     final amountText = initial == null ? '' : _formatAmountMinor(initial.amountMinor);
     _amountController = TextEditingController(text: amountText);
+  }
+
+  PayoutType _resolveType() {
+    final cached = _type;
+    if (cached != null) {
+      return cached;
+    }
+    final initial = widget.initial;
+    if (initial != null) {
+      final value = initial.type;
+      _type = value;
+      return value;
+    }
+    final forced = widget.forcedType;
+    if (forced != null) {
+      _type = forced;
+      return forced;
+    }
+    final suggested = ref.read(payoutSuggestedTypeProvider);
+    _type = suggested;
+    return suggested;
   }
 
   @override
@@ -105,6 +125,9 @@ class _PayoutEditSheetState extends ConsumerState<_PayoutEditSheet> {
     final theme = Theme.of(context);
     final bottomInset = MediaQuery.of(context).viewInsets.bottom;
     final isEditMode = widget.initial?.id != null;
+    final type = _resolveType();
+    final titlePrefix = isEditMode ? 'Редактировать выплату' : 'Добавить выплату';
+    final title = '$titlePrefix (${payoutTypeLabel(type)})';
 
     return Padding(
       padding: EdgeInsets.only(
@@ -130,11 +153,7 @@ class _PayoutEditSheetState extends ConsumerState<_PayoutEditSheet> {
               ),
             ),
             const SizedBox(height: 16),
-            Text(
-              isEditMode ? 'Редактировать выплату' : 'Добавить выплату',
-              style: theme.textTheme.titleMedium,
-              textAlign: TextAlign.center,
-            ),
+            Text(title, style: theme.textTheme.titleMedium, textAlign: TextAlign.center),
             const SizedBox(height: 16),
             SegmentedButton<PayoutType>(
               segments: const [
@@ -147,13 +166,15 @@ class _PayoutEditSheetState extends ConsumerState<_PayoutEditSheet> {
                   label: Text('Зарплата'),
                 ),
               ],
-              selected: <PayoutType>{_type},
-              onSelectionChanged: (selection) {
-                if (selection.isEmpty) {
-                  return;
-                }
-                setState(() => _type = selection.first);
-              },
+              selected: <PayoutType>{type},
+              onSelectionChanged: widget.forcedType != null
+                  ? null
+                  : (selection) {
+                      if (selection.isEmpty) {
+                        return;
+                      }
+                      setState(() => _type = selection.first);
+                    },
             ),
             const SizedBox(height: 16),
             ListTile(
@@ -242,7 +263,7 @@ class _PayoutEditSheetState extends ConsumerState<_PayoutEditSheet> {
                                   if (!mounted) {
                                     return;
                                   }
-                                  Navigator.of(context).pop(false);
+                                  Navigator.of(context).pop();
                                 },
                           child: const Text('Отмена'),
                         ),
@@ -273,7 +294,7 @@ class _PayoutEditSheetState extends ConsumerState<_PayoutEditSheet> {
                         if (!mounted) {
                           return;
                         }
-                        Navigator.of(context).pop(false);
+                        Navigator.of(context).pop();
                       },
                 child: const Text('Отмена'),
               ),
@@ -301,17 +322,18 @@ class _PayoutEditSheetState extends ConsumerState<_PayoutEditSheet> {
       final payoutsRepo = ref.read(payoutsRepoProvider);
       final normalizedDate = DateTime(_date.year, _date.month, _date.day);
       final initial = widget.initial;
+      final type = _resolveType();
       if (initial?.id != null) {
         await payoutsRepo.update(
           id: initial!.id!,
-          type: _type,
+          type: type,
           date: normalizedDate,
           amountMinor: amountMinor,
           accountId: accountId,
         );
       } else {
         await payoutsRepo.add(
-          _type,
+          type,
           normalizedDate,
           amountMinor,
           accountId: accountId,
@@ -321,7 +343,7 @@ class _PayoutEditSheetState extends ConsumerState<_PayoutEditSheet> {
       if (!mounted) {
         return;
       }
-      Navigator.of(context).pop(true);
+      Navigator.of(context).pop();
     } catch (error) {
       if (!mounted) {
         return;
@@ -346,7 +368,7 @@ class _PayoutEditSheetState extends ConsumerState<_PayoutEditSheet> {
       if (!mounted) {
         return;
       }
-      Navigator.of(context).pop(true);
+      Navigator.of(context).pop();
     } catch (error) {
       if (!mounted) {
         return;
