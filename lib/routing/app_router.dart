@@ -103,11 +103,23 @@ final appRouterProvider = Provider<GoRouter>((ref) {
         builder: (context, state) => const AccountCreateStub(),
       ),
       GoRoute(
-        path: '/accounts/edit',
+        path: '/accounts/:id/edit',
         name: RouteNames.accountEdit,
-        builder: (context, state) => AccountEditStub(
-          accountName: state.extra as String?,
-        ),
+        builder: (context, state) {
+          final rawId = state.pathParameters['id'];
+          final accountId = int.tryParse(rawId ?? '');
+          if (accountId == null) {
+            return const Scaffold(
+              body: Center(
+                child: Padding(
+                  padding: EdgeInsets.all(24),
+                  child: Text('Некорректный идентификатор счёта'),
+                ),
+              ),
+            );
+          }
+          return AccountEditStub(accountId: accountId);
+        },
       ),
       GoRoute(
         path: '/categories/new',
