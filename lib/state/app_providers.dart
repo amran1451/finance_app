@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../data/bootstrap/app_bootstrapper.dart';
 import '../data/db/app_database.dart';
 import '../data/models/account.dart' as account_models;
 import '../data/mock/mock_models.dart' as mock;
@@ -16,6 +17,12 @@ import '../data/repositories/transactions_repository.dart' as transactions_repo;
 import 'db_refresh.dart';
 
 final appDatabaseProvider = Provider<AppDatabase>((ref) => AppDatabase.instance);
+
+final appBootstrapProvider = FutureProvider<void>((ref) async {
+  final database = ref.watch(appDatabaseProvider);
+  final bootstrapper = AppBootstrapper(database: database);
+  await bootstrapper.run();
+});
 
 final accountsRepoProvider =
     Provider<accounts_repo.AccountsRepository>((ref) {
