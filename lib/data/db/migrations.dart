@@ -5,7 +5,7 @@ class AppMigrations {
   AppMigrations._();
 
   /// Latest schema version supported by the application.
-  static const int latestVersion = 5;
+  static const int latestVersion = 6;
 
   static final Map<int, List<String>> _migrationScripts = {
     1: [
@@ -83,6 +83,21 @@ class AppMigrations {
     5: [
       'ALTER TABLE transactions ADD COLUMN payout_id INTEGER NULL',
       'CREATE INDEX IF NOT EXISTS idx_transactions_payout_id ON transactions(payout_id)',
+    ],
+    6: [
+      'CREATE TABLE IF NOT EXISTS planned_master ('
+          'id INTEGER PRIMARY KEY AUTOINCREMENT, '
+          "type TEXT CHECK(type IN ('expense','income','saving')) NOT NULL, "
+          'title TEXT NOT NULL, '
+          'default_amount_minor INTEGER NULL, '
+          'category_id INTEGER NULL, '
+          'note TEXT NULL, '
+          'archived INTEGER NOT NULL DEFAULT 0, '
+          "created_at TEXT NOT NULL DEFAULT (datetime('now')), "
+          "updated_at TEXT NOT NULL DEFAULT (datetime('now'))"
+          ')',
+      'ALTER TABLE transactions ADD COLUMN planned_id INTEGER NULL',
+      'CREATE INDEX IF NOT EXISTS idx_transactions_planned_id ON transactions(planned_id)',
     ],
   };
 
