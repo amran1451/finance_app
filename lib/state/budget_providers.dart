@@ -1,5 +1,6 @@
 import 'dart:math' as math;
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../data/models/payout.dart';
@@ -85,7 +86,17 @@ final payoutForSelectedPeriodProvider = FutureProvider<Payout?>((ref) async {
   ref.watch(dbTickProvider);
   final (start, endEx) = ref.watch(periodBoundsProvider);
   final repo = ref.watch(payoutsRepoProvider);
-  return repo.findInRange(start, endEx);
+  try {
+    return await repo.findInRange(start, endEx);
+  } catch (error, stackTrace) {
+    if (_isMissingRepoMethod(error)) {
+      debugPrint(
+        'Payout lookup failed for range [$start; $endEx): $error',
+      );
+      return null;
+    }
+    Error.throwWithStackTrace(error, stackTrace);
+  }
 });
 
 String _ruMonthShort(int month) {
@@ -399,4 +410,11 @@ int _clampRemainingDays(int difference, int periodDays) {
     return periodDays;
   }
   return difference;
+}
+
+bool _isMissingRepoMethod(Object error) {
+  return error is NoSuchMethodError ||
+      error is UnimplementedError ||
+      error is UnsupportedError ||
+      error is LookupError;
 }
