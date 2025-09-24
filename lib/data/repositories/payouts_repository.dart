@@ -23,6 +23,12 @@ abstract class PayoutsRepository {
 
   Future<Payout?> getLast();
 
+  /// Выплата, попадающая в указанный диапазон дат [start; endExclusive)
+  Future<Payout?> findInRange(DateTime start, DateTime endExclusive);
+
+  /// Список выплат в диапазоне (для будущих экранов истории)
+  Future<List<Payout>> listInRange(DateTime start, DateTime endExclusive);
+
   Future<List<Payout>> getHistory(int limit);
 }
 
@@ -143,6 +149,40 @@ class SqlitePayoutsRepository implements PayoutsRepository {
       return null;
     }
     return Payout.fromMap(rows.first);
+  }
+
+  @override
+  Future<Payout?> findInRange(DateTime start, DateTime endExclusive) async {
+    final db = await _db;
+    final rows = await db.query(
+      'payouts',
+      where: 'date >= ? AND date < ?',
+      whereArgs: [
+        _formatDate(_normalizeDate(start)),
+        _formatDate(_normalizeDate(endExclusive)),
+      ],
+      orderBy: 'date DESC, id DESC',
+      limit: 1,
+    );
+    if (rows.isEmpty) {
+      return null;
+    }
+    return Payout.fromMap(rows.first);
+  }
+
+  @override
+  Future<List<Payout>> listInRange(DateTime start, DateTime endExclusive) async {
+    final db = await _db;
+    final rows = await db.query(
+      'payouts',
+      where: 'date >= ? AND date < ?',
+      whereArgs: [
+        _formatDate(_normalizeDate(start)),
+        _formatDate(_normalizeDate(endExclusive)),
+      ],
+      orderBy: 'date DESC, id DESC',
+    );
+    return rows.map(Payout.fromMap).toList();
   }
 
   Map<String, Object?> _payoutValues(Payout payout) {

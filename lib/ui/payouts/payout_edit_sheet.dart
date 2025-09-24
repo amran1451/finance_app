@@ -27,6 +27,21 @@ Future<void> showPayoutEditSheet(
   );
 }
 
+Future<void> showPayoutForSelectedPeriod(
+  BuildContext context, {
+  PayoutType? forcedType,
+}) async {
+  final container = ProviderScope.containerOf(context, listen: false);
+  final read = container.read;
+  final (start, endEx) = read(periodBoundsProvider);
+  final existing = await read(payoutsRepoProvider).findInRange(start, endEx);
+  await showPayoutEditSheet(
+    context,
+    forcedType: forcedType,
+    initial: existing,
+  );
+}
+
 class _PayoutEditSheet extends ConsumerStatefulWidget {
   const _PayoutEditSheet({
     this.initial,
@@ -49,13 +64,18 @@ class _PayoutEditSheetState extends ConsumerState<_PayoutEditSheet> {
   int? _accountId;
   bool _accountInitialized = false;
   bool _isProcessing = false;
+  late final DateTime _periodStart;
+  late final DateTime _periodEndExclusive;
 
   @override
   void initState() {
     super.initState();
     final initial = widget.initial;
+    final (start, endEx) = ref.read(periodBoundsProvider);
+    _periodStart = start;
+    _periodEndExclusive = endEx;
     _type = initial?.type ?? widget.forcedType;
-    _date = initial?.date ?? DateTime.now();
+    _date = initial?.date ?? _periodStart;
     _accountId = initial?.accountId;
     _accountInitialized = _accountId != null;
     final amountText = initial == null ? '' : _formatAmountMinor(initial.amountMinor);
@@ -185,7 +205,7 @@ class _PayoutEditSheetState extends ConsumerState<_PayoutEditSheet> {
               onTap: () async {
                 final picked = await showDatePicker(
                   context: context,
-                  initialDate: _date,
+                  initialDate: _clampToPeriod(_date),
                   firstDate: DateTime.now().subtract(const Duration(days: 365)),
                   lastDate: DateTime.now().add(const Duration(days: 365)),
                 );
@@ -321,20 +341,21 @@ class _PayoutEditSheetState extends ConsumerState<_PayoutEditSheet> {
     try {
       final payoutsRepo = ref.read(payoutsRepoProvider);
       final normalizedDate = DateTime(_date.year, _date.month, _date.day);
+      final dateToSave = _clampToPeriod(normalizedDate);
       final initial = widget.initial;
       final type = _resolveType();
       if (initial?.id != null) {
         await payoutsRepo.update(
           id: initial!.id!,
           type: type,
-          date: normalizedDate,
+          date: dateToSave,
           amountMinor: amountMinor,
           accountId: accountId,
         );
       } else {
         await payoutsRepo.add(
           type,
-          normalizedDate,
+          dateToSave,
           amountMinor,
           accountId: accountId,
         );
@@ -390,5 +411,16 @@ class _PayoutEditSheetState extends ConsumerState<_PayoutEditSheet> {
       return formatted.substring(0, formatted.length - 1);
     }
     return formatted;
+  }
+
+  DateTime _clampToPeriod(DateTime date) {
+    if (date.isBefore(_periodStart)) {
+      return _periodStart;
+    }
+    final last = _periodEndExclusive.subtract(const Duration(days: 1));
+    if (date.isAfter(last)) {
+      return last;
+    }
+    return date;
   }
 }

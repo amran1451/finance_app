@@ -266,7 +266,7 @@ class _SettingsPlaceholderState extends ConsumerState<SettingsPlaceholder> {
     PayoutType? forcedType,
   }) async {
     final tickBefore = ref.read(dbTickProvider);
-    await showPayoutEditSheet(
+    await showPayoutForSelectedPeriod(
       context,
       forcedType: forcedType,
     );

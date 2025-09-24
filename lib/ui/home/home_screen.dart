@@ -33,7 +33,7 @@ class HomeScreen extends ConsumerWidget {
     final (periodStart, periodEndExclusive) = ref.watch(periodBoundsProvider);
     final label = ref.watch(periodLabelProvider);
     final daysLeft = ref.watch(daysToPeriodEndProvider);
-    final payoutAsync = ref.watch(currentPayoutProvider);
+    final payoutAsync = ref.watch(payoutForSelectedPeriodProvider);
     final suggestedType = ref.watch(payoutSuggestedTypeProvider);
     final generalPayoutLabel =
         'Добавить выплату (по периоду: ${payoutTypeLabel(suggestedType)})';
@@ -141,7 +141,7 @@ class HomeScreen extends ConsumerWidget {
                       buttonLabel: generalPayoutLabel,
                       onTap: () async {
                         final tickBefore = ref.read(dbTickProvider);
-                        await showPayoutEditSheet(context);
+                        await showPayoutForSelectedPeriod(context);
                         if (!context.mounted) {
                           return;
                         }
@@ -442,38 +442,12 @@ class _PlannedOverview extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final payoutAsync = ref.watch(currentPayoutProvider);
+    final payoutAsync = ref.watch(payoutForSelectedPeriodProvider);
     return payoutAsync.when(
       data: (payout) {
         if (payout == null) {
-          final suggestedType = ref.watch(payoutSuggestedTypeProvider);
-          final buttonLabel =
-              'Добавить выплату (по периоду: ${payoutTypeLabel(suggestedType)})';
-          return Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              FilledButton.tonalIcon(
-                onPressed: () async {
-                  final tickBefore = ref.read(dbTickProvider);
-                  await showPayoutEditSheet(context);
-                  if (!context.mounted) {
-                    return;
-                  }
-                  final tickAfter = ref.read(dbTickProvider);
-                  if (tickAfter != tickBefore) {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(content: Text('Выплата добавлена')),
-                    );
-                  }
-                },
-                icon: const Icon(Icons.payments),
-                label: Text(buttonLabel),
-              ),
-              const SizedBox(height: 12),
-              const Text(
-                'Добавьте ближайшую выплату, чтобы расчёт бюджета был точным.',
-              ),
-            ],
+          return const Text(
+            'Добавьте ближайшую выплату, чтобы расчёт бюджета был точным.',
           );
         }
 
