@@ -5,6 +5,8 @@ import '../models/category.dart';
 import '../models/transaction_record.dart';
 import 'accounts_repository.dart';
 
+typedef TransactionItem = TransactionRecord;
+
 abstract class TransactionsRepository {
   Future<TransactionRecord?> getById(int id);
 
@@ -37,6 +39,27 @@ abstract class TransactionsRepository {
     TransactionType? type,
     bool onlyIncluded = false,
   });
+
+  Future<int> createPlannedInstance({
+    required int plannedId,
+    required String type,
+    required int accountId,
+    required int amountMinor,
+    required DateTime date,
+    required int categoryId,
+    int? necessityId,
+    String? necessityLabel,
+    bool includedInPeriod = false,
+  });
+
+  Future<List<TransactionItem>> listPlannedByPeriod({
+    required DateTime start,
+    required DateTime endExclusive,
+    String? type,
+    bool? onlyIncluded,
+  });
+
+  Future<int> deleteInstancesByPlannedId(int plannedId);
 
   Future<void> setPlannedCompletion(int id, bool isCompleted);
 
@@ -243,6 +266,78 @@ class SqliteTransactionsRepository implements TransactionsRepository {
       orderBy: 'date ASC, id ASC',
     );
     return rows.map(TransactionRecord.fromMap).toList();
+  }
+
+  @override
+  Future<int> createPlannedInstance({
+    required int plannedId,
+    required String type,
+    required int accountId,
+    required int amountMinor,
+    required DateTime date,
+    required int categoryId,
+    int? necessityId,
+    String? necessityLabel,
+    bool includedInPeriod = false,
+  }) async {
+    final db = await _db;
+    final values = <String, Object?>{
+      'planned_id': plannedId,
+      'type': type,
+      'account_id': accountId,
+      'category_id': categoryId,
+      'amount_minor': amountMinor,
+      'date': _formatDate(date),
+      'time': null,
+      'note': null,
+      'is_planned': 1,
+      'included_in_period': includedInPeriod ? 1 : 0,
+      'tags': null,
+      'criticality': 0,
+      'necessity_id': necessityId,
+      'necessity_label': necessityLabel,
+      'reason_id': null,
+      'reason_label': null,
+      'payout_id': null,
+    };
+    return db.insert('transactions', values);
+  }
+
+  @override
+  Future<List<TransactionItem>> listPlannedByPeriod({
+    required DateTime start,
+    required DateTime endExclusive,
+    String? type,
+    bool? onlyIncluded,
+  }) async {
+    final db = await _db;
+    final where = StringBuffer('is_planned = 1 AND date >= ? AND date < ?');
+    final args = <Object?>[_formatDate(start), _formatDate(endExclusive)];
+    if (type != null) {
+      where.write(' AND type = ?');
+      args.add(type);
+    }
+    if (onlyIncluded != null) {
+      where.write(' AND included_in_period = ?');
+      args.add(onlyIncluded ? 1 : 0);
+    }
+    final rows = await db.query(
+      'transactions',
+      where: where.toString(),
+      whereArgs: args,
+      orderBy: 'date ASC, id ASC',
+    );
+    return rows.map(TransactionRecord.fromMap).toList();
+  }
+
+  @override
+  Future<int> deleteInstancesByPlannedId(int plannedId) async {
+    final db = await _db;
+    return db.delete(
+      'transactions',
+      where: 'planned_id = ?',
+      whereArgs: [plannedId],
+    );
   }
 
   @override

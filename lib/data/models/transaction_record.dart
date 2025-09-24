@@ -12,6 +12,7 @@ class TransactionRecord {
     required this.date,
     this.time,
     this.note,
+    this.plannedId,
     this.isPlanned = false,
     this.includedInPeriod = true,
     this.tags = const <String>[],
@@ -30,6 +31,7 @@ class TransactionRecord {
   final DateTime date;
   final String? time;
   final String? note;
+  final int? plannedId;
   final bool isPlanned;
   final bool includedInPeriod;
   final List<String> tags;
@@ -48,6 +50,7 @@ class TransactionRecord {
     DateTime? date,
     String? time,
     String? note,
+    Object? plannedId = _unset,
     bool? isPlanned,
     bool? includedInPeriod,
     List<String>? tags,
@@ -66,6 +69,8 @@ class TransactionRecord {
       date: date ?? this.date,
       time: time ?? this.time,
       note: note ?? this.note,
+      plannedId:
+          plannedId == _unset ? this.plannedId : plannedId as int?,
       isPlanned: isPlanned ?? this.isPlanned,
       includedInPeriod: includedInPeriod ?? this.includedInPeriod,
       tags: tags ?? this.tags,
@@ -94,6 +99,7 @@ class TransactionRecord {
       date: _parseDate(map['date'] as String?),
       time: map['time'] as String?,
       note: map['note'] as String?,
+      plannedId: map['planned_id'] as int?,
       isPlanned: (map['is_planned'] as int? ?? 0) != 0,
       includedInPeriod: (map['included_in_period'] as int? ?? 0) != 0,
       tags: _decodeTags(map['tags'] as String?),
@@ -115,6 +121,7 @@ class TransactionRecord {
       'date': _formatDate(date),
       'time': time,
       'note': note,
+      'planned_id': plannedId,
       'is_planned': isPlanned ? 1 : 0,
       'included_in_period': includedInPeriod ? 1 : 0,
       'tags': tags.isEmpty ? null : jsonEncode(tags),
