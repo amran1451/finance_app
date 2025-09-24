@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 
 import '../../data/models/payout.dart';
 import '../../state/app_providers.dart';
@@ -11,6 +12,7 @@ import 'categories_manage_screen.dart';
 import 'necessity_settings_screen.dart';
 import 'reasons_settings_screen.dart';
 import '../home/daily_limit_sheet.dart';
+import '../../routing/app_router.dart';
 
 class SettingsPlaceholder extends ConsumerStatefulWidget {
   const SettingsPlaceholder({super.key});
@@ -244,6 +246,12 @@ class _SettingsPlaceholderState extends ConsumerState<SettingsPlaceholder> {
                       ),
                     );
                   },
+                ),
+                const Divider(height: 0),
+                ListTile(
+                  title: const Text('Общий план'),
+                  trailing: const Icon(Icons.chevron_right),
+                  onTap: () => context.pushNamed(RouteNames.plannedLibrary),
                 ),
               ],
             ),

@@ -5,7 +5,9 @@ import '../data/models/transaction_record.dart';
 import '../data/repositories/categories_repository.dart';
 import '../data/repositories/transactions_repository.dart';
 import 'app_providers.dart';
+import 'budget_providers.dart';
 import 'db_refresh.dart';
+import 'planned_master_providers.dart';
 
 enum PlannedType { income, expense, saving }
 
@@ -60,9 +62,17 @@ Future<List<PlannedItemView>> _loadPlannedItems(
   ref.watch(dbTickProvider);
   final transactionsRepo = ref.watch(transactionsRepoProvider);
   final categoriesRepo = ref.watch(categoriesRepositoryProvider);
-  final records = await transactionsRepo.listPlanned(
-    type: type.toTransactionType(),
-    onlyIncluded: onlyIncluded,
+  final bounds = ref.watch(periodBoundsProvider);
+  final typeString = switch (type) {
+    PlannedType.income => 'income',
+    PlannedType.expense => 'expense',
+    PlannedType.saving => 'saving',
+  };
+  final records = await transactionsRepo.listPlannedByPeriod(
+    start: bounds.$1,
+    endExclusive: bounds.$2,
+    type: typeString,
+    onlyIncluded: onlyIncluded ? true : null,
   );
   if (records.isEmpty) {
     return const [];
@@ -88,7 +98,30 @@ final plannedItemsByTypeProvider = FutureProvider.family
 
 final plannedIncludedByTypeProvider = FutureProvider.family
     <List<PlannedItemView>, PlannedType>((ref, type) async {
-  return _loadPlannedItems(ref, type, onlyIncluded: true);
+  final included =
+      await ref.watch(plannedIncludedForSelectedPeriodProvider(
+    switch (type) {
+      PlannedType.income => 'income',
+      PlannedType.expense => 'expense',
+      PlannedType.saving => 'saving',
+    },
+  ).future);
+  if (included.isEmpty) {
+    return const [];
+  }
+  final categoriesRepo = ref.watch(categoriesRepositoryProvider);
+  final categories = await categoriesRepo.getAll();
+  final categoriesById = {
+    for (final category in categories)
+      if (category.id != null) category.id!: category,
+  };
+  return [
+    for (final record in included)
+      PlannedItemView(
+        record: record,
+        category: categoriesById[record.categoryId],
+      ),
+  ];
 });
 
 final plannedTotalByTypeProvider =

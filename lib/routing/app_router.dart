@@ -14,6 +14,8 @@ import '../ui/home/home_screen.dart';
 import '../ui/operations/operations_screen.dart';
 import '../ui/planned/planned_expense_stub.dart';
 import '../ui/planned/planned_income_stub.dart';
+import '../ui/planned/planned_library_screen.dart';
+import '../ui/planned/planned_master_detail_screen.dart';
 import '../ui/planned/planned_savings_stub.dart';
 import '../ui/settings/settings_placeholder.dart';
 
@@ -93,6 +95,33 @@ final appRouterProvider = Provider<GoRouter>((ref) {
         builder: (context, state) => const PlannedSavingsStub(),
       ),
       GoRoute(
+        path: '/planned/library',
+        name: RouteNames.plannedLibrary,
+        builder: (context, state) {
+          final select = state.uri.queryParameters['select'] == '1';
+          return PlannedLibraryScreen(selectForAssignment: select);
+        },
+      ),
+      GoRoute(
+        path: '/planned/master/:id',
+        name: RouteNames.plannedMasterDetail,
+        builder: (context, state) {
+          final idRaw = state.pathParameters['id'];
+          final masterId = int.tryParse(idRaw ?? '');
+          if (masterId == null) {
+            return const Scaffold(
+              body: Center(
+                child: Padding(
+                  padding: EdgeInsets.all(24),
+                  child: Text('Некорректный идентификатор плана'),
+                ),
+              ),
+            );
+          }
+          return PlannedMasterDetailScreen(masterId: masterId);
+        },
+      ),
+      GoRoute(
         path: '/accounts',
         name: RouteNames.accounts,
         builder: (context, state) => const AccountsListStub(),
@@ -141,6 +170,8 @@ class RouteNames {
   static const String plannedIncome = 'planned-income';
   static const String plannedExpense = 'planned-expense';
   static const String plannedSavings = 'planned-savings';
+  static const String plannedLibrary = 'planned-library';
+  static const String plannedMasterDetail = 'planned-master-detail';
   static const String accounts = 'accounts';
   static const String accountCreate = 'account-create';
   static const String accountEdit = 'account-edit';

@@ -1,11 +1,14 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 
 import '../../data/models/transaction_record.dart';
 import '../../state/app_providers.dart';
 import '../../state/planned_providers.dart';
 import '../../state/db_refresh.dart';
 import '../../utils/formatting.dart';
+import '../../routing/app_router.dart';
+import '../../state/planned_master_providers.dart';
 import 'planned_add_form.dart';
 
 Future<void> showPlannedSheet(
@@ -56,7 +59,14 @@ class _PlannedSheetContentState extends ConsumerState<_PlannedSheetContent> {
       initialChildSize: 0.9,
       maxChildSize: 0.95,
       builder: (ctx, scroll) {
-        final itemsAsync = ref.watch(plannedItemsByTypeProvider(widget.type));
+        final typeString = switch (widget.type) {
+          PlannedType.income => 'income',
+          PlannedType.expense => 'expense',
+          PlannedType.saving => 'saving',
+        };
+        final itemsAsync =
+            ref.watch(plannedIncludedForSelectedPeriodProvider(typeString));
+        final categoriesMap = ref.watch(categoriesMapProvider).value ?? {};
         final actions = ref.read(plannedActionsProvider);
 
         Future<void> handleLongPress(PlannedItemView item) async {
@@ -173,7 +183,16 @@ class _PlannedSheetContentState extends ConsumerState<_PlannedSheetContent> {
               const SizedBox(height: 16),
               Expanded(
                 child: itemsAsync.when(
-                  data: (items) {
+                  data: (records) {
+                    final items = [
+                      for (final record in records)
+                        PlannedItemView(
+                          record: record,
+                          category: record.categoryId != null
+                              ? categoriesMap[record.categoryId!]
+                              : null,
+                        ),
+                    ];
                     if (items.isEmpty) {
                       return ListView(
                         controller: scroll,
@@ -230,15 +249,32 @@ class _PlannedSheetContentState extends ConsumerState<_PlannedSheetContent> {
                     ],
                   ),
                 ),
-              ),
+             ),
               const SizedBox(height: 16),
-              FilledButton.icon(
-                onPressed: () => showPlannedAddForm(
-                  ctx,
-                  type: widget.type,
-                ),
-                icon: const Icon(Icons.add),
-                label: const Text('Добавить'),
+              Row(
+                children: [
+                  Expanded(
+                    child: OutlinedButton.icon(
+                      onPressed: () => context.pushNamed(
+                        RouteNames.plannedLibrary,
+                        queryParameters: const {'select': '1'},
+                      ),
+                      icon: const Icon(Icons.library_add_outlined),
+                      label: const Text('Из общего плана'),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: FilledButton.icon(
+                      onPressed: () => showPlannedAddForm(
+                        ctx,
+                        type: widget.type,
+                      ),
+                      icon: const Icon(Icons.add),
+                      label: const Text('Добавить'),
+                    ),
+                  ),
+                ],
               ),
             ],
           ),
