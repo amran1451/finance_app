@@ -415,6 +415,5 @@ int _clampRemainingDays(int difference, int periodDays) {
 bool _isMissingRepoMethod(Object error) {
   return error is NoSuchMethodError ||
       error is UnimplementedError ||
-      error is UnsupportedError ||
-      error is LookupError;
+      error is UnsupportedError;
 }
