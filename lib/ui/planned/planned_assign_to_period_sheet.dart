@@ -87,6 +87,17 @@ class _PlannedAssignToPeriodFormState
       text: amountMinor != null ? _formatAmount(amountMinor) : '',
     );
 
+  }
+
+  @override
+  void dispose() {
+    _amountController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final master = widget.master;
     ref.listen<(DateTime, DateTime)>(periodBoundsProvider, (previous, next) {
       final start = next.$1;
       final end = next.$2;
@@ -99,17 +110,6 @@ class _PlannedAssignToPeriodFormState
         });
       }
     });
-  }
-
-  @override
-  void dispose() {
-    _amountController.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final master = widget.master;
     final bounds = ref.watch(periodBoundsProvider);
     final periodLabel = ref.watch(periodLabelProvider);
     final nav = ref.watch(periodNavProvider);
