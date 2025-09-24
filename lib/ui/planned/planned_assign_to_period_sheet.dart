@@ -3,7 +3,6 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../data/models/account.dart';
 import '../../data/models/category.dart';
-import '../../data/models/transaction_record.dart';
 import '../../data/repositories/planned_master_repository.dart';
 import '../../data/repositories/necessity_repository.dart' as necessity_repo;
 import '../../state/app_providers.dart';
@@ -15,7 +14,7 @@ import '../../utils/formatting.dart';
 Future<bool?> showPlannedAssignToPeriodSheet(
   BuildContext context, {
   required PlannedMaster master,
-  TransactionRecord? initial,
+  PeriodRef? initialPeriod,
 }) {
   return showModalBottomSheet<bool>(
     context: context,
@@ -34,7 +33,7 @@ Future<bool?> showPlannedAssignToPeriodSheet(
         ),
         child: _PlannedAssignToPeriodForm(
           master: master,
-          initial: initial,
+          initialPeriod: initialPeriod,
         ),
       );
     },
@@ -44,11 +43,11 @@ Future<bool?> showPlannedAssignToPeriodSheet(
 class _PlannedAssignToPeriodForm extends ConsumerStatefulWidget {
   const _PlannedAssignToPeriodForm({
     required this.master,
-    this.initial,
+    this.initialPeriod,
   });
 
   final PlannedMaster master;
-  final TransactionRecord? initial;
+  final PeriodRef? initialPeriod;
 
   @override
   ConsumerState<_PlannedAssignToPeriodForm> createState() =>
@@ -59,6 +58,7 @@ class _PlannedAssignToPeriodFormState
     extends ConsumerState<_PlannedAssignToPeriodForm> {
   final _formKey = GlobalKey<FormState>();
   late final TextEditingController _amountController;
+  late final TextEditingController _noteController;
   late DateTime _selectedDate;
   int? _categoryId;
   int? _accountId;
@@ -70,28 +70,32 @@ class _PlannedAssignToPeriodFormState
   @override
   void initState() {
     super.initState();
-    final initial = widget.initial;
     final master = widget.master;
+    final initialPeriod = widget.initialPeriod;
+    if (initialPeriod != null) {
+      ref.read(selectedPeriodRefProvider.notifier).state = initialPeriod;
+    }
     final bounds = ref.read(periodBoundsProvider);
-    final defaultDate = _clampDate(initial?.date ?? bounds.$1, bounds.$1, bounds.$2);
+    final defaultDate = _clampDate(bounds.$1, bounds.$1, bounds.$2);
     _selectedDate = defaultDate;
-    _categoryId = initial?.categoryId ?? master.categoryId;
-    _accountId = initial?.accountId;
-    _necessityId = initial?.necessityId;
-    _included = initial?.includedInPeriod ?? false;
+    _categoryId = master.categoryId;
+    _accountId = null;
+    _necessityId = null;
+    _included = false;
     if (_accountId != null) {
       _accountInitialized = true;
     }
-    final amountMinor = initial?.amountMinor ?? master.defaultAmountMinor;
+    final amountMinor = master.defaultAmountMinor;
     _amountController = TextEditingController(
       text: amountMinor != null ? _formatAmount(amountMinor) : '',
     );
-
+    _noteController = TextEditingController(text: master.note ?? '');
   }
 
   @override
   void dispose() {
     _amountController.dispose();
+    _noteController.dispose();
     super.dispose();
   }
 
@@ -212,6 +216,14 @@ class _PlannedAssignToPeriodFormState
               }
               return null;
             },
+          ),
+          const SizedBox(height: 12),
+          TextFormField(
+            controller: _noteController,
+            decoration: const InputDecoration(
+              labelText: 'Заметка',
+            ),
+            maxLines: 2,
           ),
           const SizedBox(height: 12),
           categoriesAsync.when(
@@ -372,49 +384,34 @@ class _PlannedAssignToPeriodFormState
     if (categoryId == null || accountId == null) {
       return;
     }
+    final note = _noteController.text.trim();
 
     setState(() => _isSaving = true);
     try {
-      final initial = widget.initial;
-      if (initial == null) {
-        String? necessityLabel;
-        int? necessityId;
-        if (master.type == 'expense' && _necessityId != null) {
-          final labels =
-              ref.read(necessityLabelsFutureProvider).value ?? const [];
-          for (final label in labels) {
-            if (label.id == _necessityId) {
-              necessityLabel = label.name;
-              necessityId = label.id;
-              break;
-            }
+      String? necessityLabel;
+      int? necessityId;
+      if (master.type == 'expense' && _necessityId != null) {
+        final labels = ref.read(necessityLabelsFutureProvider).value ?? const [];
+        for (final label in labels) {
+          if (label.id == _necessityId) {
+            necessityLabel = label.name;
+            necessityId = label.id;
+            break;
           }
         }
-        await repo.createPlannedInstance(
-          plannedId: plannedId,
-          type: master.type,
-          accountId: accountId,
-          amountMinor: amountMinor,
-          date: _selectedDate,
-          categoryId: categoryId,
-          necessityId: necessityId,
-          necessityLabel: necessityLabel,
-          includedInPeriod: _included,
-        );
-      } else {
-        final updated = initial.copyWith(
-          amountMinor: amountMinor,
-          categoryId: categoryId,
-          accountId: accountId,
-          date: _selectedDate,
-          includedInPeriod: _included,
-          necessityId: master.type == 'expense' ? _necessityId : null,
-          necessityLabel: master.type == 'expense'
-              ? _resolveNecessityLabel(_necessityId)
-              : null,
-        );
-        await repo.update(updated, includedInPeriod: _included);
       }
+      await repo.createPlannedInstance(
+        plannedId: plannedId,
+        type: master.type,
+        accountId: accountId,
+        amountMinor: amountMinor,
+        date: _selectedDate,
+        categoryId: categoryId,
+        note: note.isEmpty ? null : note,
+        necessityId: necessityId,
+        necessityLabel: necessityLabel,
+        includedInPeriod: _included,
+      );
       if (!mounted) {
         return;
       }
@@ -456,18 +453,5 @@ class _PlannedAssignToPeriodFormState
       return value.toStringAsFixed(0);
     }
     return value.toStringAsFixed(2);
-  }
-
-  String? _resolveNecessityLabel(int? id) {
-    if (id == null) {
-      return null;
-    }
-    final labels = ref.read(necessityLabelsFutureProvider).value ?? const [];
-    for (final label in labels) {
-      if (label.id == id) {
-        return label.name;
-      }
-    }
-    return null;
   }
 }

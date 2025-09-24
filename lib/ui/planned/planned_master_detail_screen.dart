@@ -7,8 +7,10 @@ import '../../state/budget_providers.dart';
 import '../../state/db_refresh.dart';
 import '../../state/planned_master_providers.dart';
 import '../../state/app_providers.dart';
+import '../../state/planned_providers.dart';
 import '../../utils/formatting.dart';
 import 'planned_assign_to_period_sheet.dart';
+import 'planned_add_form.dart';
 import 'planned_master_edit_sheet.dart';
 
 class PlannedMasterDetailScreen extends ConsumerStatefulWidget {
@@ -93,11 +95,7 @@ class _PlannedMasterDetailScreenState
                             record: item,
                             periodLabel: periodBadge(bounds.$1, bounds.$2),
                             onToggle: (value) => _toggleIncluded(item, value),
-                            onEdit: () => showPlannedAssignToPeriodSheet(
-                              context,
-                              master: master,
-                              initial: item,
-                            ),
+                            onEdit: () => _editInstance(master, item),
                             onDelete: () => _deleteInstance(item),
                           ),
                       ],
@@ -127,6 +125,18 @@ class _PlannedMasterDetailScreenState
       return;
     }
     bumpDbTick(ref);
+  }
+
+  Future<void> _editInstance(PlannedMaster master, TransactionRecord record) async {
+    final type = _plannedTypeFor(master.type);
+    if (type == null) {
+      return;
+    }
+    await showPlannedAddForm(
+      context,
+      type: type,
+      initialRecord: record,
+    );
   }
 
   Future<void> _toggleIncluded(TransactionRecord record, bool value) async {
@@ -174,6 +184,20 @@ class _PlannedMasterDetailScreenState
     }
     bumpDbTick(ref);
   }
+
+  PlannedType? _plannedTypeFor(String type) {
+    switch (type) {
+      case 'income':
+        return PlannedType.income;
+      case 'expense':
+        return PlannedType.expense;
+      case 'saving':
+        return PlannedType.saving;
+      default:
+        return null;
+    }
+  }
+
 }
 
 class _MasterHeader extends StatelessWidget {
@@ -269,6 +293,7 @@ class _MasterHeader extends StatelessWidget {
         return 'Расход';
     }
   }
+
 }
 
 class _InstanceTile extends StatelessWidget {
