@@ -80,6 +80,14 @@ final periodBoundsProvider = Provider<(DateTime start, DateTime endExclusive)>((
 @Deprecated('Use periodBoundsProvider')
 final halfPeriodBoundsProvider = periodBoundsProvider;
 
+/// Выплата, относящаяся к выбранному на Главной полупериоду (месяц+half)
+final payoutForSelectedPeriodProvider = FutureProvider<Payout?>((ref) async {
+  ref.watch(dbTickProvider);
+  final (start, endEx) = ref.watch(periodBoundsProvider);
+  final repo = ref.watch(payoutsRepoProvider);
+  return repo.findInRange(start, endEx);
+});
+
 String _ruMonthShort(int month) {
   const m = ['янв', 'фев', 'мар', 'апр', 'май', 'июн', 'июл', 'авг', 'сен', 'окт', 'ноя', 'дек'];
   return m[(month - 1).clamp(0, 11)];
