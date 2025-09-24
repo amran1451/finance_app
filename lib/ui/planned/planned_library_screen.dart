@@ -1,9 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:go_router/go_router.dart';
-
 import '../../data/repositories/planned_master_repository.dart';
-import '../../routing/app_router.dart';
 import '../../state/db_refresh.dart';
 import '../../state/planned_master_providers.dart';
 import '../../utils/formatting.dart';
@@ -104,7 +101,7 @@ class _PlannedLibraryScreenState
                 ),
                 onTap: id == null
                     ? null
-                    : () => _handleTap(context, master, canDelete: !hasInstances),
+                    : () => _handleTap(context, master),
               );
             },
           );
@@ -144,33 +141,18 @@ class _PlannedLibraryScreenState
 
   Future<void> _handleTap(
     BuildContext context,
-    PlannedMaster master, {
-    required bool canDelete,
-  }) async {
-    if (widget.selectForAssignment) {
-      final saved = await showPlannedAssignToPeriodSheet(
-        context,
-        master: master,
-      );
-      if (!mounted) {
-        return;
-      }
-      if (saved == true) {
-        Navigator.of(context).pop(master);
-      }
-      return;
-    }
-    final id = master.id;
-    if (id == null) {
-      return;
-    }
+    PlannedMaster master,
+  ) async {
+    final saved = await showPlannedAssignToPeriodSheet(
+      context,
+      master: master,
+    );
     if (!mounted) {
       return;
     }
-    context.pushNamed(
-      RouteNames.plannedMasterDetail,
-      pathParameters: {'id': id.toString()},
-    );
+    if (widget.selectForAssignment && saved == true) {
+      Navigator.of(context).pop(master);
+    }
   }
 
   Future<void> _handleMenuAction(
