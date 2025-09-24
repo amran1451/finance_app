@@ -97,6 +97,7 @@ class _PlannedMasterDetailScreenState
                             onToggle: (value) => _toggleIncluded(item, value),
                             onEdit: () => _editInstance(master, item),
                             onDelete: () => _deleteInstance(item),
+                            onDeleteMaster: () => _deleteMasterFromPlan(item),
                           ),
                       ],
                     );
@@ -179,6 +180,66 @@ class _PlannedMasterDetailScreenState
     }
     final repo = ref.read(transactionsRepoProvider);
     await repo.delete(id);
+    if (!mounted) {
+      return;
+    }
+    bumpDbTick(ref);
+  }
+
+  Future<void> _deleteMasterFromPlan(TransactionRecord record) async {
+    final masterId = record.plannedId;
+    if (masterId == null) {
+      return;
+    }
+    final choice = await showDialog<_DeleteMasterChoice>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Удалить шаблон из общего плана'),
+        content: const Text(
+          'Удалить сам шаблон и все его назначения во всех периодах?',
+        ),
+        actions: [
+          FilledButton(
+            onPressed: () =>
+                Navigator.of(dialogContext).pop(_DeleteMasterChoice.deleteAll),
+            child: const Text('Удалить всё'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext)
+                .pop(_DeleteMasterChoice.deleteInstance),
+            child: const Text('Удалить только текущий экземпляр'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(null),
+            child: const Text('Отмена'),
+          ),
+        ],
+      ),
+    );
+    if (choice == null) {
+      return;
+    }
+
+    final transactionsRepo = ref.read(transactionsRepoProvider);
+    switch (choice) {
+      case _DeleteMasterChoice.deleteAll:
+        final plannedRepo = ref.read(plannedMasterRepoProvider);
+        try {
+          await plannedRepo.delete(masterId);
+        } on StateError {
+          await transactionsRepo.deleteInstancesByPlannedId(masterId);
+          await plannedRepo.delete(masterId);
+        }
+        break;
+      case _DeleteMasterChoice.deleteInstance:
+        final id = record.id;
+        if (id == null) {
+          return;
+        }
+        await transactionsRepo.delete(id);
+        break;
+    }
+
     if (!mounted) {
       return;
     }
@@ -303,6 +364,7 @@ class _InstanceTile extends StatelessWidget {
     required this.onToggle,
     required this.onEdit,
     required this.onDelete,
+    required this.onDeleteMaster,
   });
 
   final TransactionRecord record;
@@ -310,6 +372,7 @@ class _InstanceTile extends StatelessWidget {
   final ValueChanged<bool> onToggle;
   final VoidCallback onEdit;
   final VoidCallback onDelete;
+  final VoidCallback onDeleteMaster;
 
   @override
   Widget build(BuildContext context) {
@@ -340,18 +403,24 @@ class _InstanceTile extends StatelessWidget {
               style: Theme.of(context).textTheme.titleMedium,
             ),
             const SizedBox(height: 12),
-            Row(
+            Wrap(
+              spacing: 12,
+              runSpacing: 12,
               children: [
                 TextButton.icon(
                   onPressed: onEdit,
                   icon: const Icon(Icons.edit_outlined),
                   label: const Text('Изменить'),
                 ),
-                const SizedBox(width: 12),
                 TextButton.icon(
                   onPressed: onDelete,
                   icon: const Icon(Icons.delete_outline),
                   label: const Text('Удалить'),
+                ),
+                TextButton.icon(
+                  onPressed: onDeleteMaster,
+                  icon: const Icon(Icons.delete_forever_outlined),
+                  label: const Text('Удалить шаблон из общего плана'),
                 ),
               ],
             ),
@@ -360,6 +429,11 @@ class _InstanceTile extends StatelessWidget {
       ),
     );
   }
+}
+
+enum _DeleteMasterChoice {
+  deleteAll,
+  deleteInstance,
 }
 
 String periodBadge(DateTime start, DateTime endEx) {
