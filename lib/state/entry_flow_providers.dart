@@ -313,6 +313,19 @@ class EntryFlowController extends StateNotifier<EntryFlowState> {
     state = state.copyWith(selectedDate: DateTime(date.year, date.month, date.day));
   }
 
+  void setAccount(int? accountId) {
+    state = state.copyWith(accountId: accountId);
+  }
+
+  void setAmountMinor(int amountMinor) {
+    final amount = amountMinor / 100;
+    state = state.copyWith(
+      expression: _formatExpressionValue(amount),
+      result: amount,
+      previewResult: amount,
+    );
+  }
+
   void setNote(String note) {
     state = state.copyWith(note: note);
   }
