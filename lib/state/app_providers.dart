@@ -167,3 +167,9 @@ final necessityMapProvider =
     for (final label in labels) label.id: label,
   };
 });
+
+final savingPairEnabledProvider = FutureProvider<bool>((ref) async {
+  ref.watch(dbTickProvider);
+  final repository = ref.watch(settingsRepoProvider);
+  return repository.getSavingPairEnabled();
+});

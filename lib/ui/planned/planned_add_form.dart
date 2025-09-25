@@ -7,6 +7,7 @@ import '../../data/repositories/necessity_repository.dart';
 import '../../state/app_providers.dart';
 import '../../state/db_refresh.dart';
 import '../../state/planned_providers.dart';
+import '../widgets/necessity_choice_chip.dart';
 
 CategoryType _categoryTypeFor(PlannedType type) {
   switch (type) {
@@ -298,8 +299,8 @@ class _PlannedAddFormState extends ConsumerState<_PlannedAddForm> {
                       runSpacing: 8,
                       children: [
                         for (final label in necessityLabels)
-                          ChoiceChip(
-                            label: Text(label.name),
+                          NecessityChoiceChip(
+                            label: label,
                             selected: label.id == selectedNecessityId,
                             onSelected: (_) {
                               setState(() {

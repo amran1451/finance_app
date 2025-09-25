@@ -11,11 +11,13 @@ final opTypeFilterProvider = StateProvider<OpTypeFilter>((_) => OpTypeFilter.all
 
 typedef PeriodBounds = ({DateTime start, DateTime endExclusive});
 
-final periodOperationsProvider = FutureProvider.family<List<TransactionRecord>, PeriodBounds>(
+final periodOperationsProvider =
+    FutureProvider.family<List<TransactionListItem>, PeriodBounds>(
   (ref, bounds) async {
     ref.watch(dbTickProvider);
     final repository = ref.watch(transactionsRepoProvider);
     final filter = ref.watch(opTypeFilterProvider);
+    final savingPairEnabled = await ref.watch(savingPairEnabledProvider.future);
 
     TransactionType? type;
     switch (filter) {
@@ -38,11 +40,12 @@ final periodOperationsProvider = FutureProvider.family<List<TransactionRecord>, 
       endInclusive = bounds.start;
     }
 
-    return repository.getByPeriod(
+    return repository.getOperationItemsByPeriod(
       bounds.start,
       endInclusive,
       type: type,
       isPlanned: false,
+      aggregateSavingPairs: savingPairEnabled,
     );
   },
 );

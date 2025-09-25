@@ -105,7 +105,7 @@ abstract class PlannedMasterRepository {
     String? note,
   });
 
-  Future<void> update(
+  Future<bool> update(
     int id, {
     String? type,
     String? title,
@@ -190,7 +190,7 @@ class SqlitePlannedMasterRepository implements PlannedMasterRepository {
   }
 
   @override
-  Future<void> update(
+  Future<bool> update(
     int id, {
     String? type,
     String? title,
@@ -219,16 +219,14 @@ class SqlitePlannedMasterRepository implements PlannedMasterRepository {
     if (archived != null) {
       values['archived'] = archived ? 1 : 0;
     }
-    if (values.isEmpty) {
-      return;
-    }
     values['updated_at'] = DateTime.now().toUtc().toIso8601String();
-    await db.update(
+    final rowsUpdated = await db.update(
       'planned_master',
       values,
       where: 'id = ?',
       whereArgs: [id],
     );
+    return rowsUpdated > 0;
   }
 
   String _normalizeType(String type) {

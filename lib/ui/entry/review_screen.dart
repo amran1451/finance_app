@@ -17,6 +17,7 @@ import '../../utils/formatting.dart';
 import '../../utils/color_hex.dart';
 import '../../utils/date_format_short.dart';
 import '../widgets/add_another_snack.dart';
+import '../widgets/necessity_choice_chip.dart';
 
 class ReviewScreen extends ConsumerStatefulWidget {
   const ReviewScreen({super.key});
@@ -60,7 +61,7 @@ class _ReviewScreenState extends ConsumerState<ReviewScreen> {
     final isIncome = operationKind == OperationKind.income;
     final isExpense = operationKind == OperationKind.expense;
     final isSaving = operationKind == OperationKind.saving;
-    final isQuickAddKind = isExpense || isIncome;
+    final isQuickAddKind = isExpense || isIncome || isSaving;
     final isPlannedExpense = isExpense && (_forcePlanned || _asPlanned);
     final showPlanToggle = isExpense && !_forcePlanned;
     final showNecessitySection = isSaving || isPlannedExpense;
@@ -375,11 +376,10 @@ class _ReviewScreenState extends ConsumerState<ReviewScreen> {
                                       for (var i = 0;
                                           i < necessityLabels.length;
                                           i++)
-                                        ChoiceChip(
-                                          label: Text(necessityLabels[i].name),
-                                          selected:
-                                              necessityLabels[i].id ==
-                                                  selectedNecessityLabel?.id,
+                                        NecessityChoiceChip(
+                                          label: necessityLabels[i],
+                                          selected: necessityLabels[i].id ==
+                                              selectedNecessityLabel?.id,
                                           onSelected: (_) => controller
                                               .setNecessity(
                                             id: necessityLabels[i].id,

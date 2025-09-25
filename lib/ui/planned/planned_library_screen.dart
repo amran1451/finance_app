@@ -185,11 +185,13 @@ class _PlannedLibraryScreenState
       return;
     }
     final repo = ref.read(plannedMasterRepoProvider);
-    await repo.update(id, archived: !master.archived);
+    final updated = await repo.update(id, archived: !master.archived);
     if (!mounted) {
       return;
     }
-    bumpDbTick(ref);
+    if (updated) {
+      bumpDbTick(ref);
+    }
   }
 
   Future<void> _deleteMaster(BuildContext context, PlannedMaster master) async {

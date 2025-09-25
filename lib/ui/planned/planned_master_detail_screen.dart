@@ -121,11 +121,13 @@ class _PlannedMasterDetailScreenState
       return;
     }
     final repo = ref.read(plannedMasterRepoProvider);
-    await repo.update(id, archived: !master.archived);
+    final updated = await repo.update(id, archived: !master.archived);
     if (!mounted) {
       return;
     }
-    bumpDbTick(ref);
+    if (updated) {
+      bumpDbTick(ref);
+    }
   }
 
   Future<void> _editInstance(PlannedMaster master, TransactionRecord record) async {
@@ -412,15 +414,29 @@ class _InstanceTile extends StatelessWidget {
                   icon: const Icon(Icons.edit_outlined),
                   label: const Text('Изменить'),
                 ),
-                TextButton.icon(
-                  onPressed: onDelete,
-                  icon: const Icon(Icons.delete_outline),
-                  label: const Text('Удалить'),
-                ),
-                TextButton.icon(
-                  onPressed: onDeleteMaster,
-                  icon: const Icon(Icons.delete_forever_outlined),
-                  label: const Text('Удалить шаблон из общего плана'),
+                PopupMenuButton<_InstanceMenuAction>(
+                  icon: const Icon(Icons.more_vert),
+                  tooltip: 'Действия',
+                  onSelected: (action) {
+                    switch (action) {
+                      case _InstanceMenuAction.deleteInstance:
+                        onDelete();
+                        break;
+                      case _InstanceMenuAction.deleteMaster:
+                        onDeleteMaster();
+                        break;
+                    }
+                  },
+                  itemBuilder: (context) => const [
+                    PopupMenuItem(
+                      value: _InstanceMenuAction.deleteInstance,
+                      child: Text('Удалить экземпляр'),
+                    ),
+                    PopupMenuItem(
+                      value: _InstanceMenuAction.deleteMaster,
+                      child: Text('Удалить шаблон и все экземпляры…'),
+                    ),
+                  ],
                 ),
               ],
             ),
@@ -435,6 +451,8 @@ enum _DeleteMasterChoice {
   deleteAll,
   deleteInstance,
 }
+
+enum _InstanceMenuAction { deleteInstance, deleteMaster }
 
 String periodBadge(DateTime start, DateTime endEx) {
   const m = [
