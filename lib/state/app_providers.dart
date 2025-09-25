@@ -37,6 +37,13 @@ final accountsDbProvider =
   return repository.getAll();
 });
 
+final activeAccountsProvider =
+    FutureProvider<List<account_models.Account>>((ref) {
+  ref.watch(dbTickProvider);
+  final repository = ref.watch(accountsRepoProvider);
+  return repository.listActive();
+});
+
 final categoriesRepositoryProvider =
     Provider<categories_repo.CategoriesRepository>((ref) {
   final database = ref.watch(appDatabaseProvider);

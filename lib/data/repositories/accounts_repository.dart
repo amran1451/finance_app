@@ -8,6 +8,8 @@ abstract class AccountsRepository {
 
   Future<Account?> getById(int id);
 
+  Future<List<Account>> listActive();
+
   Future<int> create(Account account);
 
   Future<void> update(Account account);
@@ -46,6 +48,17 @@ class SqliteAccountsRepository implements AccountsRepository {
   Future<List<Account>> getAll() async {
     final db = await _db;
     final rows = await db.query('accounts', orderBy: 'name');
+    return rows.map(Account.fromMap).toList();
+  }
+
+  @override
+  Future<List<Account>> listActive() async {
+    final db = await _db;
+    final rows = await db.query(
+      'accounts',
+      where: 'is_archived = 0',
+      orderBy: 'name',
+    );
     return rows.map(Account.fromMap).toList();
   }
 

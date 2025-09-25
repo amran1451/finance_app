@@ -80,6 +80,8 @@ class AccountsRepository {
   ];
 
   List<Account> getAccounts() => List.unmodifiable(_accounts);
+
+  List<Account> listActive() => List.unmodifiable(_accounts);
 }
 
 class CategoriesRepository extends ChangeNotifier {

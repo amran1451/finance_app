@@ -3,7 +3,9 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:intl/intl.dart';
 
+import '../../data/models/account.dart';
 import '../../data/models/category.dart';
 import '../../data/models/transaction_record.dart';
 import '../../data/repositories/necessity_repository.dart';
@@ -17,8 +19,8 @@ import '../../state/reason_providers.dart';
 import '../../utils/category_type_extensions.dart';
 import '../../utils/formatting.dart';
 import '../../utils/color_hex.dart';
-import '../../utils/date_format_short.dart';
 import '../widgets/add_another_snack.dart';
+import '../widgets/amount_keypad.dart';
 import '../widgets/necessity_choice_chip.dart';
 
 class ReviewScreen extends ConsumerStatefulWidget {
@@ -29,10 +31,16 @@ class ReviewScreen extends ConsumerStatefulWidget {
 }
 
 class _ReviewScreenState extends ConsumerState<ReviewScreen> {
+  static const int _kUnselectedAccountId = -1;
+
   bool _asPlanned = false;
   bool _forcePlanned = false;
-  DateTime? _selectedDate;
   bool _reasonValidationError = false;
+  bool _accountInitialized = false;
+
+  late final ValueNotifier<DateTime> selectedDate;
+  late final ValueNotifier<int> selectedAccountId;
+  late final ValueNotifier<int> amountMinor;
 
   @override
   void initState() {
@@ -41,8 +49,37 @@ class _ReviewScreenState extends ConsumerState<ReviewScreen> {
     _forcePlanned = _shouldForcePlanned(entryState);
     _asPlanned = entryState.attachToPlanned ||
         (_forcePlanned && entryState.type == CategoryType.expense);
-    _selectedDate = entryState.selectedDate;
+    selectedDate = ValueNotifier(entryState.selectedDate);
+    final initialAmountMinor = (entryState.amount * 100).round();
+    amountMinor = ValueNotifier(initialAmountMinor);
+    final initialAccountId = entryState.accountId ?? entryState.editingRecord?.accountId;
+    if (initialAccountId != null) {
+      _accountInitialized = true;
+    }
+    selectedAccountId = ValueNotifier<int>(initialAccountId ?? _kUnselectedAccountId);
+    if (initialAccountId != null) {
+      ref
+          .read(entryFlowControllerProvider.notifier)
+          .setAccount(initialAccountId);
+    }
     _reasonValidationError = false;
+    ref.listen<EntryFlowState>(entryFlowControllerProvider, (previous, next) {
+      final nextDate = next.selectedDate;
+      if (!_isSameDay(selectedDate.value, nextDate)) {
+        selectedDate.value = nextDate;
+      }
+      final nextAmountMinor = (next.amount * 100).round();
+      if (amountMinor.value != nextAmountMinor) {
+        amountMinor.value = nextAmountMinor;
+      }
+      final nextAccountId = next.accountId;
+      if (nextAccountId != null && selectedAccountId.value != nextAccountId) {
+        _syncAccountFromState(nextAccountId);
+      }
+    });
+    ref.listen<AsyncValue<List<Account>>>(activeAccountsProvider, (previous, next) {
+      next.whenData(_handleAccountsLoaded);
+    });
   }
 
   bool _shouldForcePlanned(EntryFlowState state) {
@@ -52,15 +89,94 @@ class _ReviewScreenState extends ConsumerState<ReviewScreen> {
     return state.attachToPlanned;
   }
 
+  void _syncAccountFromState(int accountId) {
+    if (selectedAccountId.value != accountId) {
+      selectedAccountId.value = accountId;
+    }
+    _accountInitialized = true;
+  }
+
+  void _handleAccountsLoaded(List<Account> accounts) {
+    if (accounts.isEmpty) {
+      selectedAccountId.value = _kUnselectedAccountId;
+      _accountInitialized = false;
+      ref.read(entryFlowControllerProvider.notifier).setAccount(null);
+      return;
+    }
+    final entryState = ref.read(entryFlowControllerProvider);
+    final stateAccountId = entryState.accountId ?? entryState.editingRecord?.accountId;
+    if (stateAccountId != null &&
+        accounts.any((account) => account.id == stateAccountId)) {
+      _syncAccountFromState(stateAccountId);
+      return;
+    }
+    if (_accountInitialized && selectedAccountId.value != _kUnselectedAccountId) {
+      return;
+    }
+    final preferred = _findPreferredAccount(accounts);
+    if (preferred != null && preferred.id != null) {
+      _updateAccountSelection(preferred.id!);
+    }
+  }
+
+  Account? _findPreferredAccount(List<Account> accounts) {
+    if (accounts.isEmpty) {
+      return null;
+    }
+    const normalizedTarget = 'карта';
+    for (final account in accounts) {
+      final name = account.name.trim().toLowerCase();
+      if (name == normalizedTarget) {
+        return account;
+      }
+    }
+    return accounts.first;
+  }
+
+  void _updateAccountSelection(int accountId) {
+    if (selectedAccountId.value != accountId) {
+      selectedAccountId.value = accountId;
+    }
+    _accountInitialized = true;
+    ref.read(entryFlowControllerProvider.notifier).setAccount(accountId);
+  }
+
+  String _formatDateLabel(DateTime date) {
+    return _formatReviewDate(date);
+  }
+
+  Future<void> editAmountViaCalculator(
+    BuildContext context,
+    int initialMinor,
+  ) async {
+    final result = await showModalBottomSheet<int>(
+      context: context,
+      isScrollControlled: true,
+      builder: (context) {
+        return _AmountCalculatorSheet(initialMinor: initialMinor);
+      },
+    );
+    if (result != null) {
+      amountMinor.value = result;
+      ref.read(entryFlowControllerProvider.notifier).setAmountMinor(result);
+    }
+  }
+
+  @override
+  void dispose() {
+    selectedDate.dispose();
+    selectedAccountId.dispose();
+    amountMinor.dispose();
+    super.dispose();
+  }
+
   @override
   Widget build(BuildContext context) {
     final entryState = ref.watch(entryFlowControllerProvider);
     final controller = ref.read(entryFlowControllerProvider.notifier);
     final (periodStart, periodEndExclusive) = ref.watch(periodBoundsProvider);
-    final entrySelectedDate = entryState.selectedDate;
-    if (_selectedDate == null || !_isSameDay(_selectedDate!, entrySelectedDate)) {
-      _selectedDate = entrySelectedDate;
-    }
+    final accountsAsync = ref.watch(activeAccountsProvider);
+    final isEditing = entryState.editingRecord != null;
 
     final operationKind = operationKindFromType(entryState.type);
     final isIncome = operationKind == OperationKind.income;
@@ -183,18 +299,21 @@ class _ReviewScreenState extends ConsumerState<ReviewScreen> {
       }
       final editingRecord = entryState.editingRecord;
       final editingCounterpart = entryState.editingCounterpart;
-      final isEditing = editingRecord != null;
+      final isEditingOperation = editingRecord != null;
 
-      final int accountId;
-      if (entryState.accountId != null) {
-        accountId = entryState.accountId!;
-      } else if (editingRecord != null) {
-        accountId = editingRecord.accountId;
-      } else {
-        accountId = await _defaultAccountId(ref);
+      final selectedAccountValue = selectedAccountId.value;
+      if (selectedAccountValue == _kUnselectedAccountId) {
+        if (!mounted) {
+          return;
+        }
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Выберите счёт')),
+        );
+        return;
       }
+      final int accountId = selectedAccountValue;
       final transactionType = _mapTransactionType(entryState.type);
-      final amountMinor = (entryState.amount * 100).round();
+      final currentAmountMinor = amountMinor.value;
       final note = entryState.note.trim().isEmpty
           ? null
           : entryState.note.trim();
@@ -250,17 +369,17 @@ class _ReviewScreenState extends ConsumerState<ReviewScreen> {
         }
       }
 
-      final operationDate = _selectedDate ?? entryState.selectedDate;
+      final operationDate = selectedDate.value;
       final normalizedDate =
           DateTime(operationDate.year, operationDate.month, operationDate.day);
       final inCurrent = ref.read(isInCurrentPeriodProvider(normalizedDate));
 
-      final record = isEditing
+      final record = isEditingOperation
           ? editingRecord!.copyWith(
               accountId: accountId,
               categoryId: categoryId,
               type: transactionType,
-              amountMinor: amountMinor,
+              amountMinor: currentAmountMinor,
               date: normalizedDate,
               note: note,
               isPlanned: isPlannedExpense,
@@ -275,7 +394,7 @@ class _ReviewScreenState extends ConsumerState<ReviewScreen> {
               accountId: accountId,
               categoryId: categoryId,
               type: transactionType,
-              amountMinor: amountMinor,
+              amountMinor: currentAmountMinor,
               date: normalizedDate,
               note: note,
               isPlanned: isPlannedExpense,
@@ -288,14 +407,14 @@ class _ReviewScreenState extends ConsumerState<ReviewScreen> {
             );
 
       final transactionsRepository = ref.read(transactionsRepoProvider);
-      if (isEditing) {
+      if (isEditingOperation) {
         await transactionsRepository.update(
           record,
           includedInPeriod: isPlannedExpense ? null : inCurrent,
         );
         if (editingCounterpart != null) {
           final updatedCounterpart = editingCounterpart.copyWith(
-            amountMinor: amountMinor,
+            amountMinor: currentAmountMinor,
             date: normalizedDate,
             note: note,
             isPlanned: isPlannedExpense,
@@ -328,10 +447,14 @@ class _ReviewScreenState extends ConsumerState<ReviewScreen> {
         _forcePlanned = _shouldForcePlanned(newState);
         _asPlanned = newState.attachToPlanned ||
             (_forcePlanned && newState.type == CategoryType.expense);
-        _selectedDate = newState.selectedDate;
         _reasonValidationError = false;
       });
-      if (isEditing) {
+      selectedDate.value = newState.selectedDate;
+      amountMinor.value = (newState.amount * 100).round();
+      final resetAccountId = newState.accountId ?? _kUnselectedAccountId;
+      selectedAccountId.value = resetAccountId;
+      _accountInitialized = newState.accountId != null;
+      if (isEditingOperation) {
         context.pop();
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('Операция обновлена')),
@@ -407,14 +530,49 @@ class _ReviewScreenState extends ConsumerState<ReviewScreen> {
                                 value: entryState.category?.name ?? 'Не выбрано',
                               ),
                               const SizedBox(height: 12),
-                              _SummaryRow(
-                                label: 'Сумма',
-                                value: formatCurrency(entryState.amount),
+                              ValueListenableBuilder<int>(
+                                valueListenable: amountMinor,
+                                builder: (context, value, _) {
+                                  final formattedAmount =
+                                      formatCurrency(value / 100);
+                                  return Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      _SummaryRow(
+                                        label: 'Сумма',
+                                        value: formattedAmount,
+                                      ),
+                                      if (isEditing) ...[
+                                        const SizedBox(height: 4),
+                                        Align(
+                                          alignment: Alignment.centerRight,
+                                          child: TextButton(
+                                            onPressed: () =>
+                                                editAmountViaCalculator(
+                                              context,
+                                              value,
+                                            ),
+                                            child: const Text('Изменить сумму'),
+                                          ),
+                                        ],
+                                    ],
+                                  );
+                                },
                               ),
                               const SizedBox(height: 12),
                               _SummaryRow(
                                 label: 'Тип операции',
                                 value: entryState.type.label,
+                              ),
+                              const SizedBox(height: 12),
+                              ValueListenableBuilder<DateTime>(
+                                valueListenable: selectedDate,
+                                builder: (context, value, _) {
+                                  return _SummaryRow(
+                                    label: 'Дата',
+                                    value: _formatDateLabel(value),
+                                  );
+                                },
                               ),
                               const SizedBox(height: 16),
                               if (showPlanToggle) ...[
@@ -613,16 +771,80 @@ class _ReviewScreenState extends ConsumerState<ReviewScreen> {
                         style: Theme.of(context).textTheme.titleMedium,
                       ),
                       const SizedBox(height: 8),
-                      _QuickDatePicker(
-                        selectedDate: _selectedDate,
-                        periodStart: periodStart,
-                        periodEndExclusive: periodEndExclusive,
-                        onSelected: (date) {
-                          setState(() {
-                            _selectedDate = date;
-                          });
-                          controller.setDate(date);
+                      ValueListenableBuilder<DateTime>(
+                        valueListenable: selectedDate,
+                        builder: (context, value, _) {
+                          return _QuickDatePicker(
+                            selectedDate: value,
+                            periodStart: periodStart,
+                            periodEndExclusive: periodEndExclusive,
+                            onSelected: (date) {
+                              final normalized =
+                                  DateTime(date.year, date.month, date.day);
+                              selectedDate.value = normalized;
+                              controller.setDate(normalized);
+                            },
+                          );
                         },
+                      ),
+                      const SizedBox(height: 24),
+                      Text(
+                        'Счёт',
+                        style: Theme.of(context).textTheme.titleMedium,
+                      ),
+                      const SizedBox(height: 8),
+                      accountsAsync.when(
+                        data: (accounts) {
+                          final selectableAccounts =
+                              accounts.where((account) => account.id != null).toList();
+                          if (selectableAccounts.isEmpty) {
+                            return Text(
+                              'Добавьте счёт, чтобы продолжить.',
+                              style: TextStyle(
+                                color: Theme.of(context).colorScheme.error,
+                              ),
+                            );
+                          }
+                          return ValueListenableBuilder<int>(
+                            valueListenable: selectedAccountId,
+                            builder: (context, selectedValue, _) {
+                              final hasMatch = selectableAccounts
+                                  .any((account) => account.id == selectedValue);
+                              final dropdownValue =
+                                  hasMatch ? selectedValue : null;
+                              final showError =
+                                  (dropdownValue == null ||
+                                      selectedValue == _kUnselectedAccountId) &&
+                                      _accountInitialized;
+                              return DropdownButtonFormField<int>(
+                                value: dropdownValue,
+                                decoration: InputDecoration(
+                                  hintText: 'Выберите счёт',
+                                  errorText: showError ? 'Выберите счёт' : null,
+                                ),
+                                items: [
+                                  for (final account in selectableAccounts)
+                                    DropdownMenuItem<int>(
+                                      value: account.id!,
+                                      child: Text(account.name),
+                                    ),
+                                ],
+                                onChanged: (newValue) {
+                                  if (newValue != null) {
+                                    _updateAccountSelection(newValue);
+                                  }
+                                },
+                              );
+                            },
+                          );
+                        },
+                        loading: () => const Center(
+                          child: Padding(
+                            padding: EdgeInsets.symmetric(vertical: 12),
+                            child: CircularProgressIndicator(),
+                          ),
+                        ),
+                        error: (error, _) => Text('Не удалось загрузить счета: $error'),
                       ),
                       const SizedBox(height: 24),
                       Text(
@@ -640,9 +862,16 @@ class _ReviewScreenState extends ConsumerState<ReviewScreen> {
                         ),
                       ),
                       const Spacer(),
-                      FilledButton(
-                        onPressed: entryState.canSave ? saveOperation : null,
-                        child: const Text('Сохранить'),
+                      ValueListenableBuilder<int>(
+                        valueListenable: selectedAccountId,
+                        builder: (context, accountIdValue, _) {
+                          final canSave = entryState.canSave &&
+                              accountIdValue != _kUnselectedAccountId;
+                          return FilledButton(
+                            onPressed: canSave ? saveOperation : null,
+                            child: const Text('Сохранить'),
+                          );
+                        },
                       ),
                     ],
                   ),
@@ -824,14 +1053,278 @@ class _DateChoiceChip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final now = DateTime.now();
-    final today = DateTime(now.year, now.month, now.day);
-    final label = _isSameDay(date, today) ? 'Сегодня' : shortDowDay(date);
+    final label = _formatReviewDate(date);
     return ChoiceChip(
       label: Text(label),
       selected: isSelected,
       onSelected: (_) => onSelected(date),
     );
+  }
+}
+
+class _AmountCalculatorSheet extends StatefulWidget {
+  const _AmountCalculatorSheet({required this.initialMinor});
+
+  final int initialMinor;
+
+  @override
+  State<_AmountCalculatorSheet> createState() => _AmountCalculatorSheetState();
+}
+
+class _AmountCalculatorSheetState extends State<_AmountCalculatorSheet> {
+  late String _expression;
+  double? _previewResult;
+  double? _evaluatedResult;
+
+  @override
+  void initState() {
+    super.initState();
+    final initialAmount = widget.initialMinor / 100;
+    if (initialAmount > 0) {
+      final normalized = _formatExpressionValue(initialAmount);
+      _expression = normalized;
+      _previewResult = initialAmount;
+      _evaluatedResult = initialAmount;
+    } else {
+      _expression = '';
+      _previewResult = null;
+      _evaluatedResult = null;
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final expressionDisplay = _expression.isEmpty
+        ? '0'
+        : _expression.replaceAll('*', '×').replaceAll('/', '÷');
+    final currentAmount = _evaluatedResult ?? _previewResult;
+    final formattedAmount = formatCurrency(currentAmount ?? 0);
+    final canSave = _canSave;
+
+    final mediaQuery = MediaQuery.of(context);
+    final bottomInset = mediaQuery.viewInsets.bottom;
+
+    return SafeArea(
+      top: false,
+      child: Padding(
+        padding: EdgeInsets.only(bottom: bottomInset),
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 24),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Text(
+                'Изменение суммы',
+                style: theme.textTheme.titleMedium,
+              ),
+              const SizedBox(height: 12),
+              Container(
+                padding: const EdgeInsets.all(20),
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(20),
+                  color: theme.colorScheme.surface,
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withOpacity(0.05),
+                      blurRadius: 16,
+                      offset: const Offset(0, 6),
+                    ),
+                  ],
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    Text(
+                      expressionDisplay,
+                      textAlign: TextAlign.center,
+                      style: theme.textTheme.titleLarge,
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      formattedAmount,
+                      textAlign: TextAlign.center,
+                      style: theme.textTheme.headlineMedium?.copyWith(
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    if (_previewResult != null && _evaluatedResult == null)
+                      Padding(
+                        padding: const EdgeInsets.only(top: 8),
+                        child: Text(
+                          '= ${formatCurrency(_previewResult ?? 0)}',
+                          textAlign: TextAlign.center,
+                          style: theme.textTheme.bodyMedium?.copyWith(
+                            color: theme.hintColor,
+                          ),
+                        ),
+                      ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 16),
+              AmountKeypad(
+                onDigitPressed: _appendDigit,
+                onOperatorPressed: _appendOperator,
+                onBackspace: _backspace,
+                onDecimal: _appendDecimal,
+                onAllClear: _clear,
+                onEvaluate: _evaluateExpression,
+              ),
+              const SizedBox(height: 16),
+              FilledButton(
+                onPressed: canSave ? _save : null,
+                child: const Text('Сохранить'),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  bool get _canSave {
+    final value = _evaluatedResult ?? _previewResult;
+    return value != null && value > 0;
+  }
+
+  void _appendDigit(String digit) {
+    final segment = _currentNumberSegment(_expression);
+    if (_expression == '0') {
+      _setExpression(digit);
+      return;
+    }
+    if (segment == '0' && _expression.isNotEmpty) {
+      _setExpression(
+        _expression.substring(0, _expression.length - 1) + digit,
+      );
+      return;
+    }
+    if (segment == '-0' && _expression.length >= 2) {
+      _setExpression(
+        _expression.substring(0, _expression.length - 1) + digit,
+      );
+      return;
+    }
+    _setExpression('$_expression$digit');
+  }
+
+  void _appendOperator(String operator) {
+    if (_expression.isEmpty) {
+      if (operator == '-') {
+        _setExpression('-');
+      }
+      return;
+    }
+    final lastChar = _expression[_expression.length - 1];
+    if (_isOperator(lastChar) || lastChar == '.') {
+      return;
+    }
+    _setExpression('$_expression$operator');
+  }
+
+  void _appendDecimal() {
+    final segment = _currentNumberSegment(_expression);
+    if (segment.contains('.')) {
+      return;
+    }
+    if (segment.isEmpty) {
+      if (_expression.isEmpty) {
+        _setExpression('0.');
+      } else {
+        _setExpression('${_expression}0.');
+      }
+      return;
+    }
+    if (segment == '-') {
+      _setExpression('${_expression}0.');
+      return;
+    }
+    _setExpression('$_expression.');
+  }
+
+  void _backspace() {
+    if (_expression.isEmpty) {
+      return;
+    }
+    final updated = _expression.substring(0, _expression.length - 1);
+    _setExpression(updated);
+  }
+
+  void _clear() {
+    setState(() {
+      _expression = '';
+      _previewResult = null;
+      _evaluatedResult = null;
+    });
+  }
+
+  void _evaluateExpression() {
+    final evaluated = ExpressionEvaluator.tryEvaluate(_expression);
+    if (evaluated == null) {
+      return;
+    }
+    setState(() {
+      final normalized = _formatExpressionValue(evaluated);
+      _expression = normalized;
+      _previewResult = evaluated;
+      _evaluatedResult = evaluated;
+    });
+  }
+
+  void _save() {
+    final value = _evaluatedResult ?? _previewResult;
+    if (value == null || value <= 0) {
+      return;
+    }
+    final minor = (value * 100).round();
+    Navigator.of(context).pop(minor);
+  }
+
+  void _setExpression(String expression) {
+    if (expression.isEmpty) {
+      setState(() {
+        _expression = '';
+        _previewResult = null;
+        _evaluatedResult = null;
+      });
+      return;
+    }
+    final preview = ExpressionEvaluator.tryEvaluate(expression);
+    setState(() {
+      _expression = expression;
+      _previewResult = preview;
+      _evaluatedResult = null;
+    });
+  }
+
+  bool _isOperator(String value) {
+    return value == '+' || value == '-' || value == '*' || value == '/';
+  }
+
+  String _currentNumberSegment(String expression) {
+    if (expression.isEmpty) {
+      return '';
+    }
+    final index = _lastOperatorIndex(expression);
+    if (index == -1) {
+      return expression;
+    }
+    return expression.substring(index + 1);
+  }
+
+  int _lastOperatorIndex(String expression) {
+    for (var i = expression.length - 1; i >= 0; i--) {
+      final char = expression[i];
+      if (_isOperator(char)) {
+        if (char == '-' && i == 0) {
+          continue;
+        }
+        return i;
+      }
+    }
+    return -1;
   }
 }
 
@@ -879,24 +1372,6 @@ NecessityLabel? _findLabelByName(
   return null;
 }
 
-bool _isSameDay(DateTime a, DateTime b) {
-  return a.year == b.year && a.month == b.month && a.day == b.day;
-}
-
-Future<int> _defaultAccountId(WidgetRef ref) async {
-  final accountsRepository = ref.read(accountsRepoProvider);
-  final accounts = await accountsRepository.getAll();
-  if (accounts.isEmpty) {
-    throw StateError('Нет доступных счетов для сохранения операции');
-  }
-  final preferred = accounts.firstWhere(
-    (account) =>
-        account.name.trim().toLowerCase() == 'карта',
-    orElse: () => accounts.first,
-  );
-  return preferred.id ?? accounts.first.id!;
-}
-
 TransactionType _mapTransactionType(CategoryType type) {
   switch (type) {
     case CategoryType.income:
@@ -906,5 +1381,35 @@ TransactionType _mapTransactionType(CategoryType type) {
     case CategoryType.saving:
       return TransactionType.saving;
   }
+}
+
+bool _isSameDay(DateTime a, DateTime b) {
+  return a.year == b.year && a.month == b.month && a.day == b.day;
+}
+
+String _formatReviewDate(DateTime date) {
+  final raw = DateFormat('EE, d MMM', 'ru').format(date);
+  final sanitized = raw.replaceAll('.', '');
+  return _capitalizeFirst(sanitized);
+}
+
+String _capitalizeFirst(String value) {
+  if (value.isEmpty) {
+    return value;
+  }
+  final first = value[0].toUpperCase();
+  return '$first${value.substring(1)}';
+}
+
+String _formatExpressionValue(double value) {
+  if (value == value.roundToDouble()) {
+    return value.toStringAsFixed(0);
+  }
+  var text = value.toStringAsFixed(2);
+  text = text.replaceAll(RegExp(r'0+$'), '');
+  if (text.endsWith('.')) {
+    text = text.substring(0, text.length - 1);
+  }
+  return text;
 }
 
