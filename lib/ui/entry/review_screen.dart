@@ -554,6 +554,7 @@ class _ReviewScreenState extends ConsumerState<ReviewScreen> {
                                             ),
                                             child: const Text('Изменить сумму'),
                                           ),
+                                          ),
                                         ],
                                     ],
                                   );

@@ -157,8 +157,8 @@ class SqlitePayoutsRepository implements PayoutsRepository {
       'payouts',
       where: 'date >= ? AND date < ?',
       whereArgs: [
-        _formatDate(_normalizeDate(start)),
-        _formatDate(_normalizeDate(endExclusive)),
+        _formatDate(normalizeDate(start)),
+        _formatDate(normalizeDate(endExclusive)),
       ],
       orderBy: 'date DESC, id DESC',
       limit: 1,
@@ -176,8 +176,8 @@ class SqlitePayoutsRepository implements PayoutsRepository {
       'payouts',
       where: 'date >= ? AND date < ?',
       whereArgs: [
-        _formatDate(_normalizeDate(start)),
-        _formatDate(_normalizeDate(endExclusive)),
+        _formatDate(normalizeDate(start)),
+        _formatDate(normalizeDate(endExclusive)),
       ],
       orderBy: 'date DESC, id DESC',
     );
