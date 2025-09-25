@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:sqflite/sqflite.dart';
 
 import '../db/app_database.dart';
@@ -16,7 +18,7 @@ abstract class PayoutsRepository {
     required PayoutType type,
     required DateTime date,
     required int amountMinor,
-    required int accountId,
+    int? accountId,
   });
 
   Future<void> delete(int id);
@@ -47,17 +49,16 @@ class SqlitePayoutsRepository implements PayoutsRepository {
     int amountMinor, {
     int? accountId,
   }) async {
-    if (accountId == null) {
-      throw ArgumentError('accountId is required for payouts');
-    }
     final db = await _db;
     final normalizedDate = _normalizeDate(date);
     return db.transaction((txn) async {
+      final resolvedAccountId = await _resolveAccountId(txn, accountId);
+      final adjustedDate = await _clampDateWithDrift(txn, normalizedDate);
       final payout = Payout(
         type: type,
-        date: normalizedDate,
+        date: adjustedDate,
         amountMinor: amountMinor,
-        accountId: accountId,
+        accountId: resolvedAccountId,
       );
       final payoutValues = _payoutValues(payout);
       final payoutId = await txn.insert('payouts', payoutValues);
@@ -65,9 +66,9 @@ class SqlitePayoutsRepository implements PayoutsRepository {
         txn,
         payoutId: payoutId,
         type: type,
-        date: normalizedDate,
+        date: adjustedDate,
         amountMinor: amountMinor,
-        accountId: accountId,
+        accountId: resolvedAccountId,
       );
       return payoutId;
     });
@@ -79,17 +80,19 @@ class SqlitePayoutsRepository implements PayoutsRepository {
     required PayoutType type,
     required DateTime date,
     required int amountMinor,
-    required int accountId,
+    int? accountId,
   }) async {
     final db = await _db;
     final normalizedDate = _normalizeDate(date);
     await db.transaction((txn) async {
+      final resolvedAccountId = await _resolveAccountId(txn, accountId);
+      final adjustedDate = await _clampDateWithDrift(txn, normalizedDate);
       final payout = Payout(
         id: id,
         type: type,
-        date: normalizedDate,
+        date: adjustedDate,
         amountMinor: amountMinor,
-        accountId: accountId,
+        accountId: resolvedAccountId,
       );
       final payoutValues = _payoutValues(payout);
       await txn.update(
@@ -102,9 +105,9 @@ class SqlitePayoutsRepository implements PayoutsRepository {
         txn,
         payoutId: id,
         type: type,
-        date: normalizedDate,
+        date: adjustedDate,
         amountMinor: amountMinor,
-        accountId: accountId,
+        accountId: resolvedAccountId,
       );
     });
   }
@@ -218,7 +221,7 @@ class SqlitePayoutsRepository implements PayoutsRepository {
       'time': null,
       'note': null,
       'is_planned': 0,
-      'included_in_period': 0,
+      'included_in_period': 1,
       'tags': null,
       'payout_id': payoutId,
     };
@@ -268,6 +271,127 @@ class SqlitePayoutsRepository implements PayoutsRepository {
       case PayoutType.salary:
         return 'Зарплата';
     }
+  }
+
+  Future<int> _resolveAccountId(DatabaseExecutor executor, int? accountId) async {
+    if (accountId != null) {
+      return accountId;
+    }
+    final defaultAccount = await executor.query(
+      'accounts',
+      columns: ['id'],
+      where: 'name = ?',
+      whereArgs: ['Карта'],
+      limit: 1,
+    );
+    if (defaultAccount.isNotEmpty) {
+      return defaultAccount.first['id'] as int;
+    }
+    final anyAccount = await executor.query(
+      'accounts',
+      columns: ['id'],
+      limit: 1,
+    );
+    if (anyAccount.isNotEmpty) {
+      return anyAccount.first['id'] as int;
+    }
+    throw StateError('Не найден счёт для привязки выплаты');
+  }
+
+  Future<DateTime> _clampDateWithDrift(
+    DatabaseExecutor executor,
+    DateTime date,
+  ) async {
+    final normalized = _normalizeDate(date);
+    final (anchor1Raw, anchor2Raw) = await _loadAnchorDays(executor);
+    final anchor1 = math.min(anchor1Raw, anchor2Raw);
+    final anchor2 = math.max(anchor1Raw, anchor2Raw);
+
+    final (_, periodEnd) = _periodBounds(normalized, anchor1, anchor2);
+    final lastInPeriod = periodEnd.subtract(const Duration(days: 1));
+
+    if (!normalized.isAfter(lastInPeriod)) {
+      return normalized;
+    }
+
+    final allowedMax = lastInPeriod.add(const Duration(days: 5));
+    if (normalized.isAfter(allowedMax)) {
+      return periodEnd;
+    }
+
+    return lastInPeriod;
+  }
+
+  Future<(int, int)> _loadAnchorDays(DatabaseExecutor executor) async {
+    final rows = await executor.query(
+      'settings',
+      columns: ['key', 'value'],
+      where: 'key IN (?, ?)',
+      whereArgs: ['anchor_day_1', 'anchor_day_2'],
+    );
+    int? day1;
+    int? day2;
+    for (final row in rows) {
+      final key = row['key'] as String?;
+      final value = int.tryParse((row['value'] as String?) ?? '');
+      if (key == 'anchor_day_1') {
+        day1 = value;
+      } else if (key == 'anchor_day_2') {
+        day2 = value;
+      }
+    }
+    day1 ??= 1;
+    day2 ??= 15;
+    return (day1, day2);
+  }
+
+  (DateTime start, DateTime endExclusive) _periodBounds(
+    DateTime date,
+    int anchor1,
+    int anchor2,
+  ) {
+    final previous = _previousAnchorDate(date, anchor1, anchor2);
+    var next = _nextAnchorDate(previous, anchor1, anchor2);
+    if (!next.isAfter(previous)) {
+      next = _nextAnchorDate(next.add(const Duration(days: 1)), anchor1, anchor2);
+    }
+    return (previous, next);
+  }
+
+  DateTime _nextAnchorDate(DateTime from, int anchor1, int anchor2) {
+    final normalized = _normalizeDate(from);
+    final smaller = math.min(anchor1, anchor2);
+    final larger = math.max(anchor1, anchor2);
+
+    if (normalized.day < larger) {
+      return _anchorDate(normalized.year, normalized.month, larger);
+    }
+
+    final nextMonth = DateTime(normalized.year, normalized.month + 1, 1);
+    return _anchorDate(nextMonth.year, nextMonth.month, smaller);
+  }
+
+  DateTime _previousAnchorDate(DateTime from, int anchor1, int anchor2) {
+    final normalized = _normalizeDate(from);
+    final smaller = math.min(anchor1, anchor2);
+    final larger = math.max(anchor1, anchor2);
+
+    if (normalized.day <= smaller) {
+      final previousMonth = DateTime(normalized.year, normalized.month - 1, 1);
+      return _anchorDate(previousMonth.year, previousMonth.month, larger);
+    }
+
+    if (normalized.day <= larger) {
+      return _anchorDate(normalized.year, normalized.month, smaller);
+    }
+
+    return _anchorDate(normalized.year, normalized.month, larger);
+  }
+
+  DateTime _anchorDate(int year, int month, int day) {
+    final lastDay = DateTime(year, month + 1, 0).day;
+    final safeDay = day.clamp(1, lastDay);
+    return DateTime(year, month, safeDay);
   }
 
   DateTime _normalizeDate(DateTime date) {

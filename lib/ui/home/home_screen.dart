@@ -612,12 +612,9 @@ class _HomeAccountTile extends ConsumerWidget {
       ),
       title: Text(account.name),
       subtitle: computedAsync.when(
-        data: (computed) {
-          return Text(
-            'Текущий: ${formatCurrencyMinor(account.startBalanceMinor)}\n'
-            'Рассчитанный: ${formatCurrencyMinor(computed)}',
-          );
-        },
+        data: (computed) => Text(
+          'Баланс: ${formatCurrencyMinor(computed)}',
+        ),
         loading: () => const Text('Загрузка баланса…'),
         error: (error, _) => Text('Ошибка расчёта: $error'),
       ),
