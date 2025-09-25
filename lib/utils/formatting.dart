@@ -1,24 +1,36 @@
 import 'package:intl/intl.dart';
 
-final NumberFormat currencyFormat = NumberFormat.currency(
-  locale: 'ru_RU',
-  symbol: '₽',
-  decimalDigits: 2,
-);
+final NumberFormat _rublesNumberFormat = NumberFormat.decimalPattern('ru_RU');
 
-final NumberFormat currencyIntegerFormat = NumberFormat.decimalPattern('ru');
+String _formatRubles(int rubles) {
+  return '${_rublesNumberFormat.format(rubles)}\u00A0₽';
+}
+
+String _formatRublesPlain(int rubles) {
+  return _rublesNumberFormat.format(rubles);
+}
+
+int _roundMinorToRubles(int value) {
+  return (value / 100).round();
+}
 
 String formatCurrency(double value) {
-  return currencyFormat.format(value);
+  return _formatRubles(value.round());
 }
 
 String formatCurrencyMinor(int value) {
-  return formatCurrency(value / 100);
+  final rubles = _roundMinorToRubles(value);
+  return _formatRubles(rubles);
 }
 
 String formatCurrencyMinorToRubles(int value) {
   final rubles = value ~/ 100;
-  return '${currencyIntegerFormat.format(rubles)}\u00A0₽';
+  return _formatRubles(rubles);
+}
+
+String formatCurrencyMinorPlain(int value) {
+  final rubles = value ~/ 100;
+  return _formatRublesPlain(rubles);
 }
 
 String formatCurrencyMinorNullable(int? value, {String placeholder = '—'}) {

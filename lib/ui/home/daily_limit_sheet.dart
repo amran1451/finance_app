@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../state/app_providers.dart';
 import '../../state/budget_providers.dart';
 import '../../state/db_refresh.dart';
+import '../../utils/formatting.dart';
 
 Future<bool> showEditDailyLimitSheet(BuildContext context, WidgetRef ref) async {
   final currentValue = await ref.read(dailyLimitProvider.future);
@@ -47,7 +48,7 @@ class _DailyLimitSheetState extends ConsumerState<_DailyLimitSheet> {
     super.initState();
     final value = widget.initialMinorValue;
     _controller = TextEditingController(
-      text: value != null ? (value / 100).toStringAsFixed(2) : '',
+      text: value != null ? formatCurrencyMinorPlain(value) : '',
     );
   }
 
@@ -66,12 +67,16 @@ class _DailyLimitSheetState extends ConsumerState<_DailyLimitSheet> {
       _isSaving = true;
     });
 
-    final raw = _controller.text.trim().replaceAll(',', '.');
+    final raw = _controller.text.trim();
+    final normalized = raw
+        .replaceAll(RegExp(r'[\s\u00A0]'), '')
+        .replaceAll(',', '.')
+        .replaceAll('₽', '');
     int? minorValue;
-    if (raw.isEmpty) {
+    if (normalized.isEmpty) {
       minorValue = null;
     } else {
-      final parsed = double.tryParse(raw);
+      final parsed = double.tryParse(normalized);
       if (parsed == null) {
         setState(() {
           _errorText = 'Введите число';
@@ -86,34 +91,26 @@ class _DailyLimitSheetState extends ConsumerState<_DailyLimitSheet> {
     }
 
     if (minorValue != null) {
-      final payout = await ref.read(currentPayoutProvider.future);
+      final maxDaily = await _computeMaxDailyMinor();
       if (!mounted) {
         return;
       }
-      if (payout != null) {
-        final period = await ref.read(currentPeriodProvider.future);
-        if (!mounted) {
-          return;
-        }
-        final today = DateTime.now();
-        final todayStart = DateTime(today.year, today.month, today.day);
-        var remainingDays = period.end.difference(todayStart).inDays;
-        if (remainingDays <= 0) {
-          remainingDays = 1;
-        } else if (remainingDays > period.days) {
-          remainingDays = period.days;
-        }
-        if (remainingDays <= 0) {
-          remainingDays = 1;
-        }
-        final maxDaily = payout.amountMinor ~/ remainingDays;
-        if (minorValue > maxDaily) {
-          setState(() {
-            _errorText = 'Лимит не может превышать $maxDaily';
-            _isSaving = false;
-          });
-          return;
-        }
+      if (maxDaily != null && minorValue > maxDaily) {
+        final messenger = ScaffoldMessenger.of(context);
+        final replacementText = formatCurrencyMinorPlain(maxDaily);
+        _controller.value = TextEditingValue(
+          text: replacementText,
+          selection: TextSelection.collapsed(offset: replacementText.length),
+        );
+        messenger
+          ..clearSnackBars()
+          ..showSnackBar(
+            SnackBar(
+              content:
+                  Text('Максимум для этого периода — ${formatCurrencyMinorToRubles(maxDaily)}'),
+            ),
+          );
+        minorValue = maxDaily;
       }
     }
 
@@ -137,8 +134,29 @@ class _DailyLimitSheetState extends ConsumerState<_DailyLimitSheet> {
     }
   }
 
+  Future<int?> _computeMaxDailyMinor() async {
+    final payout = await ref.read(currentPayoutProvider.future);
+    if (payout == null) {
+      return null;
+    }
+
+    final period = await ref.read(currentPeriodProvider.future);
+    final days = period.days;
+    if (days <= 0) {
+      return null;
+    }
+
+    return payout.amountMinor ~/ days;
+  }
+
   @override
   Widget build(BuildContext context) {
+    final payout = ref.watch(currentPayoutProvider).asData?.value;
+    final period = ref.watch(currentPeriodProvider).asData?.value;
+    final maxDaily = payout != null && period != null && period.days > 0
+        ? payout.amountMinor ~/ period.days
+        : null;
+
     return Column(
       mainAxisSize: MainAxisSize.min,
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -150,12 +168,15 @@ class _DailyLimitSheetState extends ConsumerState<_DailyLimitSheet> {
         const SizedBox(height: 12),
         TextField(
           controller: _controller,
-          keyboardType: const TextInputType.numberWithOptions(decimal: true),
+          keyboardType: const TextInputType.numberWithOptions(decimal: false),
           decoration: InputDecoration(
             labelText: 'Сумма',
             prefixText: '₽ ',
             hintText: 'Например, 1500',
             errorText: _errorText,
+            helperText: maxDaily != null
+                ? 'Максимум на период: ${formatCurrencyMinorToRubles(maxDaily)}'
+                : null,
           ),
           onChanged: (_) {
             if (_errorText != null) {
