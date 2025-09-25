@@ -341,25 +341,18 @@ class _PayoutEditSheetState extends ConsumerState<_PayoutEditSheet> {
     try {
       final payoutsRepo = ref.read(payoutsRepoProvider);
       final normalizedDate = DateTime(_date.year, _date.month, _date.day);
-      final dateToSave = _clampToPeriod(normalizedDate);
       final initial = widget.initial;
       final type = _resolveType();
-      if (initial?.id != null) {
-        await payoutsRepo.update(
-          id: initial!.id!,
-          type: type,
-          date: dateToSave,
-          amountMinor: amountMinor,
-          accountId: accountId,
-        );
-      } else {
-        await payoutsRepo.add(
-          type,
-          dateToSave,
-          amountMinor,
-          accountId: accountId,
-        );
-      }
+      final selected = ref.read(selectedPeriodRefProvider);
+      final result = await payoutsRepo.upsertWithClampToSelectedPeriod(
+        existing: initial,
+        selectedPeriod: selected,
+        pickedDate: normalizedDate,
+        type: type,
+        amountMinor: amountMinor,
+        accountId: accountId,
+      );
+      ref.read(selectedPeriodRefProvider.notifier).state = result.period;
       bumpDbTick(ref);
       if (!mounted) {
         return;
