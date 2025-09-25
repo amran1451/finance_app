@@ -32,7 +32,7 @@ class HomeScreen extends ConsumerWidget {
     final transactionsAsync = ref.watch(halfPeriodTransactionsProvider);
     final (periodStart, periodEndExclusive) = ref.watch(periodBoundsProvider);
     final label = ref.watch(periodLabelProvider);
-    final daysLeft = ref.watch(daysToPeriodEndProvider);
+    final daysLeft = ref.watch(daysFromPayoutToPeriodEndProvider);
     final payoutAsync = ref.watch(payoutForSelectedPeriodProvider);
     final suggestedType = ref.watch(payoutSuggestedTypeProvider);
     final generalPayoutLabel =
@@ -126,8 +126,43 @@ class HomeScreen extends ConsumerWidget {
                     Expanded(
                       child: PeriodSelector(dense: true, label: label),
                     ),
-                    const SizedBox(width: 12),
-                    _DaysLeftBadge(days: daysLeft),
+                    AnimatedSwitcher(
+                      duration: const Duration(milliseconds: 180),
+                      switchInCurve: Curves.easeOut,
+                      switchOutCurve: Curves.easeIn,
+                      layoutBuilder: (currentChild, previousChildren) {
+                        return Stack(
+                          alignment: Alignment.centerRight,
+                          children: [
+                            ...previousChildren,
+                            if (currentChild != null) currentChild,
+                          ],
+                        );
+                      },
+                      transitionBuilder: (child, animation) {
+                        final slideAnimation = Tween<Offset>(
+                          begin: const Offset(0.12, 0),
+                          end: Offset.zero,
+                        ).animate(animation);
+                        return FadeTransition(
+                          opacity: animation,
+                          child: SlideTransition(
+                            position: slideAnimation,
+                            child: child,
+                          ),
+                        );
+                      },
+                      child: daysLeft == null
+                          ? const SizedBox.shrink()
+                          : Row(
+                              key: ValueKey(daysLeft),
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                const SizedBox(width: 12),
+                                _DaysLeftBadge(days: daysLeft),
+                              ],
+                            ),
+                    ),
                   ],
                 ),
               ),
@@ -375,7 +410,7 @@ class _LimitCards extends StatelessWidget {
   Widget build(BuildContext context) {
     String buildLabel(AsyncValue<int> value) {
       return value.when(
-        data: (v) => formatCurrencyMinor(v),
+        data: (v) => formatCurrencyMinorToRubles(v),
         loading: () => '…',
         error: (_, __) => '—',
       );
@@ -405,14 +440,14 @@ class _LimitCards extends StatelessWidget {
 }
 
 class _DaysLeftBadge extends StatelessWidget {
-  final int? days;
+  final int days;
 
-  const _DaysLeftBadge({required this.days});
+  const _DaysLeftBadge({super.key, required this.days});
 
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
-    final txt = days == null ? '—' : ruDaysShort(days!);
+    final txt = ruDaysShort(days);
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
       decoration: BoxDecoration(
@@ -424,7 +459,38 @@ class _DaysLeftBadge extends StatelessWidget {
         children: [
           const Icon(Icons.event_outlined, size: 16),
           const SizedBox(width: 6),
-          Text(txt, style: Theme.of(context).textTheme.labelLarge),
+          AnimatedSwitcher(
+            duration: const Duration(milliseconds: 180),
+            switchInCurve: Curves.easeOut,
+            switchOutCurve: Curves.easeIn,
+            layoutBuilder: (currentChild, previousChildren) {
+              return Stack(
+                alignment: Alignment.centerLeft,
+                children: [
+                  ...previousChildren,
+                  if (currentChild != null) currentChild,
+                ],
+              );
+            },
+            transitionBuilder: (child, animation) {
+              final slideAnimation = Tween<Offset>(
+                begin: const Offset(0.12, 0),
+                end: Offset.zero,
+              ).animate(animation);
+              return FadeTransition(
+                opacity: animation,
+                child: SlideTransition(
+                  position: slideAnimation,
+                  child: child,
+                ),
+              );
+            },
+            child: Text(
+              txt,
+              key: ValueKey(txt),
+              style: Theme.of(context).textTheme.labelLarge,
+            ),
+          ),
         ],
       ),
     );

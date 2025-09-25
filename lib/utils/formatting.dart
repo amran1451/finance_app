@@ -6,12 +6,19 @@ final NumberFormat currencyFormat = NumberFormat.currency(
   decimalDigits: 2,
 );
 
+final NumberFormat currencyIntegerFormat = NumberFormat.decimalPattern('ru');
+
 String formatCurrency(double value) {
   return currencyFormat.format(value);
 }
 
 String formatCurrencyMinor(int value) {
   return formatCurrency(value / 100);
+}
+
+String formatCurrencyMinorToRubles(int value) {
+  final rubles = value ~/ 100;
+  return '${currencyIntegerFormat.format(rubles)}\u00A0₽';
 }
 
 String formatCurrencyMinorNullable(int? value, {String placeholder = '—'}) {

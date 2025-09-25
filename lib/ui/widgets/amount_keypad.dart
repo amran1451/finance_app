@@ -21,72 +21,72 @@ class AmountKeypad extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final buttonStyle = ElevatedButton.styleFrom(
-      minimumSize: const Size(72, 64),
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-      textStyle: theme.textTheme.titleLarge,
-    );
 
-    final secondaryStyle = buttonStyle.copyWith(
-      backgroundColor: MaterialStatePropertyAll(
-        theme.colorScheme.surfaceVariant,
-      ),
-      foregroundColor: MaterialStatePropertyAll(
-        theme.colorScheme.onSurfaceVariant,
-      ),
-    );
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final mediaQuery = MediaQuery.of(context);
+        final clampedTextScale =
+            mediaQuery.textScaleFactor.clamp(0.9, 1.1).toDouble();
+        final mediaQueryData = mediaQuery.copyWith(
+          textScaleFactor: clampedTextScale,
+        );
 
-    final operatorStyle = buttonStyle.copyWith(
-      backgroundColor: MaterialStatePropertyAll(
-        theme.colorScheme.secondaryContainer,
-      ),
-      foregroundColor: MaterialStatePropertyAll(
-        theme.colorScheme.onSecondaryContainer,
-      ),
-    );
+        const baseWidth = 400.0;
+        final maxWidth = constraints.maxWidth.isFinite && constraints.maxWidth > 0
+            ? constraints.maxWidth
+            : baseWidth;
+        final normalized = maxWidth / baseWidth;
+        final scale = normalized.clamp(0.88, 0.92);
 
-    final evaluateStyle = buttonStyle.copyWith(
-      backgroundColor: MaterialStatePropertyAll(theme.colorScheme.primary),
-      foregroundColor: MaterialStatePropertyAll(theme.colorScheme.onPrimary),
-    );
+        final buttonStyle = ElevatedButton.styleFrom(
+          minimumSize: const Size(64, 56),
+          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 12),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          textStyle: theme.textTheme.titleMedium,
+        );
 
-    Widget buildButton(
-      Widget child,
-      VoidCallback onPressed, {
-      int flex = 1,
-      ButtonStyle? style,
-    }) {
-      return Expanded(
-        flex: flex,
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 4),
-          child: ElevatedButton(
-            onPressed: onPressed,
-            style: style ?? buttonStyle,
-            child: child,
+        final secondaryStyle = buttonStyle.copyWith(
+          backgroundColor: MaterialStatePropertyAll(
+            theme.colorScheme.surfaceVariant,
           ),
-        ),
-      );
-    }
+          foregroundColor: MaterialStatePropertyAll(
+            theme.colorScheme.onSurfaceVariant,
+          ),
+        );
 
-    Widget buildRow(List<Widget> children) {
-      return Padding(
-        padding: const EdgeInsets.symmetric(vertical: 4),
-        child: Row(
-          children: [
-            ...children,
-          ],
-        ),
-      );
-    }
+        final operatorStyle = buttonStyle.copyWith(
+          backgroundColor: MaterialStatePropertyAll(
+            theme.colorScheme.secondaryContainer,
+          ),
+          foregroundColor: MaterialStatePropertyAll(
+            theme.colorScheme.onSecondaryContainer,
+          ),
+        );
 
-    Widget buildSpacer({int flex = 1}) {
-      return Expanded(flex: flex, child: const SizedBox.shrink());
-    }
+        final evaluateStyle = buttonStyle.copyWith(
+          backgroundColor: MaterialStatePropertyAll(theme.colorScheme.primary),
+          foregroundColor: MaterialStatePropertyAll(theme.colorScheme.onPrimary),
+        );
 
-    return Column(
-      children: [
-        buildRow([
+        Widget buildButton(Widget child, VoidCallback onPressed,
+            {ButtonStyle? style}) {
+          return Padding(
+            padding: const EdgeInsets.all(4),
+            child: SizedBox.expand(
+              child: ElevatedButton(
+                onPressed: onPressed,
+                style: style ?? buttonStyle,
+                child: child,
+              ),
+            ),
+          );
+        }
+
+        Widget buildSpacer() {
+          return const SizedBox.shrink();
+        }
+
+        final children = <Widget>[
           buildButton(
             const Text('AC'),
             onAllClear,
@@ -107,8 +107,6 @@ class AmountKeypad extends StatelessWidget {
             () => onOperatorPressed('*'),
             style: operatorStyle,
           ),
-        ]),
-        buildRow([
           buildButton(const Text('7'), () => onDigitPressed('7')),
           buildButton(const Text('8'), () => onDigitPressed('8')),
           buildButton(const Text('9'), () => onDigitPressed('9')),
@@ -117,8 +115,6 @@ class AmountKeypad extends StatelessWidget {
             () => onOperatorPressed('-'),
             style: operatorStyle,
           ),
-        ]),
-        buildRow([
           buildButton(const Text('4'), () => onDigitPressed('4')),
           buildButton(const Text('5'), () => onDigitPressed('5')),
           buildButton(const Text('6'), () => onDigitPressed('6')),
@@ -127,8 +123,6 @@ class AmountKeypad extends StatelessWidget {
             () => onOperatorPressed('+'),
             style: operatorStyle,
           ),
-        ]),
-        buildRow([
           buildButton(const Text('1'), () => onDigitPressed('1')),
           buildButton(const Text('2'), () => onDigitPressed('2')),
           buildButton(const Text('3'), () => onDigitPressed('3')),
@@ -137,17 +131,35 @@ class AmountKeypad extends StatelessWidget {
             onEvaluate,
             style: evaluateStyle,
           ),
-        ]),
-        buildRow([
-          buildButton(
-            const Text('0'),
-            () => onDigitPressed('0'),
-            flex: 2,
-          ),
+          buildButton(const Text('0'), () => onDigitPressed('0')),
           buildButton(const Text('.'), onDecimal),
           buildSpacer(),
-        ]),
-      ],
+          buildSpacer(),
+        ];
+
+        final grid = MediaQuery(
+          data: mediaQueryData,
+          child: GridView.count(
+            crossAxisCount: 4,
+            shrinkWrap: true,
+            physics: const NeverScrollableScrollPhysics(),
+            crossAxisSpacing: 8,
+            mainAxisSpacing: 8,
+            childAspectRatio: 1.15,
+            padding: const EdgeInsets.symmetric(horizontal: 4),
+            children: children,
+          ),
+        );
+
+        return Align(
+          alignment: Alignment.topCenter,
+          child: Transform.scale(
+            scale: scale,
+            alignment: Alignment.topCenter,
+            child: grid,
+          ),
+        );
+      },
     );
   }
 }

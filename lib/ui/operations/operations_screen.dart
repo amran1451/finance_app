@@ -43,6 +43,12 @@ class OperationsScreen extends ConsumerWidget {
     final boundsLabel =
         '${formatDayMonth(periodStart)} – ${formatDayMonth(endInclusive)}';
 
+    final mediaQuery = MediaQuery.of(context);
+    final clampedTextScale =
+        mediaQuery.textScaleFactor.clamp(0.9, 1.1).toDouble();
+    final filterTextStyle =
+        Theme.of(context).textTheme.labelLarge?.copyWith(fontSize: 14);
+
     return Scaffold(
       appBar: AppBar(
         title: const Text('Операции периода'),
@@ -97,33 +103,43 @@ class OperationsScreen extends ConsumerWidget {
               ),
               Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                child: SegmentedButton<OpTypeFilter>(
-                  segments: const [
-                    ButtonSegment(
-                      value: OpTypeFilter.all,
-                      label: Text('Все'),
+                child: MediaQuery(
+                  data: mediaQuery.copyWith(textScaleFactor: clampedTextScale),
+                  child: SegmentedButton<OpTypeFilter>(
+                    segments: const [
+                      ButtonSegment(
+                        value: OpTypeFilter.all,
+                        label: _SegmentLabel('Все'),
+                      ),
+                      ButtonSegment(
+                        value: OpTypeFilter.expense,
+                        label: _SegmentLabel('Расходы'),
+                      ),
+                      ButtonSegment(
+                        value: OpTypeFilter.income,
+                        label: _SegmentLabel('Доходы'),
+                      ),
+                      ButtonSegment(
+                        value: OpTypeFilter.saving,
+                        label: _SegmentLabel('Сбережения'),
+                      ),
+                    ],
+                    selected: {filter},
+                    showSelectedIcon: false,
+                    style: ButtonStyle(
+                      visualDensity: VisualDensity.compact,
+                      padding: const MaterialStatePropertyAll(
+                        EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                      ),
+                      textStyle: MaterialStatePropertyAll(filterTextStyle),
                     ),
-                    ButtonSegment(
-                      value: OpTypeFilter.expense,
-                      label: Text('Расходы'),
-                    ),
-                    ButtonSegment(
-                      value: OpTypeFilter.income,
-                      label: Text('Доходы'),
-                    ),
-                    ButtonSegment(
-                      value: OpTypeFilter.saving,
-                      label: Text('Сбережения'),
-                    ),
-                  ],
-                  selected: {filter},
-                  showSelectedIcon: false,
-                  onSelectionChanged: (selection) {
-                    if (selection.isEmpty) {
-                      return;
-                    }
-                    ref.read(opTypeFilterProvider.notifier).state = selection.first;
-                  },
+                    onSelectionChanged: (selection) {
+                      if (selection.isEmpty) {
+                        return;
+                      }
+                      ref.read(opTypeFilterProvider.notifier).state = selection.first;
+                    },
+                  ),
                 ),
               ),
               Expanded(
@@ -164,6 +180,21 @@ class OperationsScreen extends ConsumerWidget {
           );
         },
       ),
+    );
+  }
+}
+
+class _SegmentLabel extends StatelessWidget {
+  const _SegmentLabel(this.text);
+
+  final String text;
+
+  @override
+  Widget build(BuildContext context) {
+    return FittedBox(
+      fit: BoxFit.scaleDown,
+      alignment: Alignment.center,
+      child: Text(text, maxLines: 1),
     );
   }
 }
