@@ -352,10 +352,21 @@ class _PayoutEditSheetState extends ConsumerState<_PayoutEditSheet> {
         amountMinor: amountMinor,
         accountId: accountId,
       );
+      final limitManager = ref.read(budgetLimitManagerProvider);
+      final adjustedLimit = await limitManager.adjustDailyLimitIfNeeded(
+        payout: result.payout,
+        period: result.period,
+      );
       ref.read(selectedPeriodRefProvider.notifier).state = result.period;
       bumpDbTick(ref);
       if (!mounted) {
         return;
+      }
+      if (adjustedLimit != null) {
+        final formatted = formatCurrencyMinorToRubles(adjustedLimit);
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Лимит скорректирован до $formatted')),
+        );
       }
       Navigator.of(context).pop();
     } catch (error) {
