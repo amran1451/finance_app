@@ -206,7 +206,7 @@ final daysToPeriodEndProvider = Provider<int?>((ref) {
 
 final daysFromPayoutToPeriodEndProvider = Provider<int?>((ref) {
   final payoutAsync = ref.watch(payoutForSelectedPeriodProvider);
-  final (_, endExclusive) = ref.watch(periodBoundsProvider);
+  final (anchor1, anchor2) = ref.watch(anchorDaysProvider);
 
   return payoutAsync.maybeWhen(
     data: (payout) {
@@ -215,8 +215,8 @@ final daysFromPayoutToPeriodEndProvider = Provider<int?>((ref) {
       }
 
       final payoutDate = _normalizeDate(payout.date);
-      final endDate = _normalizeDate(endExclusive);
-      final diff = endDate.difference(payoutDate).inDays;
+      final nextAnchor = _nextAnchorDate(payoutDate, anchor1, anchor2);
+      final diff = nextAnchor.difference(payoutDate).inDays;
       return diff < 0 ? 0 : diff;
     },
     orElse: () => null,
