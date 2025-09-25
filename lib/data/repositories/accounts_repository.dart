@@ -102,7 +102,7 @@ class SqliteAccountsRepository implements AccountsRepository {
         COALESCE(SUM(CASE WHEN type = 'expense' THEN amount_minor END), 0) AS expense_sum,
         COALESCE(SUM(CASE WHEN type = 'saving' THEN amount_minor END), 0) AS saving_sum
       FROM transactions
-      WHERE account_id = ? AND is_planned = 0 AND included_in_period = 1
+      WHERE account_id = ? AND is_planned = 0
       ''',
       [accountId],
     );

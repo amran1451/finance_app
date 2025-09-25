@@ -289,6 +289,7 @@ class SqliteTransactionsRepository implements TransactionsRepository {
     }
     final db = await _db;
     final values = Map<String, Object?>.from(record.toMap());
+    values.remove('id');
     if (record.type == TransactionType.income) {
       values['necessity_id'] = null;
       values['necessity_label'] = null;

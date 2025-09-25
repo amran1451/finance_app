@@ -99,7 +99,11 @@ final appRouterProvider = Provider<GoRouter>((ref) {
         name: RouteNames.plannedLibrary,
         builder: (context, state) {
           final select = state.uri.queryParameters['select'] == '1';
-          return PlannedLibraryScreen(selectForAssignment: select);
+          final type = state.uri.queryParameters['type'];
+          return PlannedLibraryScreen(
+            selectForAssignment: select,
+            assignmentType: type,
+          );
         },
       ),
       GoRoute(
