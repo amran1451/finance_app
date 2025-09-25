@@ -1,6 +1,7 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../data/models/category.dart';
+import '../data/models/transaction_record.dart';
 
 const bool kReturnToOperationsAfterSave = true;
 
@@ -46,6 +47,11 @@ class EntryFlowState {
     this.necessityId,
     this.necessityLabel,
     this.necessityResolved = false,
+    this.accountId,
+    this.editingRecord,
+    this.editingCounterpart,
+    this.reasonId,
+    this.reasonLabel,
   }) : selectedDate = selectedDate ?? _today;
 
   final String expression;
@@ -60,6 +66,11 @@ class EntryFlowState {
   final int? necessityId;
   final String? necessityLabel;
   final bool necessityResolved;
+  final int? accountId;
+  final TransactionRecord? editingRecord;
+  final TransactionRecord? editingCounterpart;
+  final int? reasonId;
+  final String? reasonLabel;
 
   static DateTime get _today {
     final now = DateTime.now();
@@ -85,6 +96,11 @@ class EntryFlowState {
     Object? necessityId = _entryFlowUnset,
     Object? necessityLabel = _entryFlowUnset,
     Object? necessityResolved = _entryFlowUnset,
+    Object? accountId = _entryFlowUnset,
+    Object? editingRecord = _entryFlowUnset,
+    Object? editingCounterpart = _entryFlowUnset,
+    Object? reasonId = _entryFlowUnset,
+    Object? reasonLabel = _entryFlowUnset,
   }) {
     return EntryFlowState(
       expression:
@@ -110,6 +126,19 @@ class EntryFlowState {
       necessityResolved: necessityResolved == _entryFlowUnset
           ? this.necessityResolved
           : necessityResolved as bool,
+      accountId:
+          accountId == _entryFlowUnset ? this.accountId : accountId as int?,
+      editingRecord: editingRecord == _entryFlowUnset
+          ? this.editingRecord
+          : editingRecord as TransactionRecord?,
+      editingCounterpart: editingCounterpart == _entryFlowUnset
+          ? this.editingCounterpart
+          : editingCounterpart as TransactionRecord?,
+      reasonId:
+          reasonId == _entryFlowUnset ? this.reasonId : reasonId as int?,
+      reasonLabel: reasonLabel == _entryFlowUnset
+          ? this.reasonLabel
+          : reasonLabel as String?,
     );
   }
 
@@ -292,6 +321,13 @@ class EntryFlowController extends StateNotifier<EntryFlowState> {
     state = state.copyWith(attachToPlanned: value);
   }
 
+  void setReason({int? id, String? label}) {
+    state = state.copyWith(
+      reasonId: id,
+      reasonLabel: label,
+    );
+  }
+
   void setNecessity({
     int? id,
     String? label,
@@ -304,6 +340,35 @@ class EntryFlowController extends StateNotifier<EntryFlowState> {
       necessityCriticality:
           criticality ?? state.necessityCriticality,
       necessityResolved: resolved ?? true,
+    );
+  }
+
+  void loadFromTransaction({
+    required TransactionRecord record,
+    required Category category,
+    TransactionRecord? savingCounterpart,
+  }) {
+    final amount = record.amountMinor / 100;
+    final normalizedExpression = _formatExpressionValue(amount);
+    state = EntryFlowState(
+      expression: normalizedExpression,
+      result: amount,
+      previewResult: amount,
+      type: category.type,
+      category: category,
+      selectedDate: DateTime(record.date.year, record.date.month, record.date.day),
+      note: record.note ?? '',
+      attachToPlanned: record.isPlanned,
+      necessityCriticality: record.criticality,
+      necessityId: record.necessityId,
+      necessityLabel: record.necessityLabel,
+      necessityResolved:
+          record.necessityId != null || record.necessityLabel != null,
+      accountId: record.accountId,
+      editingRecord: record,
+      editingCounterpart: savingCounterpart,
+      reasonId: record.reasonId,
+      reasonLabel: record.reasonLabel,
     );
   }
 

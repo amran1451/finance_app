@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -29,16 +31,18 @@ class ReviewScreen extends ConsumerStatefulWidget {
 class _ReviewScreenState extends ConsumerState<ReviewScreen> {
   bool _asPlanned = false;
   bool _forcePlanned = false;
-  int? _reasonId;
   DateTime? _selectedDate;
+  bool _reasonValidationError = false;
 
   @override
   void initState() {
     super.initState();
     final entryState = ref.read(entryFlowControllerProvider);
     _forcePlanned = _shouldForcePlanned(entryState);
-    _asPlanned = _forcePlanned && entryState.type == CategoryType.expense;
+    _asPlanned = entryState.attachToPlanned ||
+        (_forcePlanned && entryState.type == CategoryType.expense);
     _selectedDate = entryState.selectedDate;
+    _reasonValidationError = false;
   }
 
   bool _shouldForcePlanned(EntryFlowState state) {
@@ -52,6 +56,7 @@ class _ReviewScreenState extends ConsumerState<ReviewScreen> {
   Widget build(BuildContext context) {
     final entryState = ref.watch(entryFlowControllerProvider);
     final controller = ref.read(entryFlowControllerProvider.notifier);
+    final (periodStart, periodEndExclusive) = ref.watch(periodBoundsProvider);
     final entrySelectedDate = entryState.selectedDate;
     if (_selectedDate == null || !_isSameDay(_selectedDate!, entrySelectedDate)) {
       _selectedDate = entrySelectedDate;
@@ -84,9 +89,17 @@ class _ReviewScreenState extends ConsumerState<ReviewScreen> {
     final reasonLabels = reasonLabelsAsync.value ?? <ReasonLabel>[];
 
     if (showReasonSection &&
-        _reasonId != null &&
-        reasonLabels.where((label) => label.id == _reasonId).isEmpty) {
-      _reasonId = null;
+        entryState.reasonId != null &&
+        reasonLabels.where((label) => label.id == entryState.reasonId).isEmpty) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) {
+          return;
+        }
+        controller.setReason(
+          id: null,
+          label: entryState.reasonLabel,
+        );
+      });
     }
 
     if (showNecessitySection &&
@@ -136,11 +149,17 @@ class _ReviewScreenState extends ConsumerState<ReviewScreen> {
       }
     }
 
-    ReasonLabel? selectedReasonLabel;
-    if (showReasonSection && _reasonId != null) {
+    if (showReasonSection && entryState.reasonId != null) {
       for (final label in reasonLabels) {
-        if (label.id == _reasonId) {
-          selectedReasonLabel = label;
+        if (label.id == entryState.reasonId) {
+          if (entryState.reasonLabel != label.name) {
+            WidgetsBinding.instance.addPostFrameCallback((_) {
+              if (!mounted) {
+                return;
+              }
+              controller.setReason(id: label.id, label: label.name);
+            });
+          }
           break;
         }
       }
@@ -162,7 +181,18 @@ class _ReviewScreenState extends ConsumerState<ReviewScreen> {
         );
         return;
       }
-      final accountId = await _defaultAccountId(ref);
+      final editingRecord = entryState.editingRecord;
+      final editingCounterpart = entryState.editingCounterpart;
+      final isEditing = editingRecord != null;
+
+      final int accountId;
+      if (entryState.accountId != null) {
+        accountId = entryState.accountId!;
+      } else if (editingRecord != null) {
+        accountId = editingRecord.accountId;
+      } else {
+        accountId = await _defaultAccountId(ref);
+      }
       final transactionType = _mapTransactionType(entryState.type);
       final amountMinor = (entryState.amount * 100).round();
       final note = entryState.note.trim().isEmpty
@@ -180,17 +210,43 @@ class _ReviewScreenState extends ConsumerState<ReviewScreen> {
               : entryState.necessityCriticality)
           : 0;
 
-      int? reasonId;
-      String? reasonLabel;
-      if (showReasonSection && _reasonId != null) {
-        final reasonRepo = ref.read(reasonRepoProvider);
-        final resolved = await reasonRepo.findById(_reasonId!);
-        if (resolved != null) {
-          reasonId = resolved.id;
-          reasonLabel = resolved.name;
-        } else {
-          reasonId = _reasonId;
-          reasonLabel = selectedReasonLabel?.name;
+      int? reasonId = entryState.reasonId;
+      String? reasonLabel = entryState.reasonLabel;
+      if (showReasonSection) {
+        final hasReason = reasonId != null ||
+            (reasonLabel != null && reasonLabel.trim().isNotEmpty);
+        if (!hasReason) {
+          setState(() {
+            _reasonValidationError = true;
+          });
+          if (!mounted) {
+            return;
+          }
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Укажите причину расхода')),
+          );
+          return;
+        }
+        setState(() {
+          _reasonValidationError = false;
+        });
+        if (reasonId != null) {
+          final reasonRepo = ref.read(reasonRepoProvider);
+          final resolved = await reasonRepo.findById(reasonId);
+          if (resolved != null) {
+            reasonId = resolved.id;
+            reasonLabel = resolved.name;
+          }
+        } else if (reasonLabel != null) {
+          reasonLabel = reasonLabel.trim();
+        }
+      } else {
+        reasonId = null;
+        reasonLabel = null;
+        if (_reasonValidationError) {
+          setState(() {
+            _reasonValidationError = false;
+          });
         }
       }
 
@@ -199,28 +255,69 @@ class _ReviewScreenState extends ConsumerState<ReviewScreen> {
           DateTime(operationDate.year, operationDate.month, operationDate.day);
       final inCurrent = ref.read(isInCurrentPeriodProvider(normalizedDate));
 
-      final record = TransactionRecord(
-        accountId: accountId,
-        categoryId: categoryId,
-        type: transactionType,
-        amountMinor: amountMinor,
-        date: normalizedDate,
-        note: note,
-        isPlanned: isPlannedExpense,
-        includedInPeriod: isPlannedExpense ? false : inCurrent,
-        criticality: necessityCriticality,
-        necessityId: necessityId,
-        necessityLabel: necessityLabel,
-        reasonId: reasonId,
-        reasonLabel: reasonLabel,
-      );
+      final record = isEditing
+          ? editingRecord!.copyWith(
+              accountId: accountId,
+              categoryId: categoryId,
+              type: transactionType,
+              amountMinor: amountMinor,
+              date: normalizedDate,
+              note: note,
+              isPlanned: isPlannedExpense,
+              includedInPeriod: isPlannedExpense ? false : inCurrent,
+              criticality: necessityCriticality,
+              necessityId: necessityId,
+              necessityLabel: necessityLabel,
+              reasonId: reasonId,
+              reasonLabel: reasonLabel,
+            )
+          : TransactionRecord(
+              accountId: accountId,
+              categoryId: categoryId,
+              type: transactionType,
+              amountMinor: amountMinor,
+              date: normalizedDate,
+              note: note,
+              isPlanned: isPlannedExpense,
+              includedInPeriod: isPlannedExpense ? false : inCurrent,
+              criticality: necessityCriticality,
+              necessityId: necessityId,
+              necessityLabel: necessityLabel,
+              reasonId: reasonId,
+              reasonLabel: reasonLabel,
+            );
 
       final transactionsRepository = ref.read(transactionsRepoProvider);
-      await transactionsRepository.add(
-        record,
-        asSavingPair: entryState.type == CategoryType.saving,
-        includedInPeriod: isPlannedExpense ? null : inCurrent,
-      );
+      if (isEditing) {
+        await transactionsRepository.update(
+          record,
+          includedInPeriod: isPlannedExpense ? null : inCurrent,
+        );
+        if (editingCounterpart != null) {
+          final updatedCounterpart = editingCounterpart.copyWith(
+            amountMinor: amountMinor,
+            date: normalizedDate,
+            note: note,
+            isPlanned: isPlannedExpense,
+            includedInPeriod: isPlannedExpense ? false : inCurrent,
+            criticality: necessityCriticality,
+            necessityId: necessityId,
+            necessityLabel: necessityLabel,
+            reasonId: reasonId,
+            reasonLabel: reasonLabel,
+          );
+          await transactionsRepository.update(
+            updatedCounterpart,
+            includedInPeriod: isPlannedExpense ? null : inCurrent,
+          );
+        }
+      } else {
+        await transactionsRepository.add(
+          record,
+          asSavingPair: entryState.type == CategoryType.saving,
+          includedInPeriod: isPlannedExpense ? null : inCurrent,
+        );
+      }
       bumpDbTick(ref);
       controller.reset();
       if (!mounted) {
@@ -229,10 +326,18 @@ class _ReviewScreenState extends ConsumerState<ReviewScreen> {
       final newState = ref.read(entryFlowControllerProvider);
       setState(() {
         _forcePlanned = _shouldForcePlanned(newState);
-        _asPlanned =
-            _forcePlanned && newState.type == CategoryType.expense;
-        _reasonId = null;
+        _asPlanned = newState.attachToPlanned ||
+            (_forcePlanned && newState.type == CategoryType.expense);
+        _selectedDate = newState.selectedDate;
+        _reasonValidationError = false;
       });
+      if (isEditing) {
+        context.pop();
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Операция обновлена')),
+        );
+        return;
+      }
       if (isQuickAddKind) {
         ref.read(lastEntryKindProvider.notifier).state = operationKind;
       }
@@ -338,9 +443,13 @@ class _ReviewScreenState extends ConsumerState<ReviewScreen> {
                                     setState(() {
                                       _asPlanned = selection.first;
                                       if (_asPlanned) {
-                                        _reasonId = null;
+                                        _reasonValidationError = false;
                                       }
                                     });
+                                    controller.setAttachToPlanned(selection.first);
+                                    if (selection.first) {
+                                      controller.setReason(id: null, label: null);
+                                    }
                                   },
                                 ),
                               ],
@@ -429,7 +538,7 @@ class _ReviewScreenState extends ConsumerState<ReviewScreen> {
                                           Theme.of(context).colorScheme.error,
                                     ),
                                   )
-                                else
+                                else ...[
                                   Wrap(
                                     spacing: 8,
                                     runSpacing: 8,
@@ -437,13 +546,23 @@ class _ReviewScreenState extends ConsumerState<ReviewScreen> {
                                       for (final reason in reasonLabels)
                                         ChoiceChip(
                                           label: Text(reason.name),
-                                          selected: _reasonId == reason.id,
+                                          selected:
+                                              entryState.reasonId == reason.id,
                                           onSelected: (selected) {
-                                            setState(() {
-                                              _reasonId = selected
-                                                  ? reason.id
-                                                  : null;
-                                            });
+                                            if (selected) {
+                                              controller.setReason(
+                                                id: reason.id,
+                                                label: reason.name,
+                                              );
+                                              setState(() {
+                                                _reasonValidationError = false;
+                                              });
+                                            } else {
+                                              controller.setReason(
+                                                id: null,
+                                                label: null,
+                                              );
+                                            }
                                           },
                                           avatar: CircleAvatar(
                                             radius: 6,
@@ -456,6 +575,33 @@ class _ReviewScreenState extends ConsumerState<ReviewScreen> {
                                         ),
                                     ],
                                   ),
+                                  if (entryState.reasonId == null &&
+                                      entryState.reasonLabel != null &&
+                                      entryState.reasonLabel!.isNotEmpty)
+                                    Padding(
+                                      padding: const EdgeInsets.only(top: 8),
+                                      child: Text(
+                                        'Причина "${entryState.reasonLabel!}" недоступна. Выберите новую.',
+                                        style: TextStyle(
+                                          color: Theme.of(context)
+                                              .colorScheme
+                                              .error,
+                                        ),
+                                      ),
+                                    ),
+                                  if (_reasonValidationError)
+                                    Padding(
+                                      padding: const EdgeInsets.only(top: 8),
+                                      child: Text(
+                                        'Укажите причину расхода',
+                                        style: TextStyle(
+                                          color: Theme.of(context)
+                                              .colorScheme
+                                              .error,
+                                        ),
+                                      ),
+                                    ),
+                                ],
                               ],
                             ],
                           ),
@@ -469,6 +615,8 @@ class _ReviewScreenState extends ConsumerState<ReviewScreen> {
                       const SizedBox(height: 8),
                       _QuickDatePicker(
                         selectedDate: _selectedDate,
+                        periodStart: periodStart,
+                        periodEndExclusive: periodEndExclusive,
                         onSelected: (date) {
                           setState(() {
                             _selectedDate = date;
@@ -508,57 +656,177 @@ class _ReviewScreenState extends ConsumerState<ReviewScreen> {
   }
 }
 
-class _QuickDatePicker extends StatelessWidget {
-  const _QuickDatePicker({required this.selectedDate, required this.onSelected});
+const double _dateItemWidth = 96;
+const double _dateItemSpacing = 12;
+
+class _QuickDatePicker extends StatefulWidget {
+  const _QuickDatePicker({
+    required this.selectedDate,
+    required this.onSelected,
+    required this.periodStart,
+    required this.periodEndExclusive,
+  });
 
   final DateTime? selectedDate;
+  final ValueChanged<DateTime> onSelected;
+  final DateTime periodStart;
+  final DateTime periodEndExclusive;
+
+  @override
+  State<_QuickDatePicker> createState() => _QuickDatePickerState();
+}
+
+class _QuickDatePickerState extends State<_QuickDatePicker> {
+  late final ScrollController _controller;
+  late List<DateTime> _dates;
+  bool _didInitialScroll = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = ScrollController();
+    _dates = _buildDates();
+  }
+
+  @override
+  void didUpdateWidget(covariant _QuickDatePicker oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.periodStart != widget.periodStart ||
+        oldWidget.periodEndExclusive != widget.periodEndExclusive) {
+      _dates = _buildDates();
+      _didInitialScroll = false;
+    }
+    final oldSelected = oldWidget.selectedDate;
+    final newSelected = widget.selectedDate;
+    final sameSelection =
+        (oldSelected == null && newSelected == null) ||
+            (oldSelected != null &&
+                newSelected != null &&
+                _isSameDay(oldSelected, newSelected));
+    if (!sameSelection) {
+      _centerOnDate(newSelected ?? DateTime.now(), animate: true);
+    }
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    _scheduleInitialScroll();
+    return SizedBox(
+      height: 48,
+      child: ListView.separated(
+        controller: _controller,
+        scrollDirection: Axis.horizontal,
+        padding: const EdgeInsets.symmetric(horizontal: 4),
+        physics: const BouncingScrollPhysics(),
+        itemBuilder: (context, index) {
+          final date = _dates[index];
+          final isSelected = widget.selectedDate != null &&
+              _isSameDay(widget.selectedDate!, date);
+          return SizedBox(
+            width: _dateItemWidth,
+            child: Center(
+              child: _DateChoiceChip(
+                date: date,
+                isSelected: isSelected,
+                onSelected: widget.onSelected,
+              ),
+            ),
+          );
+        },
+        separatorBuilder: (_, __) => const SizedBox(width: _dateItemSpacing),
+        itemCount: _dates.length,
+      ),
+    );
+  }
+
+  void _scheduleInitialScroll() {
+    if (_didInitialScroll) {
+      return;
+    }
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) {
+        return;
+      }
+      _centerOnDate(widget.selectedDate ?? DateTime.now());
+      _didInitialScroll = true;
+    });
+  }
+
+  List<DateTime> _buildDates() {
+    final start = widget.periodStart.subtract(const Duration(days: 3));
+    final end = widget.periodEndExclusive.add(const Duration(days: 3));
+    final normalizedStart = DateTime(start.year, start.month, start.day);
+    final normalizedEnd = DateTime(end.year, end.month, end.day);
+    final diff = normalizedEnd.difference(normalizedStart).inDays;
+    final count = diff >= 0 ? diff + 1 : 1;
+    return List<DateTime>.generate(count, (index) {
+      return normalizedStart.add(Duration(days: index));
+    });
+  }
+
+  void _centerOnDate(DateTime target, {bool animate = false}) {
+    if (_dates.isEmpty) {
+      return;
+    }
+    final normalized = DateTime(target.year, target.month, target.day);
+    var index = _dates.indexWhere((date) => _isSameDay(date, normalized));
+    if (index == -1) {
+      if (normalized.isBefore(_dates.first)) {
+        index = 0;
+      } else if (normalized.isAfter(_dates.last)) {
+        index = _dates.length - 1;
+      } else {
+        index = 0;
+      }
+    }
+    if (!_controller.hasClients) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) {
+          return;
+        }
+        _centerOnDate(normalized, animate: animate);
+      });
+      return;
+    }
+    final viewWidth = context.size?.width ?? MediaQuery.of(context).size.width;
+    final itemExtent = _dateItemWidth + _dateItemSpacing;
+    final targetOffset = index * itemExtent - (viewWidth - _dateItemWidth) / 2;
+    final maxOffset = math.max(0.0, _controller.position.maxScrollExtent);
+    final offset = targetOffset.clamp(0.0, maxOffset);
+    if (animate) {
+      _controller.animateTo(
+        offset,
+        duration: const Duration(milliseconds: 250),
+        curve: Curves.easeOut,
+      );
+    } else {
+      _controller.jumpTo(offset);
+    }
+  }
+}
+
+class _DateChoiceChip extends StatelessWidget {
+  const _DateChoiceChip({
+    required this.date,
+    required this.isSelected,
+    required this.onSelected,
+  });
+
+  final DateTime date;
+  final bool isSelected;
   final ValueChanged<DateTime> onSelected;
 
   @override
   Widget build(BuildContext context) {
     final now = DateTime.now();
     final today = DateTime(now.year, now.month, now.day);
-    final offsets = List.generate(7, (index) => index - 3);
-    return SingleChildScrollView(
-      scrollDirection: Axis.horizontal,
-      child: Row(
-        children: [
-          for (final offset in offsets)
-            Padding(
-              padding: const EdgeInsets.only(right: 12),
-              child: _DateChoiceChip(
-                baseDate: today,
-                offset: offset,
-                selectedDate: selectedDate,
-                onSelected: onSelected,
-              ),
-            ),
-        ],
-      ),
-    );
-  }
-}
-
-class _DateChoiceChip extends StatelessWidget {
-  const _DateChoiceChip({
-    required this.baseDate,
-    required this.offset,
-    required this.selectedDate,
-    required this.onSelected,
-  });
-
-  final DateTime baseDate;
-  final int offset;
-  final DateTime? selectedDate;
-  final ValueChanged<DateTime> onSelected;
-
-  @override
-  Widget build(BuildContext context) {
-    final date = baseDate.add(Duration(days: offset));
-    final isToday = offset == 0;
-    final label = isToday ? 'Сегодня' : shortDowDay(date);
-    final isSelected =
-        selectedDate != null && _isSameDay(selectedDate!, date);
+    final label = _isSameDay(date, today) ? 'Сегодня' : shortDowDay(date);
     return ChoiceChip(
       label: Text(label),
       selected: isSelected,
