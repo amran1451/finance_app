@@ -204,6 +204,25 @@ final daysToPeriodEndProvider = Provider<int?>((ref) {
   return diff < 0 ? 0 : diff;
 });
 
+final daysFromPayoutToPeriodEndProvider = Provider<int?>((ref) {
+  final payoutAsync = ref.watch(payoutForSelectedPeriodProvider);
+  final (_, endExclusive) = ref.watch(periodBoundsProvider);
+
+  return payoutAsync.maybeWhen(
+    data: (payout) {
+      if (payout == null) {
+        return null;
+      }
+
+      final payoutDate = _normalizeDate(payout.date);
+      final endDate = _normalizeDate(endExclusive);
+      final diff = endDate.difference(payoutDate).inDays;
+      return diff < 0 ? 0 : diff;
+    },
+    orElse: () => null,
+  );
+});
+
 final dailyLimitProvider = FutureProvider<int?>((ref) async {
   ref.watch(dbTickProvider);
   final repository = ref.watch(settingsRepoProvider);

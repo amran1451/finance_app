@@ -40,9 +40,37 @@ class PeriodSelector extends ConsumerWidget {
                 borderRadius: BorderRadius.circular(999),
                 color: Theme.of(context).colorScheme.surfaceVariant,
               ),
-              child: Text(
-                displayLabel,
-                style: Theme.of(context).textTheme.labelLarge,
+              child: AnimatedSwitcher(
+                duration: const Duration(milliseconds: 180),
+                switchInCurve: Curves.easeOut,
+                switchOutCurve: Curves.easeIn,
+                layoutBuilder: (currentChild, previousChildren) {
+                  return Stack(
+                    alignment: Alignment.center,
+                    children: [
+                      ...previousChildren,
+                      if (currentChild != null) currentChild,
+                    ],
+                  );
+                },
+                transitionBuilder: (child, animation) {
+                  final slideAnimation = Tween<Offset>(
+                    begin: const Offset(0.12, 0),
+                    end: Offset.zero,
+                  ).animate(animation);
+                  return FadeTransition(
+                    opacity: animation,
+                    child: SlideTransition(
+                      position: slideAnimation,
+                      child: child,
+                    ),
+                  );
+                },
+                child: Text(
+                  displayLabel,
+                  key: ValueKey(displayLabel),
+                  style: Theme.of(context).textTheme.labelLarge,
+                ),
               ),
             ),
           ),

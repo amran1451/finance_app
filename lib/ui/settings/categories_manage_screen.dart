@@ -7,6 +7,7 @@ import '../../state/db_refresh.dart';
 import '../categories/category_actions.dart';
 import '../categories/category_edit_form.dart';
 import '../categories/category_tree_view.dart';
+import '../widgets/category_tabs.dart';
 
 class CategoriesManageScreen extends ConsumerStatefulWidget {
   const CategoriesManageScreen({super.key});
@@ -93,27 +94,10 @@ class _CategoriesManageScreenState
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            SegmentedButton<CategoryType>(
-              segments: const [
-                ButtonSegment(
-                  value: CategoryType.income,
-                  label: Text('Доходы'),
-                  icon: Icon(Icons.trending_up),
-                ),
-                ButtonSegment(
-                  value: CategoryType.expense,
-                  label: Text('Расходы'),
-                  icon: Icon(Icons.trending_down),
-                ),
-                ButtonSegment(
-                  value: CategoryType.saving,
-                  label: Text('Сбережения'),
-                  icon: Icon(Icons.savings),
-                ),
-              ],
-              selected: {_selectedType},
-              onSelectionChanged: (value) {
-                setState(() => _selectedType = value.first);
+            CategoryTabs(
+              selected: _selectedType,
+              onChanged: (value) {
+                setState(() => _selectedType = value);
               },
             ),
             const SizedBox(height: 24),
