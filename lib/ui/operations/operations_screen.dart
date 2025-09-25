@@ -11,6 +11,7 @@ import '../../data/repositories/reason_repository.dart' as reason_repo;
 import '../../state/budget_providers.dart';
 import '../../state/db_refresh.dart';
 import '../../state/operations_filters.dart';
+import '../../state/entry_flow_providers.dart';
 import '../../state/reason_providers.dart';
 import '../../utils/formatting.dart';
 import '../../routing/app_router.dart';
@@ -267,48 +268,117 @@ class _OperationsSection extends ConsumerWidget {
                   ],
                 ),
                 onLongPress: () async {
-                  final id = record.id;
-                  if (id == null) {
-                    return;
-                  }
-                  final confirm = await showDialog<bool>(
-                        context: context,
-                        builder: (context) => AlertDialog(
-                          title: const Text('Удалить операцию?'),
-                          content: const Text(
-                            'Это действие нельзя отменить. Итоги будут пересчитаны.',
-                          ),
-                          actions: [
-                            TextButton(
-                              onPressed: () => Navigator.of(context).pop(false),
-                              child: const Text('Отмена'),
-                            ),
-                            FilledButton(
-                              onPressed: () => Navigator.of(context).pop(true),
-                              child: const Text('Удалить'),
-                            ),
-                          ],
-                        ),
-                      ) ??
-                      false;
-                  if (!confirm) {
-                    return;
-                  }
-                  await repository.delete(id);
-                  final counterpartId = item.savingCounterpart?.id;
-                  if (counterpartId != null) {
-                    await repository.delete(counterpartId);
-                  }
-                  bumpDbTick(ref);
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text('Операция удалена')),
+                  final action = await showModalBottomSheet<_OperationAction>(
+                    context: context,
+                    builder: (context) => const _OperationActionsSheet(),
                   );
+                  if (action == null) {
+                    return;
+                  }
+                  if (action == _OperationAction.delete) {
+                    final id = record.id;
+                    if (id == null) {
+                      return;
+                    }
+                    final confirm = await showDialog<bool>(
+                          context: context,
+                          builder: (context) => AlertDialog(
+                            title: const Text('Удалить операцию?'),
+                            content: const Text(
+                              'Это действие нельзя отменить. Итоги будут пересчитаны.',
+                            ),
+                            actions: [
+                              TextButton(
+                                onPressed: () =>
+                                    Navigator.of(context).pop(false),
+                                child: const Text('Отмена'),
+                              ),
+                              FilledButton(
+                                onPressed: () =>
+                                    Navigator.of(context).pop(true),
+                                child: const Text('Удалить'),
+                              ),
+                            ],
+                          ),
+                        ) ??
+                        false;
+                    if (!confirm) {
+                      return;
+                    }
+                    await repository.delete(id);
+                    final counterpartId = item.savingCounterpart?.id;
+                    if (counterpartId != null) {
+                      await repository.delete(counterpartId);
+                    }
+                    bumpDbTick(ref);
+                    if (!context.mounted) {
+                      return;
+                    }
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(content: Text('Операция удалена')),
+                    );
+                    return;
+                  }
+                  if (action == _OperationAction.edit) {
+                    final id = record.id;
+                    if (id == null) {
+                      return;
+                    }
+                    final category = categories[record.categoryId];
+                    if (category == null) {
+                      if (!context.mounted) {
+                        return;
+                      }
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(content: Text('Категория не найдена')),
+                      );
+                      return;
+                    }
+                    ref
+                        .read(entryFlowControllerProvider.notifier)
+                        .loadFromTransaction(
+                          record: record,
+                          category: category,
+                          savingCounterpart: item.savingCounterpart,
+                        );
+                    if (!context.mounted) {
+                      return;
+                    }
+                    context.pushNamed(RouteNames.entryReview);
+                  }
                 },
               ),
             );
           },
         ),
       ],
+    );
+  }
+}
+
+enum _OperationAction { edit, delete }
+
+class _OperationActionsSheet extends StatelessWidget {
+  const _OperationActionsSheet();
+
+  @override
+  Widget build(BuildContext context) {
+    return SafeArea(
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          ListTile(
+            leading: const Icon(Icons.edit_outlined),
+            title: const Text('Редактировать'),
+            onTap: () => Navigator.of(context).pop(_OperationAction.edit),
+          ),
+          ListTile(
+            leading: const Icon(Icons.delete_outline),
+            title: const Text('Удалить'),
+            onTap: () => Navigator.of(context).pop(_OperationAction.delete),
+          ),
+        ],
+      ),
     );
   }
 }
