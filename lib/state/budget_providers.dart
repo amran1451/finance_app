@@ -8,22 +8,11 @@ import '../data/models/transaction_record.dart';
 import '../data/repositories/transactions_repository.dart';
 import 'app_providers.dart';
 import 'db_refresh.dart';
+import '../utils/period_utils.dart';
 
 typedef BudgetPeriodInfo = ({DateTime start, DateTime end, int days});
 
-enum HalfPeriod { first, second }
-
 // TODO: Persist selected period in Settings (ui.selected_period_ref).
-class PeriodRef {
-  final int year;
-  final int month; // 1..12
-  final HalfPeriod half;
-
-  const PeriodRef({required this.year, required this.month, required this.half});
-
-  PeriodRef copyWith({int? year, int? month, HalfPeriod? half}) =>
-      PeriodRef(year: year ?? this.year, month: month ?? this.month, half: half ?? this.half);
-}
 
 final anchorDaysFutureProvider = FutureProvider<(int, int)>((ref) async {
   ref.watch(dbTickProvider);
@@ -48,8 +37,7 @@ final anchorDaysProvider = Provider<(int, int)>((ref) {
 final selectedPeriodRefProvider = StateProvider<PeriodRef>((ref) {
   final (a1, a2) = ref.watch(anchorDaysProvider);
   final now = DateTime.now();
-  final half = (now.day <= a2) ? HalfPeriod.first : HalfPeriod.second;
-  return PeriodRef(year: now.year, month: now.month, half: half);
+  return periodRefForDate(now, a1, a2);
 });
 
 final payoutSuggestedTypeProvider = Provider<PayoutType>((ref) {
@@ -64,18 +52,8 @@ String payoutTypeLabel(PayoutType type) =>
 final periodBoundsProvider = Provider<(DateTime start, DateTime endExclusive)>((ref) {
   final (a1, a2) = ref.watch(anchorDaysProvider);
   final sel = ref.watch(selectedPeriodRefProvider);
-  // TODO: При смене месяца автоматически создавать новый период, прошлый считать архивным.
-  // TODO: Дать экран выбора других месячных периодов (история).
-  // TODO: Перенести планы в новый период по правилам (отдельная миграция).
-  if (sel.half == HalfPeriod.first) {
-    final start = DateTime(sel.year, sel.month, a1);
-    final endEx = DateTime(sel.year, sel.month, a2); // [a1; a2)
-    return (start, endEx);
-  } else {
-    final start = DateTime(sel.year, sel.month, a2);
-    final endEx = DateTime(sel.year, sel.month + 1, a1); // [a2; nextMonth.a1)
-    return (start, endEx);
-  }
+  final bounds = periodBoundsFor(sel, a1, a2);
+  return (bounds.start, bounds.endExclusive);
 });
 
 @Deprecated('Use periodBoundsProvider')
@@ -114,24 +92,17 @@ final periodLabelProvider = Provider<String>((ref) {
 });
 
 extension PeriodNav on StateController<PeriodRef> {
-  void goPrev(int anchor2) {
-    final cur = state;
-    if (cur.half == HalfPeriod.second) {
-      state = cur.copyWith(half: HalfPeriod.first);
-    } else {
-      final prevMonth = DateTime(cur.year, cur.month - 1, anchor2);
-      state = PeriodRef(year: prevMonth.year, month: prevMonth.month, half: HalfPeriod.second);
-    }
+  void goPrev() {
+    state = state.prevHalf();
   }
 
-  void goNext(int anchor1, int anchor2) {
-    final cur = state;
-    if (cur.half == HalfPeriod.first) {
-      state = cur.copyWith(half: HalfPeriod.second);
-    } else {
-      final nextMonth = DateTime(cur.year, cur.month + 1, anchor1);
-      state = PeriodRef(year: nextMonth.year, month: nextMonth.month, half: HalfPeriod.first);
-    }
+  void goNext() {
+    state = state.nextHalf();
+  }
+
+  void goToTodayHalf(int anchor1, int anchor2) {
+    final today = DateTime.now();
+    state = periodRefForDate(today, anchor1, anchor2);
   }
 }
 
@@ -140,8 +111,9 @@ final periodNavProvider = Provider((ref) {
   final (a1, a2) = ref.watch(anchorDaysProvider);
   final ctrl = ref.read(selectedPeriodRefProvider.notifier);
   return (
-    prev: () => ctrl.goPrev(a2),
-    next: () => ctrl.goNext(a1, a2),
+    prev: ctrl.goPrev,
+    next: ctrl.goNext,
+    goToToday: () => ctrl.goToTodayHalf(a1, a2),
   );
 });
 
@@ -155,18 +127,18 @@ final currentPeriodProvider = FutureProvider<BudgetPeriodInfo>((ref) async {
   ref.watch(dbTickProvider);
   final (anchor1, anchor2) = await ref.watch(anchorDaysFutureProvider.future);
   final payout = await ref.watch(currentPayoutProvider.future);
-  final now = _normalizeDate(DateTime.now());
+  final now = normalizeDate(DateTime.now());
   final start = payout != null
-      ? _normalizeDate(payout.date)
-      : _previousAnchorDate(
-          _nextAnchorDate(now, anchor1, anchor2),
+      ? normalizeDate(payout.date)
+      : previousAnchorDate(
+          nextAnchorDate(now, anchor1, anchor2),
           anchor1,
           anchor2,
         );
 
-  var end = _nextAnchorDate(start, anchor1, anchor2);
+  var end = nextAnchorDate(start, anchor1, anchor2);
   if (!end.isAfter(start)) {
-    end = _nextAnchorDate(end.add(const Duration(days: 1)), anchor1, anchor2);
+    end = nextAnchorDate(end.add(const Duration(days: 1)), anchor1, anchor2);
   }
 
   var days = end.difference(start).inDays;
@@ -214,9 +186,10 @@ final daysFromPayoutToPeriodEndProvider = Provider<int?>((ref) {
         return null;
       }
 
-      final payoutDate = _normalizeDate(payout.date);
-      final nextAnchor = _nextAnchorDate(payoutDate, anchor1, anchor2);
-      final diff = nextAnchor.difference(payoutDate).inDays;
+      final payoutDate = normalizeDate(payout.date);
+      final targetPeriod = periodRefForDate(payoutDate, anchor1, anchor2);
+      final bounds = periodBoundsFor(targetPeriod, anchor1, anchor2);
+      final diff = bounds.endExclusive.difference(payoutDate).inDays;
       return diff < 0 ? 0 : diff;
     },
     orElse: () => null,
@@ -303,7 +276,7 @@ final periodBudgetMinorProvider = FutureProvider<int>((ref) async {
     return 0;
   }
   final period = await ref.watch(currentPeriodProvider.future);
-  final today = _normalizeDate(DateTime.now());
+  final today = normalizeDate(DateTime.now());
   final rawRemaining = period.end.difference(today).inDays;
   final remainingDays = _clampRemainingDays(rawRemaining, period.days);
   if (remainingDays <= 0) {
@@ -379,46 +352,6 @@ int _normalizeAnchorDay(int value) {
     return 31;
   }
   return value;
-}
-
-DateTime _normalizeDate(DateTime date) {
-  return DateTime(date.year, date.month, date.day);
-}
-
-DateTime _nextAnchorDate(DateTime from, int anchor1, int anchor2) {
-  final normalized = _normalizeDate(from);
-  final smaller = math.min(anchor1, anchor2);
-  final larger = math.max(anchor1, anchor2);
-
-  if (normalized.day < larger) {
-    return _anchorDate(normalized.year, normalized.month, larger);
-  }
-
-  final nextMonth = DateTime(normalized.year, normalized.month + 1, 1);
-  return _anchorDate(nextMonth.year, nextMonth.month, smaller);
-}
-
-DateTime _previousAnchorDate(DateTime from, int anchor1, int anchor2) {
-  final normalized = _normalizeDate(from);
-  final smaller = math.min(anchor1, anchor2);
-  final larger = math.max(anchor1, anchor2);
-
-  if (normalized.day <= smaller) {
-    final previousMonth = DateTime(normalized.year, normalized.month - 1, 1);
-    return _anchorDate(previousMonth.year, previousMonth.month, larger);
-  }
-
-  if (normalized.day <= larger) {
-    return _anchorDate(normalized.year, normalized.month, smaller);
-  }
-
-  return _anchorDate(normalized.year, normalized.month, larger);
-}
-
-DateTime _anchorDate(int year, int month, int day) {
-  final lastDay = DateTime(year, month + 1, 0).day;
-  final safeDay = day.clamp(1, lastDay);
-  return DateTime(year, month, safeDay);
 }
 
 int _clampRemainingDays(int difference, int periodDays) {

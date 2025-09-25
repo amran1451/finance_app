@@ -1,9 +1,8 @@
-import 'dart:math' as math;
-
 import 'package:sqflite/sqflite.dart';
 
 import '../db/app_database.dart';
 import '../models/payout.dart';
+import '../../utils/period_utils.dart';
 
 abstract class PayoutsRepository {
   Future<int> add(
@@ -32,6 +31,15 @@ abstract class PayoutsRepository {
   Future<List<Payout>> listInRange(DateTime start, DateTime endExclusive);
 
   Future<List<Payout>> getHistory(int limit);
+
+  Future<({Payout payout, PeriodRef period})> upsertWithClampToSelectedPeriod({
+    Payout? existing,
+    required PeriodRef selectedPeriod,
+    required DateTime pickedDate,
+    required PayoutType type,
+    required int amountMinor,
+    int? accountId,
+  });
 }
 
 class SqlitePayoutsRepository implements PayoutsRepository {
@@ -50,27 +58,24 @@ class SqlitePayoutsRepository implements PayoutsRepository {
     int? accountId,
   }) async {
     final db = await _db;
-    final normalizedDate = _normalizeDate(date);
+    final normalizedDate = normalizeDate(date);
     return db.transaction((txn) async {
       final resolvedAccountId = await _resolveAccountId(txn, accountId);
-      final adjustedDate = await _clampDateWithDrift(txn, normalizedDate);
-      final payout = Payout(
-        type: type,
-        date: adjustedDate,
-        amountMinor: amountMinor,
-        accountId: resolvedAccountId,
-      );
-      final payoutValues = _payoutValues(payout);
-      final payoutId = await txn.insert('payouts', payoutValues);
-      await _syncIncomeTransaction(
+      final (anchor1Raw, anchor2Raw) = await _loadAnchorDays(txn);
+      final anchors = [anchor1Raw, anchor2Raw]..sort();
+      final selected = periodRefForDate(normalizedDate, anchors[0], anchors[1]);
+      final result = await _upsertWithTransaction(
         txn,
-        payoutId: payoutId,
+        existingId: null,
+        selectedPeriod: selected,
+        pickedDate: normalizedDate,
         type: type,
-        date: adjustedDate,
         amountMinor: amountMinor,
         accountId: resolvedAccountId,
+        anchor1: anchors[0],
+        anchor2: anchors[1],
       );
-      return payoutId;
+      return result.payout.id!;
     });
   }
 
@@ -83,31 +88,22 @@ class SqlitePayoutsRepository implements PayoutsRepository {
     int? accountId,
   }) async {
     final db = await _db;
-    final normalizedDate = _normalizeDate(date);
+    final normalizedDate = normalizeDate(date);
     await db.transaction((txn) async {
       final resolvedAccountId = await _resolveAccountId(txn, accountId);
-      final adjustedDate = await _clampDateWithDrift(txn, normalizedDate);
-      final payout = Payout(
-        id: id,
-        type: type,
-        date: adjustedDate,
-        amountMinor: amountMinor,
-        accountId: resolvedAccountId,
-      );
-      final payoutValues = _payoutValues(payout);
-      await txn.update(
-        'payouts',
-        payoutValues,
-        where: 'id = ?',
-        whereArgs: [id],
-      );
-      await _syncIncomeTransaction(
+      final (anchor1Raw, anchor2Raw) = await _loadAnchorDays(txn);
+      final anchors = [anchor1Raw, anchor2Raw]..sort();
+      final selected = periodRefForDate(normalizedDate, anchors[0], anchors[1]);
+      await _upsertWithTransaction(
         txn,
-        payoutId: id,
+        existingId: id,
+        selectedPeriod: selected,
+        pickedDate: normalizedDate,
         type: type,
-        date: adjustedDate,
         amountMinor: amountMinor,
         accountId: resolvedAccountId,
+        anchor1: anchors[0],
+        anchor2: anchors[1],
       );
     });
   }
@@ -186,6 +182,35 @@ class SqlitePayoutsRepository implements PayoutsRepository {
       orderBy: 'date DESC, id DESC',
     );
     return rows.map(Payout.fromMap).toList();
+  }
+
+  @override
+  Future<({Payout payout, PeriodRef period})> upsertWithClampToSelectedPeriod({
+    Payout? existing,
+    required PeriodRef selectedPeriod,
+    required DateTime pickedDate,
+    required PayoutType type,
+    required int amountMinor,
+    int? accountId,
+  }) async {
+    final db = await _db;
+    final normalized = normalizeDate(pickedDate);
+    return db.transaction((txn) async {
+      final resolvedAccountId = await _resolveAccountId(txn, accountId ?? existing?.accountId);
+      final (anchor1Raw, anchor2Raw) = await _loadAnchorDays(txn);
+      final anchors = [anchor1Raw, anchor2Raw]..sort();
+      return _upsertWithTransaction(
+        txn,
+        existingId: existing?.id,
+        selectedPeriod: selectedPeriod,
+        pickedDate: normalized,
+        type: type,
+        amountMinor: amountMinor,
+        accountId: resolvedAccountId,
+        anchor1: anchors[0],
+        anchor2: anchors[1],
+      );
+    });
   }
 
   Map<String, Object?> _payoutValues(Payout payout) {
@@ -298,30 +323,6 @@ class SqlitePayoutsRepository implements PayoutsRepository {
     throw StateError('Не найден счёт для привязки выплаты');
   }
 
-  Future<DateTime> _clampDateWithDrift(
-    DatabaseExecutor executor,
-    DateTime date,
-  ) async {
-    final normalized = _normalizeDate(date);
-    final (anchor1Raw, anchor2Raw) = await _loadAnchorDays(executor);
-    final anchor1 = math.min(anchor1Raw, anchor2Raw);
-    final anchor2 = math.max(anchor1Raw, anchor2Raw);
-
-    final (_, periodEnd) = _periodBounds(normalized, anchor1, anchor2);
-    final lastInPeriod = periodEnd.subtract(const Duration(days: 1));
-
-    if (!normalized.isAfter(lastInPeriod)) {
-      return normalized;
-    }
-
-    final allowedMax = lastInPeriod.add(const Duration(days: 5));
-    if (normalized.isAfter(allowedMax)) {
-      return periodEnd;
-    }
-
-    return lastInPeriod;
-  }
-
   Future<(int, int)> _loadAnchorDays(DatabaseExecutor executor) async {
     final rows = await executor.query(
       'settings',
@@ -345,62 +346,97 @@ class SqlitePayoutsRepository implements PayoutsRepository {
     return (day1, day2);
   }
 
-  (DateTime start, DateTime endExclusive) _periodBounds(
-    DateTime date,
-    int anchor1,
-    int anchor2,
-  ) {
-    final previous = _previousAnchorDate(date, anchor1, anchor2);
-    var next = _nextAnchorDate(previous, anchor1, anchor2);
-    if (!next.isAfter(previous)) {
-      next = _nextAnchorDate(next.add(const Duration(days: 1)), anchor1, anchor2);
-    }
-    return (previous, next);
-  }
-
-  DateTime _nextAnchorDate(DateTime from, int anchor1, int anchor2) {
-    final normalized = _normalizeDate(from);
-    final smaller = math.min(anchor1, anchor2);
-    final larger = math.max(anchor1, anchor2);
-
-    if (normalized.day < larger) {
-      return _anchorDate(normalized.year, normalized.month, larger);
-    }
-
-    final nextMonth = DateTime(normalized.year, normalized.month + 1, 1);
-    return _anchorDate(nextMonth.year, nextMonth.month, smaller);
-  }
-
-  DateTime _previousAnchorDate(DateTime from, int anchor1, int anchor2) {
-    final normalized = _normalizeDate(from);
-    final smaller = math.min(anchor1, anchor2);
-    final larger = math.max(anchor1, anchor2);
-
-    if (normalized.day <= smaller) {
-      final previousMonth = DateTime(normalized.year, normalized.month - 1, 1);
-      return _anchorDate(previousMonth.year, previousMonth.month, larger);
-    }
-
-    if (normalized.day <= larger) {
-      return _anchorDate(normalized.year, normalized.month, smaller);
-    }
-
-    return _anchorDate(normalized.year, normalized.month, larger);
-  }
-
-  DateTime _anchorDate(int year, int month, int day) {
-    final lastDay = DateTime(year, month + 1, 0).day;
-    final safeDay = day.clamp(1, lastDay);
-    return DateTime(year, month, safeDay);
-  }
-
-  DateTime _normalizeDate(DateTime date) {
-    return DateTime(date.year, date.month, date.day);
-  }
-
   String _formatDate(DateTime date) {
     final month = date.month.toString().padLeft(2, '0');
     final day = date.day.toString().padLeft(2, '0');
     return '${date.year.toString().padLeft(4, '0')}-$month-$day';
+  }
+
+  Future<({Payout payout, PeriodRef period})> _upsertWithTransaction(
+    Transaction txn, {
+    required int? existingId,
+    required PeriodRef selectedPeriod,
+    required DateTime pickedDate,
+    required PayoutType type,
+    required int amountMinor,
+    required int accountId,
+    required int anchor1,
+    required int anchor2,
+  }) async {
+    final (clampedDate, targetPeriod) = _clampToHalfWithWindow(
+      pickedDate,
+      selectedPeriod,
+      anchor1,
+      anchor2,
+    );
+
+    final payout = Payout(
+      id: existingId,
+      type: type,
+      date: clampedDate,
+      amountMinor: amountMinor,
+      accountId: accountId,
+    );
+    final payoutValues = _payoutValues(payout);
+    late final int payoutId;
+    if (existingId != null) {
+      payoutId = existingId;
+      await txn.update(
+        'payouts',
+        payoutValues,
+        where: 'id = ?',
+        whereArgs: [payoutId],
+      );
+    } else {
+      payoutId = await txn.insert('payouts', payoutValues);
+    }
+
+    await _syncIncomeTransaction(
+      txn,
+      payoutId: payoutId,
+      type: type,
+      date: clampedDate,
+      amountMinor: amountMinor,
+      accountId: accountId,
+    );
+
+    return (
+      payout: payout.copyWith(id: payoutId),
+      period: targetPeriod,
+    );
+  }
+
+  (DateTime, PeriodRef) _clampToHalfWithWindow(
+    DateTime picked,
+    PeriodRef selected,
+    int anchor1,
+    int anchor2,
+  ) {
+    final bounds = periodBoundsFor(selected, anchor1, anchor2);
+    final start = bounds.start;
+    final endEx = bounds.endExclusive;
+    final allowBefore = start.subtract(const Duration(days: 3));
+    final allowAfter = endEx.add(const Duration(days: 5));
+
+    if (picked.isBefore(allowBefore)) {
+      final prev = selected.prevHalf();
+      final prevBounds = periodBoundsFor(prev, anchor1, anchor2);
+      final prevDate = prevBounds.endExclusive.subtract(const Duration(days: 1));
+      return (prevDate, prev);
+    }
+
+    if (picked.isBefore(endEx)) {
+      final date = picked.isBefore(start) ? start : picked;
+      return (date, selected);
+    }
+
+    if (!picked.isAfter(allowAfter)) {
+      final clamped = endEx.subtract(const Duration(days: 1));
+      return (clamped, selected);
+    }
+
+    final next = selected.nextHalf();
+    final nextBounds = periodBoundsFor(next, anchor1, anchor2);
+    return (nextBounds.start, next);
   }
 }

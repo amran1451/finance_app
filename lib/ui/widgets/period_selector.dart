@@ -76,6 +76,14 @@ class PeriodSelector extends ConsumerWidget {
           ),
         ),
         IconButton(
+          icon: const Icon(Icons.my_location),
+          onPressed: nav.goToToday,
+          tooltip: 'Вернуться к текущему периоду',
+          padding: iconPadding,
+          constraints: iconConstraints,
+          visualDensity: iconDensity,
+        ),
+        IconButton(
           icon: const Icon(Icons.chevron_right),
           onPressed: nav.next,
           tooltip: 'Следующий период',
