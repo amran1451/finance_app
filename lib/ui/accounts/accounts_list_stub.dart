@@ -98,49 +98,50 @@ class _AccountListTile extends ConsumerWidget {
     final computedAsync = ref.watch(computedBalanceProvider(accountId));
     final reconcile = ref.read(reconcileAccountProvider);
 
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.symmetric(vertical: 4),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            ListTile(
-              leading: const CircleAvatar(
-                child: Icon(Icons.account_balance_wallet),
-              ),
-              title: Text(account.name),
-              subtitle: Text(
-                'Текущий: ${formatCurrencyMinor(account.startBalanceMinor)}',
-              ),
-              trailing: IconButton(
-                icon: const Icon(Icons.chevron_right),
-                onPressed: () async {
-                  final result = await context.pushNamed(
-                    RouteNames.accountEdit,
-                    queryParameters: {'id': accountId.toString()},
-                  );
-                  _handleFormResult(context, result);
-                },
-              ),
-            ),
-            computedAsync.when(
-              data: (computed) {
-                final difference = computed - account.startBalanceMinor;
-                final differenceText = difference == 0
-                    ? 'Расхождений нет'
-                    : 'Расхождение: ${formatCurrencyMinor(difference)}';
-                return Padding(
+    Future<void> openEdit() async {
+      final result = await context.pushNamed(
+        RouteNames.accountEdit,
+        queryParameters: {'id': accountId.toString()},
+      );
+      _handleFormResult(context, result);
+    }
+
+    return computedAsync.when(
+      data: (computed) {
+        final difference = computed - account.startBalanceMinor;
+        final hasDifference = difference != 0;
+        final differenceText = hasDifference
+            ? 'Δ с учётом: ${formatCurrencyMinor(difference)}'
+            : 'Баланс совпадает с учётом';
+
+        return Card(
+          child: Padding(
+            padding: const EdgeInsets.symmetric(vertical: 4),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                ListTile(
+                  leading: const CircleAvatar(
+                    child: Icon(Icons.account_balance_wallet),
+                  ),
+                  title: Text(account.name),
+                  subtitle: Text('Баланс: ${formatCurrencyMinor(computed)}'),
+                  trailing: IconButton(
+                    icon: const Icon(Icons.chevron_right),
+                    onPressed: openEdit,
+                  ),
+                ),
+                Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 16),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text('Рассчитанный баланс: ${formatCurrencyMinor(computed)}'),
-                      const SizedBox(height: 4),
                       Text(
                         differenceText,
                         style: Theme.of(context).textTheme.bodySmall,
                       ),
-                      if (difference != 0)
+                      if (hasDifference) ...[
+                        const SizedBox(height: 8),
                         Align(
                           alignment: Alignment.centerRight,
                           child: TextButton(
@@ -148,26 +149,71 @@ class _AccountListTile extends ConsumerWidget {
                               await reconcile(accountId);
                               bumpDbTick(ref);
                               ScaffoldMessenger.of(context).showSnackBar(
-                                const SnackBar(content: Text('Баланс выровнен')),
+                                const SnackBar(
+                                  content: Text('Баланс выровнен'),
+                                ),
                               );
                             },
                             child: const Text('Выровнять'),
                           ),
                         ),
+                      ],
                     ],
                   ),
-                );
-              },
-              loading: () => const Padding(
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+      loading: () => Card(
+        child: Padding(
+          padding: const EdgeInsets.symmetric(vertical: 4),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              ListTile(
+                leading: const CircleAvatar(
+                  child: Icon(Icons.account_balance_wallet),
+                ),
+                title: Text(account.name),
+                subtitle: const Text('Баланс рассчитывается…'),
+                trailing: IconButton(
+                  icon: const Icon(Icons.chevron_right),
+                  onPressed: openEdit,
+                ),
+              ),
+              const Padding(
                 padding: EdgeInsets.symmetric(horizontal: 16),
                 child: LinearProgressIndicator(),
               ),
-              error: (error, _) => Padding(
+            ],
+          ),
+        ),
+      ),
+      error: (error, _) => Card(
+        child: Padding(
+          padding: const EdgeInsets.symmetric(vertical: 4),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              ListTile(
+                leading: const CircleAvatar(
+                  child: Icon(Icons.account_balance_wallet),
+                ),
+                title: Text(account.name),
+                subtitle: const Text('Не удалось рассчитать баланс'),
+                trailing: IconButton(
+                  icon: const Icon(Icons.chevron_right),
+                  onPressed: openEdit,
+                ),
+              ),
+              Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 16),
                 child: Text('Не удалось рассчитать баланс: $error'),
               ),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );
