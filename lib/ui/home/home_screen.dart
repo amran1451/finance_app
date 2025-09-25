@@ -37,6 +37,17 @@ class HomeScreen extends ConsumerWidget {
     final suggestedType = ref.watch(payoutSuggestedTypeProvider);
     final generalPayoutLabel =
         'Добавить выплату (по периоду: ${payoutTypeLabel(suggestedType)})';
+    final plannedRemainderAsync = ref.watch(plannedRemainderForPeriodProvider);
+    final plannedRemainderSubtitle = plannedRemainderAsync.when(
+      data: (value) {
+        if (value == null) {
+          return 'Остаток на планы: —';
+        }
+        return 'Остаток на планы: ${formatCurrencyMinor(value.remainderMinor)}';
+      },
+      loading: () => 'Остаток на планы: …',
+      error: (error, _) => 'Остаток на планы: —',
+    );
 
     void openPlannedSheet(PlannedType type) {
       final notifier = ref.read(isSheetOpenProvider.notifier);
@@ -220,7 +231,7 @@ class HomeScreen extends ConsumerWidget {
               const SizedBox(height: 16),
               CalloutCard(
                 title: 'Запланировано',
-                subtitle: 'Быстрый доступ к будущим операциям',
+                subtitle: plannedRemainderSubtitle,
                 trailing: IconButton(
                   icon: const Icon(Icons.edit_outlined),
                   tooltip: 'Редактировать выплату',
@@ -509,6 +520,7 @@ class _PlannedOverview extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final payoutAsync = ref.watch(payoutForSelectedPeriodProvider);
+    final plannedRemainderAsync = ref.watch(plannedRemainderForPeriodProvider);
     return payoutAsync.when(
       data: (payout) {
         if (payout == null) {
@@ -524,9 +536,42 @@ class _PlannedOverview extends StatelessWidget {
         final savingTotalAsync =
             ref.watch(plannedIncludedTotalProvider(PlannedType.saving));
         final plannedPool = ref.watch(plannedPoolMinorProvider);
+        final remainderData =
+            plannedRemainderAsync.maybeWhen<PlannedRemainder?>(
+          data: (value) => value,
+          orElse: () => null,
+        );
+        final deficitMinor = remainderData?.deficitMinor ?? 0;
+        final theme = Theme.of(context);
+        final colorScheme = theme.colorScheme;
 
         return Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
+            Text(
+              'Быстрый доступ к будущим операциям',
+              style: theme.textTheme.bodyMedium?.copyWith(
+                color: colorScheme.onSurfaceVariant,
+              ),
+            ),
+            const SizedBox(height: 12),
+            if (deficitMinor > 0) ...[
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: colorScheme.errorContainer,
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Text(
+                  'Планы превышают бюджет на ${formatCurrencyMinor(deficitMinor)}',
+                  style: theme.textTheme.bodyMedium?.copyWith(
+                    color: colorScheme.onErrorContainer,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ),
+              const SizedBox(height: 12),
+            ],
             plannedPool.when(
               data: (value) => ListTile(
                 contentPadding: EdgeInsets.zero,

@@ -138,6 +138,39 @@ final plannedIncludedTotalProvider =
   return items.fold<int>(0, (sum, item) => sum + item.record.amountMinor);
 });
 
+typedef PlannedRemainder = ({int remainderMinor, int deficitMinor});
+
+final plannedRemainderForPeriodProvider =
+    FutureProvider<PlannedRemainder?>((ref) async {
+  ref.watch(dbTickProvider);
+  final payout = await ref.watch(payoutForSelectedPeriodProvider.future);
+  if (payout == null) {
+    return null;
+  }
+
+  final dailyLimitMinor = await ref.watch(dailyLimitProvider.future) ?? 0;
+  final (periodStart, periodEndExclusive) = ref.watch(periodBoundsProvider);
+  var periodDays = periodEndExclusive.difference(periodStart).inDays;
+  if (periodDays < 0) {
+    periodDays = 0;
+  }
+
+  final plannedSpentIncludedMinor =
+      await ref.watch(plannedIncludedTotalProvider(PlannedType.expense).future);
+
+  final rawRemainder = payout.amountMinor -
+      dailyLimitMinor * periodDays -
+      plannedSpentIncludedMinor;
+
+  final remainderMinor = rawRemainder > 0 ? rawRemainder : 0;
+  final deficitMinor = rawRemainder < 0 ? -rawRemainder : 0;
+
+  return (
+    remainderMinor: remainderMinor,
+    deficitMinor: deficitMinor,
+  );
+});
+
 final plannedActionsProvider = Provider<PlannedActions>((ref) {
   final repo = ref.watch(transactionsRepoProvider);
   return PlannedActions(repo);
