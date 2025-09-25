@@ -236,41 +236,11 @@ final leftTodayMinorProvider = FutureProvider<int>((ref) async {
 /// Остаток в бюджете на оставшуюся часть периода
 final leftInPeriodMinorProvider = FutureProvider<int>((ref) async {
   ref.watch(dbTickProvider);
-  final period = await ref.watch(currentPeriodProvider.future);
-  final dailyLimit = await ref.watch(dailyLimitProvider.future) ?? 0;
-  if (dailyLimit <= 0) {
-    return 0;
-  }
-
-  final now = DateTime.now();
-  final today = DateTime(now.year, now.month, now.day);
-  final periodStart =
-      DateTime(period.start.year, period.start.month, period.start.day);
-  final periodEnd = DateTime(period.end.year, period.end.month, period.end.day);
-
-  if (today.isBefore(periodStart) || !today.isBefore(periodEnd)) {
-    return 0;
-  }
-
-  final rawRemainingDays = periodEnd.difference(today).inDays;
-  var remainingDays = rawRemainingDays;
-  if (remainingDays < 0) {
-    remainingDays = 0;
-  } else if (remainingDays > 365) {
-    remainingDays = 365;
-  }
-
-  final remainingBudget = remainingDays * dailyLimit;
-  if (remainingBudget <= 0) {
-    return 0;
-  }
-
-  final spentToday = await ref.watch(todayUnplannedExpensesMinorProvider.future);
-  final left = remainingBudget - spentToday;
-  return left > 0 ? left : 0;
+  return ref.watch(periodBudgetMinorProvider.future);
 });
 
 final periodBudgetMinorProvider = FutureProvider<int>((ref) async {
+  ref.watch(dbTickProvider);
   final dailyLimit = await ref.watch(dailyLimitProvider.future) ?? 0;
   if (dailyLimit <= 0) {
     return 0;
@@ -314,6 +284,10 @@ final anchorDaysManagerProvider = Provider<AnchorDaysManager>((ref) {
   return AnchorDaysManager(ref);
 });
 
+final budgetLimitManagerProvider = Provider<BudgetLimitManager>((ref) {
+  return BudgetLimitManager(ref);
+});
+
 class AnchorDaysManager {
   AnchorDaysManager(this._ref);
 
@@ -341,6 +315,40 @@ class AnchorDaysManager {
   void _bumpTick() {
     final notifier = _ref.read(dbTickProvider.notifier);
     notifier.state = notifier.state + 1;
+  }
+}
+
+class BudgetLimitManager {
+  BudgetLimitManager(this._ref);
+
+  final Ref _ref;
+
+  Future<int?> adjustDailyLimitIfNeeded({
+    required Payout payout,
+    required PeriodRef period,
+  }) async {
+    final settingsRepo = _ref.read(settingsRepoProvider);
+    final currentDailyLimit = await settingsRepo.getDailyLimitMinor();
+    if (currentDailyLimit == null) {
+      return null;
+    }
+
+    final (anchor1, anchor2) = await _ref.read(anchorDaysFutureProvider.future);
+    final bounds = periodBoundsFor(period, anchor1, anchor2);
+    final periodDays = bounds.endExclusive.difference(bounds.start).inDays;
+    if (periodDays <= 0) {
+      return null;
+    }
+
+    final maxDaily = payout.amountMinor ~/ periodDays;
+    if (maxDaily < 0 || currentDailyLimit <= maxDaily) {
+      return null;
+    }
+
+    await settingsRepo.setDailyLimitMinor(maxDaily);
+    final notifier = _ref.read(dbTickProvider.notifier);
+    notifier.state = notifier.state + 1;
+    return maxDaily;
   }
 }
 
