@@ -59,14 +59,7 @@ class _PlannedSheetContentState extends ConsumerState<_PlannedSheetContent> {
       initialChildSize: 0.9,
       maxChildSize: 0.95,
       builder: (ctx, scroll) {
-        final typeString = switch (widget.type) {
-          PlannedType.income => 'income',
-          PlannedType.expense => 'expense',
-          PlannedType.saving => 'saving',
-        };
-        final itemsAsync =
-            ref.watch(plannedIncludedForSelectedPeriodProvider(typeString));
-        final categoriesMap = ref.watch(categoriesMapProvider).value ?? {};
+        final itemsAsync = ref.watch(plannedItemsByTypeProvider(widget.type));
         final actions = ref.read(plannedActionsProvider);
 
         Future<void> handleLongPress(PlannedItemView item) async {
@@ -183,16 +176,7 @@ class _PlannedSheetContentState extends ConsumerState<_PlannedSheetContent> {
               const SizedBox(height: 16),
               Expanded(
                 child: itemsAsync.when(
-                  data: (records) {
-                    final items = [
-                      for (final record in records)
-                        PlannedItemView(
-                          record: record,
-                          category: record.categoryId != null
-                              ? categoriesMap[record.categoryId!]
-                              : null,
-                        ),
-                    ];
+                  data: (items) {
                     if (items.isEmpty) {
                       return ListView(
                         controller: scroll,
@@ -331,40 +315,46 @@ class _PlannedItemTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final isIncluded = item.includedInPeriod;
     return InkWell(
       borderRadius: BorderRadius.circular(12),
       onLongPress: onLongPress,
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 8),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              crossAxisAlignment: CrossAxisAlignment.center,
-              children: [
-                Checkbox(
-                  value: item.includedInPeriod,
-                  onChanged: onToggle,
-                ),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: Text(
-                    item.title,
-                    style: Theme.of(context).textTheme.bodyLarge,
+      child: AnimatedOpacity(
+        duration: const Duration(milliseconds: 180),
+        opacity: isIncluded ? 1 : 0.5,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 8),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.center,
+                children: [
+                  Checkbox(
+                    value: isIncluded,
+                    onChanged: onToggle,
                   ),
-                ),
-                const SizedBox(width: 8),
-                Text(
-                  formatCurrency(item.amount),
-                  style: Theme.of(context).textTheme.bodyMedium,
-                ),
-              ],
-            ),
-            const SizedBox(height: 8),
-            LinearProgressIndicator(
-              value: item.includedInPeriod ? 1 : 0,
-            ),
-          ],
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      item.title,
+                      style: theme.textTheme.bodyLarge,
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Text(
+                    formatCurrency(item.amount),
+                    style: theme.textTheme.bodyMedium,
+                  ),
+                ],
+              ),
+              const SizedBox(height: 8),
+              LinearProgressIndicator(
+                value: isIncluded ? 1 : 0,
+              ),
+            ],
+          ),
         ),
       ),
     );

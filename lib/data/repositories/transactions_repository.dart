@@ -7,6 +7,20 @@ import 'accounts_repository.dart';
 
 typedef TransactionItem = TransactionRecord;
 
+class TransactionListItem {
+  const TransactionListItem({
+    required this.record,
+    this.savingPairId,
+    this.savingCounterpart,
+  });
+
+  final TransactionRecord record;
+  final int? savingPairId;
+  final TransactionRecord? savingCounterpart;
+
+  bool get isSavingPair => savingCounterpart != null;
+}
+
 abstract class TransactionsRepository {
   Future<TransactionRecord?> getById(int id);
 
@@ -20,6 +34,17 @@ abstract class TransactionsRepository {
     TransactionType? type,
     bool? isPlanned,
     bool? includedInPeriod,
+  });
+
+  Future<List<TransactionListItem>> getOperationItemsByPeriod(
+    DateTime from,
+    DateTime to, {
+    int? accountId,
+    int? categoryId,
+    TransactionType? type,
+    bool? isPlanned,
+    bool? includedInPeriod,
+    bool aggregateSavingPairs = false,
   });
 
   Future<int> add(
@@ -214,6 +239,43 @@ class SqliteTransactionsRepository implements TransactionsRepository {
       orderBy: 'date DESC, id DESC',
     );
     return rows.map(TransactionRecord.fromMap).toList();
+  }
+
+  @override
+  Future<List<TransactionListItem>> getOperationItemsByPeriod(
+    DateTime from,
+    DateTime to, {
+    int? accountId,
+    int? categoryId,
+    TransactionType? type,
+    bool? isPlanned,
+    bool? includedInPeriod,
+    bool aggregateSavingPairs = false,
+  }) async {
+    final records = await getByPeriod(
+      from,
+      to,
+      accountId: accountId,
+      categoryId: categoryId,
+      type: type,
+      isPlanned: isPlanned,
+      includedInPeriod: includedInPeriod,
+    );
+    if (!aggregateSavingPairs) {
+      return [
+        for (final record in records)
+          TransactionListItem(record: record),
+      ];
+    }
+    final db = await _db;
+    final savingsAccountId = await _findSavingsAccountId(db);
+    if (savingsAccountId == null) {
+      return [
+        for (final record in records)
+          TransactionListItem(record: record),
+      ];
+    }
+    return _aggregateSavingPairs(records, savingsAccountId);
   }
 
   @override
@@ -444,6 +506,107 @@ class SqliteTransactionsRepository implements TransactionsRepository {
     final month = date.month.toString().padLeft(2, '0');
     final day = date.day.toString().padLeft(2, '0');
     return '${date.year.toString().padLeft(4, '0')}-$month-$day';
+  }
+
+  List<TransactionListItem> _aggregateSavingPairs(
+    List<TransactionRecord> records,
+    int savingsAccountId,
+  ) {
+    if (records.isEmpty) {
+      return const [];
+    }
+    final usedIds = <int>{};
+    final grouped = <String, List<TransactionRecord>>{};
+    final pairMap = <int, TransactionRecord>{};
+    for (final record in records) {
+      final id = record.id;
+      if (id == null) {
+        continue;
+      }
+      if (record.type != TransactionType.saving || record.isPlanned) {
+        continue;
+      }
+      final key = _savingPairKey(record);
+      grouped.putIfAbsent(key, () => <TransactionRecord>[]).add(record);
+    }
+
+    for (final group in grouped.values) {
+      if (group.length < 2) {
+        continue;
+      }
+      final sources = <TransactionRecord>[];
+      final savings = <TransactionRecord>[];
+      for (final record in group) {
+        final id = record.id;
+        if (id == null) {
+          continue;
+        }
+        if (record.accountId == savingsAccountId) {
+          savings.add(record);
+        } else {
+          sources.add(record);
+        }
+      }
+      if (sources.isEmpty || savings.isEmpty) {
+        continue;
+      }
+      sources.sort((a, b) => (a.id ?? 0).compareTo(b.id ?? 0));
+      savings.sort((a, b) => (a.id ?? 0).compareTo(b.id ?? 0));
+      final count = sources.length < savings.length ? sources.length : savings.length;
+      for (var i = 0; i < count; i++) {
+        final source = sources[i];
+        final savingsRecord = savings[i];
+        final sourceId = source.id;
+        final savingsId = savingsRecord.id;
+        if (sourceId == null || savingsId == null) {
+          continue;
+        }
+        pairMap[sourceId] = savingsRecord;
+        pairMap[savingsId] = source;
+      }
+    }
+
+    final result = <TransactionListItem>[];
+    for (final record in records) {
+      final id = record.id;
+      if (id != null && usedIds.contains(id)) {
+        continue;
+      }
+
+      if (id != null && pairMap.containsKey(id)) {
+        final counterpart = pairMap[id]!;
+        final counterpartId = counterpart.id;
+        if (counterpartId != null && !usedIds.contains(counterpartId)) {
+          usedIds.add(id);
+          usedIds.add(counterpartId);
+          final primary =
+              record.accountId == savingsAccountId ? counterpart : record;
+          final secondary = primary == record ? counterpart : record;
+          final pairId = primary.id! < secondary.id! ? primary.id! : secondary.id!;
+          result.add(
+            TransactionListItem(
+              record: primary,
+              savingPairId: pairId,
+              savingCounterpart: secondary,
+            ),
+          );
+          continue;
+        }
+      }
+
+      result.add(TransactionListItem(record: record));
+      if (id != null) {
+        usedIds.add(id);
+      }
+    }
+    return result;
+  }
+
+  String _savingPairKey(TransactionRecord record) {
+    final plannedId = record.plannedId?.toString() ?? '';
+    final note = record.note ?? '';
+    final plannedFlag = record.isPlanned ? '1' : '0';
+    return '${record.date.toIso8601String()}|${record.amountMinor}|${record.categoryId}|$note|$plannedId|$plannedFlag';
   }
 
   CategoryType _typeFromString(String? raw) {

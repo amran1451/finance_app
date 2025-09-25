@@ -223,6 +223,7 @@ class _PlannedMasterEditFormState
     setState(() => _isSaving = true);
     try {
       final initial = widget.initial;
+      var changed = false;
       if (initial == null) {
         await repo.create(
           type: _type,
@@ -231,10 +232,11 @@ class _PlannedMasterEditFormState
           categoryId: _categoryId,
           note: note,
         );
+        changed = true;
       } else {
         final id = initial.id;
         if (id != null) {
-          await repo.update(
+          changed = await repo.update(
             id,
             type: _type,
             title: title,
@@ -247,7 +249,9 @@ class _PlannedMasterEditFormState
       if (!mounted) {
         return;
       }
-      bumpDbTick(ref);
+      if (changed) {
+        bumpDbTick(ref);
+      }
       Navigator.of(context).pop();
     } finally {
       if (mounted) {

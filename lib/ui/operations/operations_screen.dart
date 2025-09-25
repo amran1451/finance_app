@@ -14,6 +14,8 @@ import '../../state/operations_filters.dart';
 import '../../state/reason_providers.dart';
 import '../../utils/formatting.dart';
 import '../../routing/app_router.dart';
+import '../../data/repositories/transactions_repository.dart'
+    show TransactionListItem;
 
 final _categoriesMapProvider = FutureProvider<Map<int, Category>>((ref) async {
   ref.watch(dbTickProvider);
@@ -85,7 +87,7 @@ class OperationsScreen extends ConsumerWidget {
         ),
         data: (transactions) {
           final categories = categoriesAsync.asData?.value ?? const <int, Category>{};
-          final grouped = <DateTime, List<TransactionRecord>>{};
+          final grouped = <DateTime, List<TransactionListItem>>{};
           final dates = <DateTime>[];
 
           if (transactions.isNotEmpty) {
@@ -207,7 +209,7 @@ class _OperationsSection extends ConsumerWidget {
   });
 
   final String title;
-  final List<TransactionRecord> transactions;
+  final List<TransactionListItem> transactions;
   final Map<int, Category> categories;
 
   @override
@@ -229,7 +231,8 @@ class _OperationsSection extends ConsumerWidget {
           ),
         ),
         ...transactions.map(
-          (record) {
+          (item) {
+            final record = item.record;
             final category = categories[record.categoryId];
             return Card(
               margin: const EdgeInsets.only(bottom: 12),
@@ -292,6 +295,10 @@ class _OperationsSection extends ConsumerWidget {
                     return;
                   }
                   await repository.delete(id);
+                  final counterpartId = item.savingCounterpart?.id;
+                  if (counterpartId != null) {
+                    await repository.delete(counterpartId);
+                  }
                   bumpDbTick(ref);
                   ScaffoldMessenger.of(context).showSnackBar(
                     const SnackBar(content: Text('Операция удалена')),
@@ -306,13 +313,14 @@ class _OperationsSection extends ConsumerWidget {
   }
 }
 
-Map<DateTime, List<TransactionRecord>> _groupByDate(
-  List<TransactionRecord> transactions,
+Map<DateTime, List<TransactionListItem>> _groupByDate(
+  List<TransactionListItem> transactions,
 ) {
-  final grouped = <DateTime, List<TransactionRecord>>{};
-  for (final record in transactions) {
+  final grouped = <DateTime, List<TransactionListItem>>{};
+  for (final item in transactions) {
+    final record = item.record;
     final date = DateTime(record.date.year, record.date.month, record.date.day);
-    grouped.putIfAbsent(date, () => []).add(record);
+    grouped.putIfAbsent(date, () => []).add(item);
   }
   return grouped;
 }

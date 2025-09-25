@@ -10,6 +10,7 @@ import '../../state/budget_providers.dart';
 import '../../state/db_refresh.dart';
 import '../../state/planned_master_providers.dart';
 import '../../utils/formatting.dart';
+import '../widgets/necessity_choice_chip.dart';
 
 Future<bool?> showPlannedAssignToPeriodSheet(
   BuildContext context, {
@@ -19,21 +20,23 @@ Future<bool?> showPlannedAssignToPeriodSheet(
   return showModalBottomSheet<bool>(
     context: context,
     isScrollControlled: true,
-    useSafeArea: true,
     shape: const RoundedRectangleBorder(
       borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
     ),
     builder: (modalContext) {
-      return Padding(
-        padding: EdgeInsets.only(
-          left: 24,
-          right: 24,
-          top: 16,
-          bottom: 16 + MediaQuery.of(modalContext).viewInsets.bottom,
-        ),
-        child: _PlannedAssignToPeriodForm(
-          master: master,
-          initialPeriod: initialPeriod,
+      final viewInsets = MediaQuery.of(modalContext).viewInsets;
+      return SafeArea(
+        child: Padding(
+          padding: EdgeInsets.only(
+            left: 24,
+            right: 24,
+            top: 16,
+            bottom: viewInsets.bottom,
+          ),
+          child: _PlannedAssignToPeriodForm(
+            master: master,
+            initialPeriod: initialPeriod,
+          ),
         ),
       );
     },
@@ -147,57 +150,67 @@ class _PlannedAssignToPeriodFormState
       });
     });
 
+    final theme = Theme.of(context);
+    final viewInsets = MediaQuery.of(context).viewInsets.bottom;
     return Form(
       key: _formKey,
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Center(
-            child: Container(
-              width: 36,
-              height: 4,
-              decoration: BoxDecoration(
-                color: Theme.of(context).colorScheme.outlineVariant,
-                borderRadius: BorderRadius.circular(2),
-              ),
-            ),
-          ),
-          const SizedBox(height: 16),
-          Text(
-            'Назначить «${master.title}»',
-            style: Theme.of(context).textTheme.titleMedium,
-            textAlign: TextAlign.center,
-          ),
-          const SizedBox(height: 16),
-          Row(
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          return Column(
+            mainAxisSize: MainAxisSize.max,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              IconButton(
-                onPressed: () {
-                  nav.prev();
-                },
-                icon: const Icon(Icons.chevron_left),
-              ),
-              Expanded(
-                child: Column(
-                  children: [
-                    const Text('Период'),
-                    Text(
-                      periodLabel,
-                      style: Theme.of(context).textTheme.titleMedium,
-                    ),
-                  ],
-                ),
-              ),
-              IconButton(
-                onPressed: () {
-                  nav.next();
-                },
-                icon: const Icon(Icons.chevron_right),
-              ),
-            ],
-          ),
-          const SizedBox(height: 12),
+              Flexible(
+                child: SingleChildScrollView(
+                  padding: EdgeInsets.only(bottom: 24 + viewInsets),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      Center(
+                        child: Container(
+                          width: 36,
+                          height: 4,
+                          decoration: BoxDecoration(
+                            color: theme.colorScheme.outlineVariant,
+                            borderRadius: BorderRadius.circular(2),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 16),
+                      Text(
+                        'Назначить «${master.title}»',
+                        style: theme.textTheme.titleMedium,
+                        textAlign: TextAlign.center,
+                      ),
+                      const SizedBox(height: 16),
+                      Row(
+                        children: [
+                          IconButton(
+                            onPressed: () {
+                              nav.prev();
+                            },
+                            icon: const Icon(Icons.chevron_left),
+                          ),
+                          Expanded(
+                            child: Column(
+                              children: [
+                                const Text('Период'),
+                                Text(
+                                  periodLabel,
+                                  style: theme.textTheme.titleMedium,
+                                ),
+                              ],
+                            ),
+                          ),
+                          IconButton(
+                            onPressed: () {
+                              nav.next();
+                            },
+                            icon: const Icon(Icons.chevron_right),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 12),
           TextFormField(
             controller: _amountController,
             keyboardType: const TextInputType.numberWithOptions(decimal: true),
@@ -271,8 +284,8 @@ class _PlannedAssignToPeriodFormState
                       runSpacing: 8,
                       children: [
                         for (final label in labels)
-                          ChoiceChip(
-                            label: Text(label.name),
+                          NecessityChoiceChip(
+                            label: label,
                             selected: label.id == _necessityId,
                             onSelected: (selected) {
                               setState(() {
@@ -311,57 +324,71 @@ class _PlannedAssignToPeriodFormState
             loading: () => const Center(child: CircularProgressIndicator()),
             error: (error, _) => Text('Не удалось загрузить счета: $error'),
           ),
-          const SizedBox(height: 12),
-          ListTile(
-            contentPadding: EdgeInsets.zero,
-            leading: const Icon(Icons.event_outlined),
-            title: const Text('Дата'),
-            subtitle: Text(formatDate(_selectedDate)),
-            onTap: () async {
-              final picked = await showDatePicker(
-                context: context,
-                initialDate: _selectedDate,
-                firstDate: bounds.$1,
-                lastDate: bounds.$2.subtract(const Duration(days: 1)),
-              );
-              if (picked != null && mounted) {
-                setState(() => _selectedDate = picked);
-              }
-            },
-          ),
-          CheckboxListTile(
-            contentPadding: EdgeInsets.zero,
-            value: _included,
-            onChanged: (value) => setState(() => _included = value ?? false),
-            title: const Text('Показать на Главной'),
-          ),
-          const SizedBox(height: 16),
-          Row(
-            children: [
-              Expanded(
-                child: OutlinedButton(
-                  onPressed: _isSaving
-                      ? null
-                      : () => Navigator.of(context).pop(false),
-                  child: const Text('Отмена'),
+                      ListTile(
+                        contentPadding: EdgeInsets.zero,
+                        leading: const Icon(Icons.event_outlined),
+                        title: const Text('Дата'),
+                        subtitle: Text(formatDate(_selectedDate)),
+                        onTap: () async {
+                          final picked = await showDatePicker(
+                            context: context,
+                            initialDate: _selectedDate,
+                            firstDate: bounds.$1,
+                            lastDate:
+                                bounds.$2.subtract(const Duration(days: 1)),
+                          );
+                          if (picked != null && mounted) {
+                            setState(() => _selectedDate = picked);
+                          }
+                        },
+                      ),
+                      CheckboxListTile(
+                        contentPadding: EdgeInsets.zero,
+                        value: _included,
+                        onChanged: (value) =>
+                            setState(() => _included = value ?? false),
+                        title: const Text('Учитывать в расчётах'),
+                      ),
+                    ],
+                  ),
                 ),
               ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: FilledButton(
-                  onPressed: _isSaving ? null : _submit,
-                  child: _isSaving
-                      ? const SizedBox(
-                          height: 18,
-                          width: 18,
-                          child: CircularProgressIndicator(strokeWidth: 2),
-                        )
-                      : const Text('Сохранить'),
+              const SizedBox(height: 12),
+              SafeArea(
+                top: false,
+                child: Padding(
+                  padding: const EdgeInsets.only(bottom: 8),
+                  child: Row(
+                    children: [
+                      Expanded(
+                        child: OutlinedButton(
+                          onPressed: _isSaving
+                              ? null
+                              : () => Navigator.of(context).pop(false),
+                          child: const Text('Отмена'),
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: FilledButton(
+                          onPressed: _isSaving ? null : _submit,
+                          child: _isSaving
+                              ? const SizedBox(
+                                  height: 18,
+                                  width: 18,
+                                  child:
+                                      CircularProgressIndicator(strokeWidth: 2),
+                                )
+                              : const Text('Сохранить'),
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
               ),
             ],
-          ),
-        ],
+          );
+        },
       ),
     );
   }
