@@ -201,6 +201,8 @@ class NecessitySettingsScreen extends ConsumerStatefulWidget {
 
 class _NecessitySettingsScreenState
     extends ConsumerState<NecessitySettingsScreen> {
+  static const double _itemHeight = 76;
+
   @override
   Widget build(BuildContext context) {
     final labelsAsync = ref.watch(necessityLabelsFutureProvider);
@@ -238,40 +240,45 @@ class _NecessitySettingsScreenState
               itemCount: labels.length,
               onReorder: _handleReorder,
               buildDefaultDragHandles: false,
+              proxyDecorator: (child, index, animation) => child,
               itemBuilder: (context, index) {
                 final label = labels[index];
                 final hasColor = label.color?.trim().isNotEmpty == true;
                 final color = hexToColor(label.color);
-                return Card(
+                return SizedBox(
                   key: ValueKey(label.id),
-                  child: ListTile(
-                    leading: CircleAvatar(
-                      backgroundColor: color ??
-                          Theme.of(context).colorScheme.surfaceVariant,
-                      child: hasColor
-                          ? null
-                          : const Icon(Icons.block, size: 16),
-                    ),
-                    title: Text(label.name),
-                    trailing: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        ReorderableDragStartListener(
-                          index: index,
-                          child: const Icon(Icons.drag_handle),
-                        ),
-                        IconButton(
-                          tooltip: 'Переименовать',
-                          onPressed: () =>
-                              showNecessityEditSheet(context, initial: label),
-                          icon: const Icon(Icons.edit),
-                        ),
-                        IconButton(
-                          tooltip: 'Скрыть',
-                          onPressed: () => _archiveLabel(label),
-                          icon: const Icon(Icons.archive),
-                        ),
-                      ],
+                  height: _itemHeight,
+                  child: Card(
+                    margin: EdgeInsets.zero,
+                    child: ListTile(
+                      leading: CircleAvatar(
+                        backgroundColor: color ??
+                            Theme.of(context).colorScheme.surfaceVariant,
+                        child: hasColor
+                            ? null
+                            : const Icon(Icons.block, size: 16),
+                      ),
+                      title: Text(label.name),
+                      trailing: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          ReorderableDragStartListener(
+                            index: index,
+                            child: const Icon(Icons.drag_handle),
+                          ),
+                          IconButton(
+                            tooltip: 'Переименовать',
+                            onPressed: () =>
+                                showNecessityEditSheet(context, initial: label),
+                            icon: const Icon(Icons.edit),
+                          ),
+                          IconButton(
+                            tooltip: 'Скрыть',
+                            onPressed: () => _archiveLabel(label),
+                            icon: const Icon(Icons.archive),
+                          ),
+                        ],
+                      ),
                     ),
                   ),
                 );

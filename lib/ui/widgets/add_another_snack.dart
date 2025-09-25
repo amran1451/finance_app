@@ -51,6 +51,7 @@ class _AddAnotherContentState extends State<_AddAnotherContent>
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
+    final indicatorColor = colorScheme.onSurface.withOpacity(0.65);
     return InkWell(
       onTap: () {
         ScaffoldMessenger.maybeOf(context)?.hideCurrentSnackBar();
@@ -73,6 +74,8 @@ class _AddAnotherContentState extends State<_AddAnotherContent>
                     CircularProgressIndicator(
                       value: 1 - _c.value,
                       strokeWidth: 3,
+                      valueColor: AlwaysStoppedAnimation(indicatorColor),
+                      backgroundColor: colorScheme.onSurface.withOpacity(0.15),
                     ),
                     Text(
                       '$left',

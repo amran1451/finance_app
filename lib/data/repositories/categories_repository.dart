@@ -16,6 +16,8 @@ abstract class CategoriesRepository {
 
   Future<void> delete(int id);
 
+  Future<void> bulkMove(List<int> ids, int? parentId);
+
   Future<List<Category>> groupsByType(CategoryType type);
 
   Future<List<Category>> childrenOf(int groupId);
@@ -47,6 +49,21 @@ class SqliteCategoriesRepository implements CategoriesRepository {
       {'parent_id': null},
       where: 'parent_id = ?',
       whereArgs: [id],
+    );
+  }
+
+  @override
+  Future<void> bulkMove(List<int> ids, int? parentId) async {
+    if (ids.isEmpty) {
+      return;
+    }
+    final db = await _db;
+    final placeholders = List.filled(ids.length, '?').join(',');
+    await db.update(
+      'categories',
+      {'parent_id': parentId},
+      where: 'id IN ($placeholders)',
+      whereArgs: ids,
     );
   }
 
