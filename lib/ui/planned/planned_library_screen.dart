@@ -8,9 +8,14 @@ import 'planned_assign_to_period_sheet.dart';
 import 'planned_master_edit_sheet.dart';
 
 class PlannedLibraryScreen extends ConsumerStatefulWidget {
-  const PlannedLibraryScreen({super.key, this.selectForAssignment = false});
+  const PlannedLibraryScreen({
+    super.key,
+    this.selectForAssignment = false,
+    this.assignmentType,
+  });
 
   final bool selectForAssignment;
+  final String? assignmentType;
 
   @override
   ConsumerState<PlannedLibraryScreen> createState() =>
@@ -19,9 +24,24 @@ class PlannedLibraryScreen extends ConsumerStatefulWidget {
 
 class _PlannedLibraryScreenState
     extends ConsumerState<PlannedLibraryScreen> {
+  bool _showAssigned = false;
+
   @override
   Widget build(BuildContext context) {
-    final mastersAsync = ref.watch(plannedMasterListProvider);
+    final rawType = widget.assignmentType?.toLowerCase();
+    final assignmentType = switch (rawType) {
+      'income' => rawType,
+      'expense' => rawType,
+      'saving' => rawType,
+      _ => null,
+    };
+    final mastersAsync = widget.selectForAssignment
+        ? ref.watch(
+            plannedMastersForAssignmentProvider(
+              (type: assignmentType, includeAssigned: _showAssigned),
+            ),
+          )
+        : ref.watch(plannedMasterListProvider);
     final counts = ref.watch(plannedInstancesCountByMasterProvider).value ?? {};
     final categories = ref.watch(categoriesMapProvider).value ?? {};
 
@@ -38,7 +58,7 @@ class _PlannedLibraryScreenState
       ),
       body: mastersAsync.when(
         data: (masters) {
-          if (masters.isEmpty) {
+          if (masters.isEmpty && !widget.selectForAssignment) {
             return const Center(
               child: Padding(
                 padding: EdgeInsets.all(24),
@@ -49,15 +69,42 @@ class _PlannedLibraryScreenState
               ),
             );
           }
+          final hasToggle = widget.selectForAssignment;
+          final showEmptyMessage = masters.isEmpty;
+          final toggleOffset = hasToggle ? 1 : 0;
+          final messageOffset = hasToggle && showEmptyMessage ? 1 : 0;
+          final totalItems = masters.length + toggleOffset + messageOffset;
           return ListView.separated(
             padding: const EdgeInsets.symmetric(vertical: 8),
-            itemCount: masters.length,
+            itemCount: totalItems,
             separatorBuilder: (_, __) => const Divider(height: 0),
             itemBuilder: (context, index) {
-              final master = masters[index];
+              if (hasToggle && index == 0) {
+                return SwitchListTile(
+                  contentPadding: const EdgeInsets.symmetric(horizontal: 16),
+                  title: const Text('Показать уже назначенные'),
+                  value: _showAssigned,
+                  onChanged: (value) {
+                    setState(() {
+                      _showAssigned = value;
+                    });
+                  },
+                );
+              }
+              if (hasToggle && showEmptyMessage && index == 1) {
+                return const Padding(
+                  padding: EdgeInsets.symmetric(horizontal: 24, vertical: 16),
+                  child: Text(
+                    'Нет доступных шаблонов для выбранного периода.',
+                  ),
+                );
+              }
+              final masterIndex = index - toggleOffset - messageOffset;
+              final master = masters[masterIndex];
               final id = master.id;
-              final categoryName =
-                  master.categoryId != null ? categories[master.categoryId!]?.name : null;
+              final categoryName = master.categoryId != null
+                  ? categories[master.categoryId!]?.name
+                  : null;
               final defaultAmount = master.defaultAmountMinor != null
                   ? formatCurrencyMinor(master.defaultAmountMinor!)
                   : null;
@@ -71,8 +118,12 @@ class _PlannedLibraryScreenState
                 title: Text(master.title),
                 subtitle: subtitle != null ? Text(subtitle) : null,
                 trailing: PopupMenuButton<_MasterMenuAction>(
-                  onSelected: (action) => _handleMenuAction(context, master, action,
-                      canDelete: !hasInstances),
+                  onSelected: (action) => _handleMenuAction(
+                    context,
+                    master,
+                    action,
+                    canDelete: !hasInstances,
+                  ),
                   itemBuilder: (context) {
                     final items = <PopupMenuEntry<_MasterMenuAction>>[
                       const PopupMenuItem(
@@ -85,7 +136,9 @@ class _PlannedLibraryScreenState
                       ),
                       PopupMenuItem(
                         value: _MasterMenuAction.toggleArchive,
-                        child: Text(master.archived ? 'Разархивировать' : 'Архивировать'),
+                        child: Text(
+                          master.archived ? 'Разархивировать' : 'Архивировать',
+                        ),
                       ),
                     ];
                     if (!hasInstances) {
@@ -99,9 +152,7 @@ class _PlannedLibraryScreenState
                     return items;
                   },
                 ),
-                onTap: id == null
-                    ? null
-                    : () => _handleTap(context, master),
+                onTap: id == null ? null : () => _handleTap(context, master),
               );
             },
           );

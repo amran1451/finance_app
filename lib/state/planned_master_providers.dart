@@ -26,6 +26,31 @@ final plannedMasterListProvider =
   return repository.list();
 });
 
+typedef PlannedMasterAssignmentQuery = ({String? type, bool includeAssigned});
+
+final plannedMastersForAssignmentProvider = FutureProvider.family<
+    List<PlannedMaster>, PlannedMasterAssignmentQuery>((ref, query) async {
+  ref.watch(dbTickProvider);
+  final repository = ref.watch(plannedMasterRepoProvider);
+  if (query.includeAssigned) {
+    final masters = await repository.list();
+    final type = query.type?.toLowerCase();
+    if (type == null) {
+      return masters;
+    }
+    return [
+      for (final master in masters)
+        if (master.type == type) master,
+    ];
+  }
+  final bounds = ref.watch(periodBoundsProvider);
+  return repository.listAssignableForPeriod(
+    bounds.$1,
+    bounds.$2,
+    type: query.type,
+  );
+});
+
 final plannedInstancesForSelectedPeriodProvider =
     FutureProvider.family<List<TransactionItem>, String?>((ref, type) async {
   ref.watch(dbTickProvider);

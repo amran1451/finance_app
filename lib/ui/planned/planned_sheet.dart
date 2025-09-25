@@ -241,7 +241,10 @@ class _PlannedSheetContentState extends ConsumerState<_PlannedSheetContent> {
                     child: OutlinedButton.icon(
                       onPressed: () => context.pushNamed(
                         RouteNames.plannedLibrary,
-                        queryParameters: const {'select': '1'},
+                        queryParameters: {
+                          'select': '1',
+                          'type': _typeToQuery(widget.type),
+                        },
                       ),
                       icon: const Icon(Icons.library_add_outlined),
                       label: const Text('Из общего плана'),
@@ -266,6 +269,14 @@ class _PlannedSheetContentState extends ConsumerState<_PlannedSheetContent> {
       },
     );
   }
+}
+
+String _typeToQuery(PlannedType type) {
+  return switch (type) {
+    PlannedType.income => 'income',
+    PlannedType.expense => 'expense',
+    PlannedType.saving => 'saving',
+  };
 }
 
 class _SheetHeader extends StatelessWidget {

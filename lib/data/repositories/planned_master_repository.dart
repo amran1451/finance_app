@@ -97,6 +97,12 @@ abstract class PlannedMasterRepository {
 
   Future<PlannedMaster?> getById(int id);
 
+  Future<List<PlannedMaster>> listAssignableForPeriod(
+    DateTime start,
+    DateTime endExclusive, {
+    String? type,
+  });
+
   Future<int> create({
     required String type,
     required String title,
@@ -190,6 +196,39 @@ class SqlitePlannedMasterRepository implements PlannedMasterRepository {
   }
 
   @override
+  Future<List<PlannedMaster>> listAssignableForPeriod(
+    DateTime start,
+    DateTime endExclusive, {
+    String? type,
+  }) async {
+    final db = await _db;
+    final normalizedType = type == null ? null : _normalizeType(type);
+    final rows = await db.rawQuery(
+      '''
+      SELECT pm.*
+      FROM planned_master pm
+      WHERE pm.archived = 0
+        AND (?1 IS NULL OR pm.type = ?1)
+        AND NOT EXISTS (
+          SELECT 1
+          FROM transactions t
+          WHERE t.is_planned = 1
+            AND t.planned_id = pm.id
+            AND t.date >= ?2
+            AND t.date < ?3
+        )
+      ORDER BY pm.title COLLATE NOCASE
+      ''',
+      [
+        normalizedType,
+        _formatDate(start),
+        _formatDate(endExclusive),
+      ],
+    );
+    return rows.map(PlannedMaster.fromMap).toList();
+  }
+
+  @override
   Future<bool> update(
     int id, {
     String? type,
@@ -227,6 +266,12 @@ class SqlitePlannedMasterRepository implements PlannedMasterRepository {
       whereArgs: [id],
     );
     return rowsUpdated > 0;
+  }
+
+  String _formatDate(DateTime date) {
+    final month = date.month.toString().padLeft(2, '0');
+    final day = date.day.toString().padLeft(2, '0');
+    return '${date.year.toString().padLeft(4, '0')}-$month-$day';
   }
 
   String _normalizeType(String type) {
