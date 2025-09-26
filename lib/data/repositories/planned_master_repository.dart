@@ -338,7 +338,7 @@ class SqlitePlannedMasterRepository implements PlannedMasterRepository {
     final normalizedType = type == null ? null : _normalizeType(type);
 
     final sql = StringBuffer(
-      'UPDATE planned_master '\
+      'UPDATE planned_master '
       'SET title = ?, default_amount_minor = ?, necessity_id = ?, note = ?, updated_at = CURRENT_TIMESTAMP',
     );
     final args = <Object?>[
