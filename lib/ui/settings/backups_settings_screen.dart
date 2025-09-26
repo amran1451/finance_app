@@ -2,13 +2,14 @@ import 'dart:io';
 
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
-import 'package:share_plus/share_plus.dart';
 
 import '../../data/db/migrations.dart';
+import '../../data/models/manual_backup_entry.dart';
 import '../../state/app_providers.dart';
 import '../../state/backup_providers.dart';
 import '../../state/db_refresh.dart';
@@ -156,22 +157,44 @@ class _BackupsSettingsScreenState
 
   Future<void> _exportBackup() async {
     setState(() => _isExporting = true);
+    File? tempBackupFile;
+    String? savedPath;
     try {
       final backupService = ref.read(backupServiceProvider);
       final result = await backupService.createBackupFile();
-      await Share.shareXFiles(
-        [XFile(result.path)],
-        text: 'Резервная копия «Учёт финансов»',
+      tempBackupFile = File(result.path);
+
+      final targetPath = await _saveBackupFile(
+        sourceFile: tempBackupFile,
+        fileName: result.entry.fileName,
       );
+      if (targetPath == null) {
+        return;
+      }
+      savedPath = targetPath;
+      final savedLocation = savedPath!;
+
       final settingsRepository = ref.read(settingsRepoProvider);
-      await settingsRepository.addManualBackupEntry(result.entry);
+      final savedFileName = p.basename(savedLocation);
+      final entry = ManualBackupEntry(
+        createdAt: result.entry.createdAt,
+        schemaVersion: result.entry.schemaVersion,
+        fileName: savedFileName,
+      );
+      await settingsRepository.addManualBackupEntry(entry);
       bumpDbTick(ref);
       ref.invalidate(manualBackupHistoryProvider);
       if (!mounted) {
         return;
       }
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Резервная копия создана')),
+        SnackBar(
+          content: Text(
+            savedLocation.startsWith('content://')
+                ? 'Резервная копия сохранена'
+                : 'Резервная копия сохранена: $savedLocation',
+          ),
+        ),
       );
     } catch (error) {
       if (!mounted) {
@@ -183,6 +206,9 @@ class _BackupsSettingsScreenState
     } finally {
       if (mounted) {
         setState(() => _isExporting = false);
+      }
+      if (tempBackupFile != null && tempBackupFile.path != savedPath) {
+        await _safeDelete(tempBackupFile);
       }
     }
   }
@@ -218,16 +244,24 @@ class _BackupsSettingsScreenState
     File? importFile;
     var shouldDeleteAfter = false;
     try {
-      final picked = await FilePicker.platform.pickFiles(
-        type: FileType.custom,
-        allowedExtensions: const ['db'],
-        withData: true,
-      );
+      final picked = await _pickBackupFile();
       if (picked == null || picked.files.isEmpty) {
         return;
       }
 
       final platformFile = picked.files.first;
+      if (!_hasDbExtension(platformFile)) {
+        if (!mounted) {
+          return;
+        }
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Выберите файл резервной копии с расширением .db.'),
+          ),
+        );
+        return;
+      }
+
       final materialized = await _materializeFile(platformFile);
       if (materialized == null) {
         if (!mounted) {
@@ -306,6 +340,63 @@ class _BackupsSettingsScreenState
         await _safeDelete(importFile);
       }
     }
+  }
+
+  Future<String?> _saveBackupFile({
+    required File sourceFile,
+    required String fileName,
+  }) async {
+    final bytes = await sourceFile.readAsBytes();
+
+    Future<String?> attempt(FileType type, {List<String>? allowedExtensions}) {
+      return FilePicker.platform.saveFile(
+        dialogTitle: 'Сохранить резервную копию',
+        fileName: fileName,
+        type: type,
+        allowedExtensions: allowedExtensions,
+        bytes: bytes,
+      );
+    }
+
+    try {
+      return await attempt(
+        FileType.custom,
+        allowedExtensions: const ['db'],
+      );
+    } on PlatformException catch (error) {
+      if (_isUnsupportedFilterError(error)) {
+        return attempt(FileType.any);
+      }
+      rethrow;
+    }
+  }
+
+  Future<FilePickerResult?> _pickBackupFile() async {
+    try {
+      return await FilePicker.platform.pickFiles(
+        type: FileType.custom,
+        allowedExtensions: const ['db'],
+        withData: true,
+      );
+    } on PlatformException catch (error) {
+      if (_isUnsupportedFilterError(error)) {
+        return FilePicker.platform.pickFiles(
+          type: FileType.any,
+          withData: true,
+        );
+      }
+      rethrow;
+    }
+  }
+
+  bool _hasDbExtension(PlatformFile file) {
+    final extension = file.extension ?? p.extension(file.name);
+    return extension.replaceFirst('.', '').toLowerCase() == 'db';
+  }
+
+  bool _isUnsupportedFilterError(PlatformException error) {
+    return error.code == 'FilePicker' &&
+        (error.message?.contains('Unsupported filter') ?? false);
   }
 
   Future<({File file, bool deleteAfter})?> _materializeFile(
