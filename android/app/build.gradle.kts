@@ -57,7 +57,7 @@ fun apkFileName(verName: String, buildType: String) =
 
 // Попытка определить версию AGP и выбрать API
 val agpVer: String = try {
-    com.android.build.gradle.internal.Version.ANDROID_GRADLE_PLUGIN_VERSION
+    com.android.Version.ANDROID_GRADLE_PLUGIN_VERSION
 } catch (_: Throwable) {
     "8.0.0" // пусть по умолчанию будет новая ветка
 }
@@ -70,11 +70,11 @@ if (agpVer.startsWith("8") || agpVer.startsWith("9")) {
             val vName = variant.outputs.first().versionName.orNull
                 ?: android.defaultConfig.versionName
                 ?: "0.0.0"
-            val bType = variant.buildType
+            val bType = variant.buildType ?: variant.name
 
             variant.outputs.forEach { out ->
                 // Без import: полное имя класса
-                val apkOut = out as? com.android.build.api.variant.ApkVariantOutput
+                val apkOut = out as? com.android.build.api.variant.VariantOutput
                 if (apkOut != null) {
                     apkOut.outputFileName.set(apkFileName(vName, bType))
                 }
