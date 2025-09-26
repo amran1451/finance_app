@@ -216,7 +216,7 @@ class SqlitePeriodsRepository implements PeriodsRepository {
     });
   }
 
-  Future<Map<String, Object?>>? _findPeriod(
+  Future<Map<String, Object?>?> _findPeriod(
     DatabaseExecutor executor,
     int year,
     int month,
@@ -234,7 +234,7 @@ class SqlitePeriodsRepository implements PeriodsRepository {
     return rows.first;
   }
 
-  Future<Map<String, Object?>>? _findById(DatabaseExecutor executor, int id) async {
+  Future<Map<String, Object?>?> _findById(DatabaseExecutor executor, int id) async {
     final rows = await executor.query(
       'periods',
       where: 'id = ?',
