@@ -52,6 +52,16 @@ android {
     }
 }
 
+androidComponents {
+    onVariants(selector().all()) { variant ->
+        variant.outputs.forEach { output ->
+            val buildType = variant.buildType
+            val verName = variant.versionName.get()
+            output.outputFileName.set("Uchet_finansov-${verName}-${buildType}.apk")
+        }
+    }
+}
+
 flutter {
     source = "../.."
 }
