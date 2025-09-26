@@ -419,6 +419,7 @@ class _PlannedAddFormState extends ConsumerState<_PlannedAddForm> {
       amountMinor: amountMinor,
       date: existing?.date ?? DateTime.now(),
       note: title,
+      plannedId: existing?.plannedId,
       isPlanned: true,
       includedInPeriod: existing?.includedInPeriod ?? false,
       criticality: criticality,
