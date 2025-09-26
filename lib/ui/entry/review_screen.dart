@@ -41,6 +41,9 @@ class _ReviewScreenState extends ConsumerState<ReviewScreen> {
   late final ValueNotifier<DateTime> selectedDate;
   late final ValueNotifier<int> selectedAccountId;
   late final ValueNotifier<int> amountMinor;
+  late final ProviderSubscription<EntryFlowState> _entryFlowSubscription;
+  late final ProviderSubscription<AsyncValue<List<Account>>>
+      _accountsSubscription;
 
   @override
   void initState() {
@@ -63,23 +66,29 @@ class _ReviewScreenState extends ConsumerState<ReviewScreen> {
           .setAccount(initialAccountId);
     }
     _reasonValidationError = false;
-    ref.listen<EntryFlowState>(entryFlowControllerProvider, (previous, next) {
-      final nextDate = next.selectedDate;
-      if (!_isSameDay(selectedDate.value, nextDate)) {
-        selectedDate.value = nextDate;
-      }
-      final nextAmountMinor = (next.amount * 100).round();
-      if (amountMinor.value != nextAmountMinor) {
-        amountMinor.value = nextAmountMinor;
-      }
-      final nextAccountId = next.accountId;
-      if (nextAccountId != null && selectedAccountId.value != nextAccountId) {
-        _syncAccountFromState(nextAccountId);
-      }
-    });
-    ref.listen<AsyncValue<List<Account>>>(activeAccountsProvider, (previous, next) {
-      next.whenData(_handleAccountsLoaded);
-    });
+    _entryFlowSubscription = ref.listenManual<EntryFlowState>(
+      entryFlowControllerProvider,
+      (previous, next) {
+        final nextDate = next.selectedDate;
+        if (!_isSameDay(selectedDate.value, nextDate)) {
+          selectedDate.value = nextDate;
+        }
+        final nextAmountMinor = (next.amount * 100).round();
+        if (amountMinor.value != nextAmountMinor) {
+          amountMinor.value = nextAmountMinor;
+        }
+        final nextAccountId = next.accountId;
+        if (nextAccountId != null && selectedAccountId.value != nextAccountId) {
+          _syncAccountFromState(nextAccountId);
+        }
+      },
+    );
+    _accountsSubscription = ref.listenManual<AsyncValue<List<Account>>>(
+      activeAccountsProvider,
+      (previous, next) {
+        next.whenData(_handleAccountsLoaded);
+      },
+    );
   }
 
   bool _shouldForcePlanned(EntryFlowState state) {
@@ -164,6 +173,8 @@ class _ReviewScreenState extends ConsumerState<ReviewScreen> {
 
   @override
   void dispose() {
+    _entryFlowSubscription.close();
+    _accountsSubscription.close();
     selectedDate.dispose();
     selectedAccountId.dispose();
     amountMinor.dispose();
