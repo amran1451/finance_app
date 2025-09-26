@@ -30,11 +30,18 @@ class HomeScreen extends ConsumerWidget {
     final hideFab = ref.watch(isSheetOpenProvider);
     final entryController = ref.read(entryFlowControllerProvider.notifier);
     final transactionsAsync = ref.watch(halfPeriodTransactionsProvider);
+    final period = ref.watch(selectedPeriodRefProvider);
     final (periodStart, periodEndExclusive) = ref.watch(periodBoundsProvider);
     final label = ref.watch(periodLabelProvider);
     final daysLeft = ref.watch(daysFromPayoutToPeriodEndProvider);
     final payoutAsync = ref.watch(payoutForSelectedPeriodProvider);
     final suggestedType = ref.watch(payoutSuggestedTypeProvider);
+    final canClosePeriod = ref.watch(canCloseCurrentPeriodProvider);
+    final periodStatusAsync = ref.watch(periodStatusProvider(period));
+    final periodClosed = periodStatusAsync.maybeWhen(
+      data: (status) => status.closed,
+      orElse: () => false,
+    );
     final generalPayoutLabel =
         'Добавить выплату (по периоду: ${payoutTypeLabel(suggestedType)})';
     final plannedRemainderAsync = ref.watch(plannedRemainderForPeriodProvider);
@@ -129,6 +136,46 @@ class HomeScreen extends ConsumerWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
+              if (canClosePeriod) ...[
+                MaterialBanner(
+                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                  content: Text('Период $label завершён. Закрыть?'),
+                  actions: [
+                    TextButton(
+                      onPressed: () async {
+                        final read = ref.read;
+                        final periodRef = read(selectedPeriodRefProvider);
+                        final spent = await read(
+                          spentForPeriodProvider(periodRef).future,
+                        );
+                        final planned = await read(
+                          plannedIncludedAmountForPeriodProvider(periodRef).future,
+                        );
+                        final payout = await read(payoutForSelectedPeriodProvider.future);
+                        final dailyLimitMinor =
+                            await read(dailyLimitProvider.future) ?? 0;
+                        await read(periodsRepoProvider).closePeriod(
+                          periodRef,
+                          payoutId: payout?.id,
+                          dailyLimitMinor: dailyLimitMinor,
+                          spentMinor: spent,
+                          plannedIncludedMinor: planned,
+                          carryoverMinor: 0,
+                        );
+                        read(selectedPeriodRefProvider.notifier).state =
+                            periodRef.nextHalf();
+                        bumpDbTick(ref);
+                      },
+                      child: const Text('Закрыть'),
+                    ),
+                    TextButton(
+                      onPressed: () {},
+                      child: const Text('Позже'),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 16),
+              ],
               Padding(
                 padding:
                     const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
@@ -137,6 +184,10 @@ class HomeScreen extends ConsumerWidget {
                     Expanded(
                       child: PeriodSelector(dense: true, label: label),
                     ),
+                    if (periodClosed) ...[
+                      const SizedBox(width: 12),
+                      const _ClosedPeriodBadge(),
+                    ],
                     AnimatedSwitcher(
                       duration: const Duration(milliseconds: 180),
                       switchInCurve: Curves.easeOut,
@@ -446,6 +497,30 @@ class _LimitCards extends StatelessWidget {
           ),
         ),
       ],
+    );
+  }
+}
+
+class _ClosedPeriodBadge extends StatelessWidget {
+  const _ClosedPeriodBadge();
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+      decoration: BoxDecoration(
+        color: colorScheme.primaryContainer,
+        borderRadius: BorderRadius.circular(999),
+      ),
+      child: Text(
+        'Закрыт',
+        style: theme.textTheme.labelLarge?.copyWith(
+          color: colorScheme.onPrimaryContainer,
+          fontWeight: FontWeight.w600,
+        ),
+      ),
     );
   }
 }

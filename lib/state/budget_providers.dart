@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../data/models/payout.dart';
 import '../data/models/transaction_record.dart';
+import '../data/repositories/periods_repository.dart';
 import '../data/repositories/transactions_repository.dart';
 import 'app_providers.dart';
 import 'db_refresh.dart';
@@ -38,6 +39,69 @@ final selectedPeriodRefProvider = StateProvider<PeriodRef>((ref) {
   final (a1, a2) = ref.watch(anchorDaysProvider);
   final now = DateTime.now();
   return periodRefForDate(now, a1, a2);
+});
+
+final periodStatusProvider = FutureProvider.family<PeriodStatus, PeriodRef>((ref, period) async {
+  ref.watch(dbTickProvider);
+  final repository = ref.watch(periodsRepoProvider);
+  final (anchor1, anchor2) = ref.watch(anchorDaysProvider);
+  final bounds = period.bounds(anchor1, anchor2);
+  await repository.getOrCreate(
+    period.year,
+    period.month,
+    period.half,
+    bounds.start,
+    bounds.endExclusive,
+  );
+  return repository.getStatus(period);
+});
+
+final plannedIncludedAmountForPeriodProvider =
+    FutureProvider.family<int, PeriodRef>((ref, period) async {
+  ref.watch(dbTickProvider);
+  final repository = ref.watch(transactionsRepoProvider);
+  final (anchor1, anchor2) = ref.watch(anchorDaysProvider);
+  final bounds = period.bounds(anchor1, anchor2);
+  final items = await repository.listPlannedByPeriod(
+    start: bounds.start,
+    endExclusive: bounds.endExclusive,
+    type: 'expense',
+    onlyIncluded: true,
+  );
+  if (items.isEmpty) {
+    return 0;
+  }
+  return items.fold<int>(0, (sum, item) => sum + item.amountMinor);
+});
+
+final spentForPeriodProvider = FutureProvider.family<int, PeriodRef>((ref, period) async {
+  ref.watch(dbTickProvider);
+  final repository = ref.watch(transactionsRepoProvider);
+  final (anchor1, anchor2) = ref.watch(anchorDaysProvider);
+  final bounds = period.bounds(anchor1, anchor2);
+  final unplanned = await repository.sumUnplannedExpensesInRange(
+    bounds.start,
+    bounds.endExclusive,
+  );
+  final planned = await ref.watch(plannedIncludedAmountForPeriodProvider(period).future);
+  return unplanned + planned;
+});
+
+final canCloseCurrentPeriodProvider = Provider<bool>((ref) {
+  ref.watch(dbTickProvider);
+  final period = ref.watch(selectedPeriodRefProvider);
+  final (start, endExclusive) = ref.watch(periodBoundsProvider);
+  final today = DateTime.now();
+  final normalizedToday = DateTime(today.year, today.month, today.day);
+  final normalizedEndExclusive =
+      DateTime(endExclusive.year, endExclusive.month, endExclusive.day);
+  final statusAsync = ref.watch(periodStatusProvider(period));
+  final isClosed = statusAsync.maybeWhen(
+    data: (status) => status.closed,
+    orElse: () => false,
+  );
+  final reachedEnd = !normalizedToday.isBefore(normalizedEndExclusive);
+  return reachedEnd && !isClosed;
 });
 
 final payoutSuggestedTypeProvider = Provider<PayoutType>((ref) {

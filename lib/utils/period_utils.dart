@@ -40,6 +40,18 @@ class PeriodRef {
       half: HalfPeriod.first,
     );
   }
+
+  ({DateTime start, DateTime endExclusive}) bounds(int anchor1, int anchor2) {
+    return periodBoundsFor(this, anchor1, anchor2);
+  }
+
+  DateTime startDate(int anchor1, int anchor2) {
+    return bounds(anchor1, anchor2).start;
+  }
+
+  DateTime endExclusiveDate(int anchor1, int anchor2) {
+    return bounds(anchor1, anchor2).endExclusive;
+  }
 }
 
 DateTime normalizeDate(DateTime date) {
