@@ -76,6 +76,7 @@ abstract class TransactionsRepository {
     int? necessityId,
     String? necessityLabel,
     bool includedInPeriod = false,
+    int criticality = 0,
   });
 
   Future<List<TransactionItem>> listPlannedByPeriod({
@@ -344,6 +345,7 @@ class SqliteTransactionsRepository implements TransactionsRepository {
     int? necessityId,
     String? necessityLabel,
     bool includedInPeriod = false,
+    int criticality = 0,
   }) async {
     final db = await _db;
     final values = <String, Object?>{
@@ -358,7 +360,7 @@ class SqliteTransactionsRepository implements TransactionsRepository {
       'is_planned': 1,
       'included_in_period': includedInPeriod ? 1 : 0,
       'tags': null,
-      'criticality': 0,
+      'criticality': criticality,
       'necessity_id': necessityId,
       'necessity_label': necessityLabel,
       'reason_id': null,

@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../data/models/account.dart';
 import '../../data/models/category.dart';
+import '../../data/models/transaction_record.dart';
 import '../../data/repositories/planned_master_repository.dart';
 import '../../data/repositories/necessity_repository.dart' as necessity_repo;
 import '../../state/app_providers.dart';
@@ -17,6 +18,7 @@ Future<bool?> showPlannedAssignToPeriodSheet(
   BuildContext context, {
   required PlannedMaster master,
   PeriodRef? initialPeriod,
+  TransactionRecord? initialRecord,
 }) {
   return showModalBottomSheet<bool>(
     context: context,
@@ -37,6 +39,7 @@ Future<bool?> showPlannedAssignToPeriodSheet(
           child: _PlannedAssignToPeriodForm(
             master: master,
             initialPeriod: initialPeriod,
+            initialRecord: initialRecord,
           ),
         ),
       );
@@ -48,10 +51,12 @@ class _PlannedAssignToPeriodForm extends ConsumerStatefulWidget {
   const _PlannedAssignToPeriodForm({
     required this.master,
     this.initialPeriod,
+    this.initialRecord,
   });
 
   final PlannedMaster master;
   final PeriodRef? initialPeriod;
+  final TransactionRecord? initialRecord;
 
   @override
   ConsumerState<_PlannedAssignToPeriodForm> createState() =>
@@ -79,21 +84,33 @@ class _PlannedAssignToPeriodFormState
     if (initialPeriod != null) {
       ref.read(selectedPeriodRefProvider.notifier).state = initialPeriod;
     }
-    final bounds = ref.read(periodBoundsProvider);
-    final defaultDate = _clampDate(bounds.$1, bounds.$1, bounds.$2);
-    _selectedDate = defaultDate;
-    _categoryId = master.categoryId;
-    _accountId = null;
-    _necessityId = null;
-    _included = false;
-    if (_accountId != null) {
-      _accountInitialized = true;
+    final existing = widget.initialRecord;
+    if (existing != null) {
+      _selectedDate = existing.date;
+      _categoryId = existing.categoryId;
+      _accountId = existing.accountId;
+      _necessityId = existing.necessityId;
+      _included = existing.includedInPeriod;
+      _accountInitialized = _accountId != null;
+      _amountController = TextEditingController(
+        text: _formatAmount(existing.amountMinor),
+      );
+      _noteController = TextEditingController(text: existing.note ?? '');
+    } else {
+      final bounds = ref.read(periodBoundsProvider);
+      final defaultDate = _clampDate(bounds.$1, bounds.$1, bounds.$2);
+      _selectedDate = defaultDate;
+      _categoryId = master.categoryId;
+      _accountId = null;
+      _necessityId = null;
+      _included = false;
+      _accountInitialized = _accountId != null;
+      final amountMinor = master.defaultAmountMinor;
+      _amountController = TextEditingController(
+        text: amountMinor != null ? _formatAmount(amountMinor) : '',
+      );
+      _noteController = TextEditingController(text: master.note ?? '');
     }
-    final amountMinor = master.defaultAmountMinor;
-    _amountController = TextEditingController(
-      text: amountMinor != null ? _formatAmount(amountMinor) : '',
-    );
-    _noteController = TextEditingController(text: master.note ?? '');
   }
 
   @override
@@ -106,6 +123,7 @@ class _PlannedAssignToPeriodFormState
   @override
   Widget build(BuildContext context) {
     final master = widget.master;
+    final existing = widget.initialRecord;
     ref.listen<(DateTime, DateTime)>(periodBoundsProvider, (previous, next) {
       final start = next.$1;
       final end = next.$2;
@@ -179,7 +197,9 @@ class _PlannedAssignToPeriodFormState
                       ),
                       const SizedBox(height: 16),
                       Text(
-                        'Назначить «${master.title}»',
+                        existing == null
+                            ? 'Назначить «${master.title}»'
+                            : 'Редактировать «${master.title}»',
                         style: theme.textTheme.titleMedium,
                         textAlign: TextAlign.center,
                       ),
@@ -400,6 +420,7 @@ class _PlannedAssignToPeriodFormState
     }
 
     final master = widget.master;
+    final existing = widget.initialRecord;
     final repo = ref.read(transactionsRepoProvider);
     final plannedId = master.id;
     if (plannedId == null) {
@@ -413,33 +434,72 @@ class _PlannedAssignToPeriodFormState
       return;
     }
     final note = _noteController.text.trim();
+    final noteValue = note.isEmpty ? null : note;
 
     setState(() => _isSaving = true);
     try {
+      List<necessity_repo.NecessityLabel> labels = const [];
+      if (master.type == 'expense') {
+        labels = await ref.read(necessityLabelsFutureProvider.future);
+      }
       String? necessityLabel;
       int? necessityId;
-      if (master.type == 'expense' && _necessityId != null) {
-        final labels = ref.read(necessityLabelsFutureProvider).value ?? const [];
+      var criticality = existing?.criticality ?? 0;
+      if (master.type == 'expense') {
+        necessity_repo.NecessityLabel? match;
         for (final label in labels) {
           if (label.id == _necessityId) {
-            necessityLabel = label.name;
-            necessityId = label.id;
+            match = label;
             break;
           }
         }
+        if (match != null) {
+          necessityLabel = match.name;
+          necessityId = match.id;
+          criticality = labels.indexOf(match);
+        } else if (_necessityId == null) {
+          necessityLabel = null;
+          necessityId = null;
+          criticality = 0;
+        } else if (existing != null) {
+          necessityLabel = existing.necessityLabel;
+          necessityId = existing.necessityId;
+          criticality = existing.criticality;
+        }
+      } else {
+        necessityLabel = null;
+        necessityId = null;
+        criticality = 0;
       }
-      await repo.createPlannedInstance(
-        plannedId: plannedId,
-        type: master.type,
-        accountId: accountId,
-        amountMinor: amountMinor,
-        date: _selectedDate,
-        categoryId: categoryId,
-        note: note.isEmpty ? null : note,
-        necessityId: necessityId,
-        necessityLabel: necessityLabel,
-        includedInPeriod: _included,
-      );
+
+      if (existing == null) {
+        await repo.createPlannedInstance(
+          plannedId: plannedId,
+          type: master.type,
+          accountId: accountId,
+          amountMinor: amountMinor,
+          date: _selectedDate,
+          categoryId: categoryId,
+          note: noteValue,
+          necessityId: necessityId,
+          necessityLabel: necessityLabel,
+          includedInPeriod: _included,
+          criticality: criticality,
+        );
+      } else {
+        final updated = existing.copyWith(
+          accountId: accountId,
+          categoryId: categoryId,
+          amountMinor: amountMinor,
+          date: _selectedDate,
+          note: noteValue,
+          includedInPeriod: _included,
+          necessityId: necessityId,
+          necessityLabel: necessityLabel,
+          criticality: criticality,
+        );
+        await repo.update(updated);
+      }
       if (!mounted) {
         return;
       }
