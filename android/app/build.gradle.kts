@@ -1,5 +1,3 @@
-import com.android.build.api.variant.ApkVariantOutput
-
 plugins {
     id("com.android.application")
     id("kotlin-android")
@@ -53,17 +51,46 @@ android {
     }
 }
 
-androidComponents {
-    onVariants(selector().all()) { variant ->
-        variant.outputs.forEach { out ->
-            if (out is ApkVariantOutput) {
-                // Пытаемся взять versionName из output; если нет — из defaultConfig; иначе "0.0.0"
-                val fallbackVer = android.defaultConfig.versionName ?: "0.0.0"
-                val verName = out.versionName.orNull ?: fallbackVer
-                val buildType = variant.buildType
-                // Итоговое имя файла APK
-                out.outputFileName.set("Uchet_finansov-${verName}-${buildType}.apk")
+@Suppress("UnstableApiUsage")
+fun apkFileName(verName: String, buildType: String) =
+    "Uchet_finansov-${verName}-${buildType}.apk"
+
+// Попытка определить версию AGP и выбрать API
+val agpVer: String = try {
+    com.android.build.gradle.internal.Version.ANDROID_GRADLE_PLUGIN_VERSION
+} catch (_: Throwable) {
+    "8.0.0" // пусть по умолчанию будет новая ветка
+}
+
+if (agpVer.startsWith("8") || agpVer.startsWith("9")) {
+    // === AGP 8+ путь: androidComponents ===
+    androidComponents {
+        onVariants(selector().all()) { variant ->
+            // versionName: пробуем из variant, иначе из defaultConfig
+            val vName = variant.outputs.first().versionName.orNull
+                ?: android.defaultConfig.versionName
+                ?: "0.0.0"
+            val bType = variant.buildType
+
+            variant.outputs.forEach { out ->
+                // Без import: полное имя класса
+                val apkOut = out as? com.android.build.api.variant.ApkVariantOutput
+                if (apkOut != null) {
+                    apkOut.outputFileName.set(apkFileName(vName, bType))
+                }
             }
+        }
+    }
+} else {
+    // === AGP 7.x путь: applicationVariants/all + internal API ===
+    @Suppress("DEPRECATION")
+    android.applicationVariants.all {
+        val vName = this.versionName ?: android.defaultConfig.versionName ?: "0.0.0"
+        val bType = this.buildType.name
+        outputs.all {
+            // Ветка для старых AGP: используем internal BaseVariantOutputImpl
+            val base = this as? com.android.build.gradle.internal.api.BaseVariantOutputImpl
+            base?.outputFileName = apkFileName(vName, bType)
         }
     }
 }
