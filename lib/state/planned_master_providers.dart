@@ -2,6 +2,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../data/db/app_database.dart';
 import '../data/models/category.dart' as category_models;
+import '../data/models/transaction_record.dart';
 import '../data/repositories/necessity_repository.dart';
 import '../data/repositories/planned_instances_repository.dart';
 import '../data/repositories/planned_master_repository.dart';
@@ -21,6 +22,17 @@ final plannedInstancesRepoProvider =
     Provider<PlannedInstancesRepository>((ref) {
   final database = ref.watch(appDatabaseProvider);
   return SqlitePlannedInstancesRepository(database: database);
+});
+
+final plannedInstancesByMasterProvider =
+    FutureProvider.family<List<TransactionRecord>, int>((ref, masterId) async {
+  ref.watch(dbTickProvider);
+  final repository = ref.watch(transactionsRepoProvider);
+  final records = await repository.listPlanned();
+  return [
+    for (final record in records)
+      if (record.plannedId == masterId) record,
+  ];
 });
 
 final plannedMasterByIdProvider =

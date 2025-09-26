@@ -26,6 +26,7 @@ class HomeScreen extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    ref.watch(dbTickProvider);
     final dailyLimitAsync = ref.watch(dailyLimitProvider);
     final accountsAsync = ref.watch(accountsDbProvider);
     final hideFab = ref.watch(isSheetOpenProvider);

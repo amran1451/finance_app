@@ -27,6 +27,7 @@ class _PlannedMasterDetailScreenState
     extends ConsumerState<PlannedMasterDetailScreen> {
   @override
   Widget build(BuildContext context) {
+    ref.watch(dbTickProvider);
     final masterAsync = ref.watch(plannedMasterByIdProvider(widget.masterId));
     final periodLabel = ref.watch(periodLabelProvider);
     final bounds = ref.watch(periodBoundsProvider);

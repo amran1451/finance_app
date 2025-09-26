@@ -1,6 +1,7 @@
 import 'package:sqflite/sqflite.dart';
 
 import '../db/app_database.dart';
+import '../../utils/app_exceptions.dart';
 import 'necessity_repository.dart' as necessity_repo;
 
 class PlannedMaster {
@@ -11,6 +12,7 @@ class PlannedMaster {
     this.defaultAmountMinor,
     this.categoryId,
     this.note,
+    this.necessityId,
     this.archived = false,
     required this.createdAt,
     required this.updatedAt,
@@ -22,6 +24,7 @@ class PlannedMaster {
   final int? defaultAmountMinor;
   final int? categoryId;
   final String? note;
+  final int? necessityId;
   final bool archived;
   final DateTime createdAt;
   final DateTime updatedAt;
@@ -33,6 +36,7 @@ class PlannedMaster {
     Object? defaultAmountMinor = _sentinel,
     Object? categoryId = _sentinel,
     Object? note = _sentinel,
+    Object? necessityId = _sentinel,
     bool? archived,
     DateTime? createdAt,
     DateTime? updatedAt,
@@ -46,6 +50,8 @@ class PlannedMaster {
           : defaultAmountMinor as int?,
       categoryId: categoryId == _sentinel ? this.categoryId : categoryId as int?,
       note: note == _sentinel ? this.note : note as String?,
+      necessityId:
+          necessityId == _sentinel ? this.necessityId : necessityId as int?,
       archived: archived ?? this.archived,
       createdAt: createdAt ?? this.createdAt,
       updatedAt: updatedAt ?? this.updatedAt,
@@ -60,6 +66,7 @@ class PlannedMaster {
       defaultAmountMinor: map['default_amount_minor'] as int?,
       categoryId: map['category_id'] as int?,
       note: map['note'] as String?,
+      necessityId: map['necessity_id'] as int?,
       archived: (map['archived'] as int? ?? 0) != 0,
       createdAt: _parseDateTime(map['created_at'] as String?),
       updatedAt: _parseDateTime(map['updated_at'] as String?),
@@ -74,6 +81,7 @@ class PlannedMaster {
       'default_amount_minor': defaultAmountMinor,
       'category_id': categoryId,
       'note': note,
+      'necessity_id': necessityId,
       'archived': archived ? 1 : 0,
       'created_at': createdAt.toIso8601String(),
       'updated_at': updatedAt.toIso8601String(),
@@ -130,6 +138,7 @@ class PlannedMasterView {
       defaultAmountMinor: defaultAmountMinor,
       categoryId: categoryId,
       note: note,
+      necessityId: necessityId,
       archived: archived,
       createdAt: createdAt,
       updatedAt: updatedAt,
@@ -225,6 +234,15 @@ abstract class PlannedMasterRepository {
 
   Future<PlannedMaster?> getById(int id);
 
+  Future<int> updateMaster({
+    required int id,
+    required String title,
+    required int amountMinor,
+    int? necessityId,
+    String? note,
+    String? type,
+  });
+
   Future<PlannedMaster?> findByTitleAndType(
     String type,
     String title, {
@@ -301,6 +319,49 @@ class SqlitePlannedMasterRepository implements PlannedMasterRepository {
         AND t.date < ?
     )
   ''';
+
+  @override
+  Future<int> updateMaster({
+    required int id,
+    required String title,
+    required int amountMinor,
+    int? necessityId,
+    String? note,
+    String? type,
+  }) async {
+    final db = await _db;
+    final normalizedTitle = title.trim();
+    if (normalizedTitle.isEmpty) {
+      throw ArgumentError.value(title, 'title', 'Title cannot be empty');
+    }
+    final sanitizedNote = note == null || note.trim().isEmpty ? null : note.trim();
+    final normalizedType = type == null ? null : _normalizeType(type);
+
+    final sql = StringBuffer(
+      'UPDATE planned_master '\
+      'SET title = ?, default_amount_minor = ?, necessity_id = ?, note = ?, updated_at = CURRENT_TIMESTAMP',
+    );
+    final args = <Object?>[
+      normalizedTitle,
+      amountMinor,
+      necessityId,
+      sanitizedNote,
+    ];
+
+    if (normalizedType != null) {
+      sql.write(', type = ?');
+      args.add(normalizedType);
+    }
+
+    sql.write(' WHERE id = ?');
+    args.add(id);
+
+    final rowsUpdated = await db.rawUpdate(sql.toString(), args);
+    if (rowsUpdated <= 0) {
+      throw const ControlledOperationException('Ничего не изменилось');
+    }
+    return rowsUpdated;
+  }
 
   @override
   Future<int> create({
