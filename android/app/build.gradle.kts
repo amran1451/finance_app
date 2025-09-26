@@ -1,10 +1,11 @@
+import com.android.build.api.variant.ApplicationVariant
+
 plugins {
     id("com.android.application")
     id("kotlin-android")
     // The Flutter Gradle Plugin must be applied after the Android and Kotlin Gradle plugins.
     id("dev.flutter.flutter-gradle-plugin")
 }
-
 android {
     namespace = "com.example.finance_app"
     compileSdk = flutter.compileSdkVersion
@@ -54,10 +55,12 @@ android {
 
 androidComponents {
     onVariants(selector().all()) { variant ->
-        variant.outputs.forEach { output ->
+        if (variant is ApplicationVariant) {
             val buildType = variant.buildType
-            val verName = variant.versionName.get()
-            output.outputFileName.set("Uchet_finansov-${verName}-${buildType}.apk")
+            val verName = variant.versionName.orNull ?: ""
+            variant.outputs.forEach { output ->
+                output.outputFileName.set("Uchet_finansov-${verName}-${buildType}.apk")
+            }
         }
     }
 }
