@@ -8,6 +8,7 @@ import '../../state/budget_providers.dart';
 import '../../state/db_refresh.dart';
 import '../../utils/ref_postframe.dart';
 import '../payouts/payout_edit_sheet.dart';
+import 'backups_settings_screen.dart';
 import 'categories_manage_screen.dart';
 import 'necessity_settings_screen.dart';
 import 'reasons_settings_screen.dart';
@@ -211,6 +212,18 @@ class _SettingsPlaceholderState extends ConsumerState<SettingsPlaceholder> {
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
+                ListTile(
+                  title: const Text('Резервные копии'),
+                  trailing: const Icon(Icons.chevron_right),
+                  onTap: () {
+                    Navigator.of(context).push(
+                      MaterialPageRoute(
+                        builder: (_) => const BackupsSettingsScreen(),
+                      ),
+                    );
+                  },
+                ),
+                const Divider(height: 0),
                 ListTile(
                   title: const Text('Настройки категорий'),
                   trailing: const Icon(Icons.chevron_right),

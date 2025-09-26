@@ -1,6 +1,7 @@
 import 'package:sqflite/sqflite.dart';
 
 import '../db/app_database.dart';
+import '../models/manual_backup_entry.dart';
 
 abstract class SettingsRepository {
   Future<int> getAnchorDay1();
@@ -18,6 +19,10 @@ abstract class SettingsRepository {
   Future<bool> getSavingPairEnabled();
 
   Future<void> setSavingPairEnabled(bool value);
+
+  Future<List<ManualBackupEntry>> getManualBackupHistory();
+
+  Future<void> addManualBackupEntry(ManualBackupEntry entry);
 }
 
 class SqliteSettingsRepository implements SettingsRepository {
@@ -28,6 +33,7 @@ class SqliteSettingsRepository implements SettingsRepository {
   static const String _anchorDay2Key = 'anchor_day_2';
   static const String _dailyLimitKey = 'daily_limit_minor';
   static const String _savingPairKey = 'saving_pair_enabled';
+  static const String _manualBackupHistoryKey = 'manual_backup_history';
 
   final AppDatabase _database;
 
@@ -64,6 +70,27 @@ class SqliteSettingsRepository implements SettingsRepository {
 
   @override
   Future<void> setSavingPairEnabled(bool value) => _setBool(_savingPairKey, value);
+
+  @override
+  Future<List<ManualBackupEntry>> getManualBackupHistory() async {
+    final raw = await _getString(_manualBackupHistoryKey);
+    if (raw == null || raw.isEmpty) {
+      return const [];
+    }
+    return ManualBackupEntry.decodeList(raw);
+  }
+
+  @override
+  Future<void> addManualBackupEntry(ManualBackupEntry entry) async {
+    final history = await getManualBackupHistory();
+    final updated = <ManualBackupEntry>[entry, ...history];
+    // keep latest 10 entries
+    final limited = updated.take(10).toList();
+    await _setString(
+      _manualBackupHistoryKey,
+      ManualBackupEntry.encodeList(limited),
+    );
+  }
 
   Future<int> _getInt(String key, {required int defaultValue}) async {
     final db = await _db;
@@ -121,6 +148,30 @@ class SqliteSettingsRepository implements SettingsRepository {
     await db.insert(
       'settings',
       {'key': key, 'value': value.toString()},
+      conflictAlgorithm: ConflictAlgorithm.replace,
+    );
+  }
+
+  Future<String?> _getString(String key) async {
+    final db = await _db;
+    final rows = await db.query(
+      'settings',
+      columns: ['value'],
+      where: 'key = ?',
+      whereArgs: [key],
+      limit: 1,
+    );
+    if (rows.isEmpty) {
+      return null;
+    }
+    return rows.first['value'] as String?;
+  }
+
+  Future<void> _setString(String key, String value) async {
+    final db = await _db;
+    await db.insert(
+      'settings',
+      {'key': key, 'value': value},
       conflictAlgorithm: ConflictAlgorithm.replace,
     );
   }
