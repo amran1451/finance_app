@@ -124,184 +124,185 @@ class _PlannedQuickAddSheetState extends ConsumerState<_PlannedQuickAddSheet> {
           children: [
             Expanded(
               child: SingleChildScrollView(
-              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
-              child: Form(
-                key: _formKey,
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    Center(
-                      child: Container(
-                        width: 36,
-                        height: 4,
-                        decoration: BoxDecoration(
-                          color: theme.colorScheme.outlineVariant,
-                          borderRadius: BorderRadius.circular(2),
-                        ),
-                      ),
-                    ),
-                    const SizedBox(height: 16),
-                    Text(
-                      _titleForType(widget.type),
-                      style: theme.textTheme.titleMedium,
-                      textAlign: TextAlign.center,
-                    ),
-                    const SizedBox(height: 16),
-                    TextFormField(
-                      controller: _titleController,
-                      decoration: const InputDecoration(
-                        labelText: 'Название',
-                      ),
-                      textCapitalization: TextCapitalization.sentences,
-                      validator: (value) {
-                        if (value == null || value.trim().isEmpty) {
-                          return 'Укажите название';
-                        }
-                        return null;
-                      },
-                    ),
-                    const SizedBox(height: 12),
-                    if (categoriesAsync.isLoading)
-                      const LinearProgressIndicator()
-                    else if (categoriesError != null)
-                      Padding(
-                        padding: const EdgeInsets.symmetric(vertical: 8),
-                        child: Text(
-                          'Не удалось загрузить категории: $categoriesError',
-                          style: theme.textTheme.bodyMedium?.copyWith(
-                            color: theme.colorScheme.error,
+                padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
+                child: Form(
+                  key: _formKey,
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      Center(
+                        child: Container(
+                          width: 36,
+                          height: 4,
+                          decoration: BoxDecoration(
+                            color: theme.colorScheme.outlineVariant,
+                            borderRadius: BorderRadius.circular(2),
                           ),
                         ),
-                      )
-                    else if (categories.isEmpty)
-                      Padding(
-                        padding: const EdgeInsets.symmetric(vertical: 8),
-                        child: Text(
-                          'Добавьте категорию, чтобы создать план.',
-                          style: theme.textTheme.bodyMedium,
-                        ),
-                      )
-                    else
-                      DropdownButtonFormField<int>(
-                        value: _selectedCategoryId,
-                        items: [
-                          for (final category in categories)
-                            DropdownMenuItem<int>(
-                              value: category.id,
-                              child: Text(category.name),
-                            ),
-                        ],
-                        onChanged: _isSaving
-                            ? null
-                            : (value) {
-                                setState(() => _selectedCategoryId = value);
-                              },
+                      ),
+                      const SizedBox(height: 16),
+                      Text(
+                        _titleForType(widget.type),
+                        style: theme.textTheme.titleMedium,
+                        textAlign: TextAlign.center,
+                      ),
+                      const SizedBox(height: 16),
+                      TextFormField(
+                        controller: _titleController,
                         decoration: const InputDecoration(
-                          labelText: 'Категория',
+                          labelText: 'Название',
                         ),
+                        textCapitalization: TextCapitalization.sentences,
                         validator: (value) {
-                          if (value == null) {
-                            return 'Выберите категорию';
+                          if (value == null || value.trim().isEmpty) {
+                            return 'Укажите название';
                           }
                           return null;
                         },
                       ),
-                    const SizedBox(height: 12),
-                    TextFormField(
-                      controller: _amountController,
-                      decoration: const InputDecoration(
-                        labelText: 'Сумма',
-                        prefixText: '₽ ',
-                      ),
-                      keyboardType: TextInputType.number,
-                      inputFormatters: [
-                        FilteringTextInputFormatter.digitsOnly,
-                      ],
-                      validator: (value) {
-                        final raw = value?.trim() ?? '';
-                        if (raw.isEmpty) {
-                          return 'Укажите сумму';
-                        }
-                        final parsed = int.tryParse(raw);
-                        if (parsed == null || parsed <= 0) {
-                          return 'Сумма должна быть больше 0';
-                        }
-                        return null;
-                      },
-                    ),
-                    if (widget.type == 'expense') ...[
                       const SizedBox(height: 12),
-                      necessityLabelsAsync.when(
-                        data: (labels) {
-                          return DropdownButtonFormField<int?>(
-                            value: _selectedNecessityId,
-                            items: [
-                              const DropdownMenuItem<int?>(
-                                value: null,
-                                child: Text('Без необходимости'),
-                              ),
-                              for (final label in labels)
-                                DropdownMenuItem<int?>(
-                                  value: label.id,
-                                  child: Text(label.name),
-                                ),
-                            ],
-                            onChanged: _isSaving
-                                ? null
-                                : (value) {
-                                    setState(() => _selectedNecessityId = value);
-                                  },
-                            decoration: const InputDecoration(
-                              labelText: 'Критичность/необходимость',
-                            ),
-                          );
-                        },
-                        loading: () => const LinearProgressIndicator(),
-                        error: (error, _) => Padding(
+                      if (categoriesAsync.isLoading)
+                        const LinearProgressIndicator()
+                      else if (categoriesError != null)
+                        Padding(
                           padding: const EdgeInsets.symmetric(vertical: 8),
                           child: Text(
-                            'Не удалось загрузить ярлыки: $error',
+                            'Не удалось загрузить категории: $categoriesError',
                             style: theme.textTheme.bodyMedium?.copyWith(
                               color: theme.colorScheme.error,
                             ),
                           ),
+                        )
+                      else if (categories.isEmpty)
+                        Padding(
+                          padding: const EdgeInsets.symmetric(vertical: 8),
+                          child: Text(
+                            'Добавьте категорию, чтобы создать план.',
+                            style: theme.textTheme.bodyMedium,
+                          ),
+                        )
+                      else
+                        DropdownButtonFormField<int>(
+                          value: _selectedCategoryId,
+                          items: [
+                            for (final category in categories)
+                              DropdownMenuItem<int>(
+                                value: category.id,
+                                child: Text(category.name),
+                              ),
+                          ],
+                          onChanged: _isSaving
+                              ? null
+                              : (value) {
+                                  setState(() => _selectedCategoryId = value);
+                                },
+                          decoration: const InputDecoration(
+                            labelText: 'Категория',
+                          ),
+                          validator: (value) {
+                            if (value == null) {
+                              return 'Выберите категорию';
+                            }
+                            return null;
+                          },
                         ),
+                      const SizedBox(height: 12),
+                      TextFormField(
+                        controller: _amountController,
+                        decoration: const InputDecoration(
+                          labelText: 'Сумма',
+                          prefixText: '₽ ',
+                        ),
+                        keyboardType: TextInputType.number,
+                        inputFormatters: [
+                          FilteringTextInputFormatter.digitsOnly,
+                        ],
+                        validator: (value) {
+                          final raw = value?.trim() ?? '';
+                          if (raw.isEmpty) {
+                            return 'Укажите сумму';
+                          }
+                          final parsed = int.tryParse(raw);
+                          if (parsed == null || parsed <= 0) {
+                            return 'Сумма должна быть больше 0';
+                          }
+                          return null;
+                        },
                       ),
+                      if (widget.type == 'expense') ...[
+                        const SizedBox(height: 12),
+                        necessityLabelsAsync.when(
+                          data: (labels) {
+                            return DropdownButtonFormField<int?>(
+                              value: _selectedNecessityId,
+                              items: [
+                                const DropdownMenuItem<int?>(
+                                  value: null,
+                                  child: Text('Без необходимости'),
+                                ),
+                                for (final label in labels)
+                                  DropdownMenuItem<int?>(
+                                    value: label.id,
+                                    child: Text(label.name),
+                                  ),
+                              ],
+                              onChanged: _isSaving
+                                  ? null
+                                  : (value) {
+                                      setState(() => _selectedNecessityId = value);
+                                    },
+                              decoration: const InputDecoration(
+                                labelText: 'Критичность/необходимость',
+                              ),
+                            );
+                          },
+                          loading: () => const LinearProgressIndicator(),
+                          error: (error, _) => Padding(
+                            padding: const EdgeInsets.symmetric(vertical: 8),
+                            child: Text(
+                              'Не удалось загрузить ярлыки: $error',
+                              style: theme.textTheme.bodyMedium?.copyWith(
+                                color: theme.colorScheme.error,
+                              ),
+                            ),
+                          ),
+                        ),
+                      ],
+                      const SizedBox(height: 12),
+                      CheckboxListTile(
+                        value: _included,
+                        onChanged: _isSaving
+                            ? null
+                            : (value) {
+                                setState(() => _included = value ?? true);
+                              },
+                        title: const Text('Учитывать в расчёте'),
+                        contentPadding: EdgeInsets.zero,
+                        controlAffinity: ListTileControlAffinity.leading,
+                      ),
+                      CheckboxListTile(
+                        value: _reuseExisting,
+                        onChanged: _isSaving
+                            ? null
+                            : (value) {
+                                setState(() => _reuseExisting = value ?? true);
+                              },
+                        title: const Text('Использовать уже существующий, если есть'),
+                        contentPadding: EdgeInsets.zero,
+                        controlAffinity: ListTileControlAffinity.leading,
+                      ),
+                      const SizedBox(height: 12),
+                      TextFormField(
+                        controller: _noteController,
+                        decoration: const InputDecoration(
+                          labelText: 'Примечание',
+                        ),
+                        textCapitalization: TextCapitalization.sentences,
+                        maxLines: 3,
+                      ),
+                      const SizedBox(height: 24),
                     ],
-                    const SizedBox(height: 12),
-                    CheckboxListTile(
-                      value: _included,
-                      onChanged: _isSaving
-                          ? null
-                          : (value) {
-                              setState(() => _included = value ?? true);
-                            },
-                      title: const Text('Учитывать в расчёте'),
-                      contentPadding: EdgeInsets.zero,
-                      controlAffinity: ListTileControlAffinity.leading,
-                    ),
-                    CheckboxListTile(
-                      value: _reuseExisting,
-                      onChanged: _isSaving
-                          ? null
-                          : (value) {
-                              setState(() => _reuseExisting = value ?? true);
-                            },
-                      title: const Text('Использовать уже существующий, если есть'),
-                      contentPadding: EdgeInsets.zero,
-                      controlAffinity: ListTileControlAffinity.leading,
-                    ),
-                    const SizedBox(height: 12),
-                    TextFormField(
-                      controller: _noteController,
-                      decoration: const InputDecoration(
-                        labelText: 'Примечание',
-                      ),
-                      textCapitalization: TextCapitalization.sentences,
-                      maxLines: 3,
-                    ),
-                    const SizedBox(height: 24),
-                  ],
+                  ),
                 ),
               ),
             ),

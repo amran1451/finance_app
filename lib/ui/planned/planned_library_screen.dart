@@ -45,7 +45,7 @@ class _PlannedLibraryScreenState
       text: widget.selectForAssignment ? '' : initialFilters.search,
     );
     if (!widget.selectForAssignment) {
-      _filtersSubscription = ref.listen<PlannedLibraryFilters>(
+      _filtersSubscription = ref.listenManual<PlannedLibraryFilters>(
         plannedLibraryFiltersProvider,
         (previous, next) {
           if (_searchController.text != next.search) {
