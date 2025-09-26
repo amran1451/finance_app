@@ -55,15 +55,22 @@ class _ReviewScreenState extends ConsumerState<ReviewScreen> {
     selectedDate = ValueNotifier(entryState.selectedDate);
     final initialAmountMinor = (entryState.amount * 100).round();
     amountMinor = ValueNotifier(initialAmountMinor);
-    final initialAccountId = entryState.accountId ?? entryState.editingRecord?.accountId;
+    final initialAccountId =
+        entryState.accountId ?? entryState.editingRecord?.accountId;
     if (initialAccountId != null) {
       _accountInitialized = true;
     }
-    selectedAccountId = ValueNotifier<int>(initialAccountId ?? _kUnselectedAccountId);
-    if (initialAccountId != null) {
-      ref
-          .read(entryFlowControllerProvider.notifier)
-          .setAccount(initialAccountId);
+    selectedAccountId =
+        ValueNotifier<int>(initialAccountId ?? _kUnselectedAccountId);
+    if (initialAccountId != null && entryState.accountId == null) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) {
+          return;
+        }
+        ref
+            .read(entryFlowControllerProvider.notifier)
+            .setAccount(initialAccountId);
+      });
     }
     _reasonValidationError = false;
     _entryFlowSubscription = ref.listenManual<EntryFlowState>(
