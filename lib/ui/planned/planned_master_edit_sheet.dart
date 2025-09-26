@@ -52,6 +52,7 @@ class _PlannedMasterEditFormState
   String _type = 'expense';
   int? _categoryId;
   bool _isSaving = false;
+  bool _isAmountValid = false;
 
   @override
   void initState() {
@@ -66,10 +67,13 @@ class _PlannedMasterEditFormState
           ? _formatAmount(initial!.defaultAmountMinor!)
           : '',
     );
+    _isAmountValid = _hasValidAmount(_amountController.text);
+    _amountController.addListener(_handleAmountChanged);
   }
 
   @override
   void dispose() {
+    _amountController.removeListener(_handleAmountChanged);
     _titleController.dispose();
     _amountController.dispose();
     _noteController.dispose();
@@ -168,6 +172,7 @@ class _PlannedMasterEditFormState
               labelText: 'Сумма по умолчанию',
               prefixText: '₽ ',
             ),
+            autovalidateMode: AutovalidateMode.onUserInteraction,
             validator: (value) {
               final text = value?.trim();
               if (text == null || text.isEmpty) {
@@ -203,7 +208,8 @@ class _PlannedMasterEditFormState
               const SizedBox(width: 12),
               Expanded(
                 child: FilledButton(
-                  onPressed: _isSaving ? null : _submit,
+                  onPressed:
+                      _isSaving || !_isAmountValid ? null : _submit,
                   child: _isSaving
                       ? const SizedBox(
                           height: 18,
@@ -272,6 +278,16 @@ class _PlannedMasterEditFormState
     }
   }
 
+  void _handleAmountChanged() {
+    final next = _hasValidAmount(_amountController.text);
+    if (next == _isAmountValid) {
+      return;
+    }
+    setState(() {
+      _isAmountValid = next;
+    });
+  }
+
   CategoryType? _categoryTypeForType(String type) {
     switch (type) {
       case 'income':
@@ -296,5 +312,17 @@ class _PlannedMasterEditFormState
   double _parseAmount(String text) {
     final normalized = text.replaceAll(',', '.');
     return double.parse(normalized);
+  }
+
+  bool _hasValidAmount(String raw) {
+    final text = raw.trim();
+    if (text.isEmpty) {
+      return false;
+    }
+    final parsed = double.tryParse(text.replaceAll(',', '.'));
+    if (parsed == null) {
+      return false;
+    }
+    return parsed > 0;
   }
 }
