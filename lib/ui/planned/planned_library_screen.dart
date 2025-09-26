@@ -675,28 +675,31 @@ class _PlannedMasterTile extends StatelessWidget {
       );
     }
 
-    final chipRow = Padding(
-      padding: const EdgeInsets.only(top: 8),
-      child: Row(
-        children: [
-          _buildNecessityChip(theme),
-          if (showAssignButton) ...[
-            const SizedBox(width: 12),
-            const Spacer(),
-            OutlinedButton.icon(
-              onPressed: onAssignToPeriod,
-              icon: const Icon(Icons.event_available_outlined),
-              label: const Text('Назначить в период'),
-              style: OutlinedButton.styleFrom(
-                visualDensity: VisualDensity.compact,
+    subtitleWidgets.add(
+      Padding(
+        padding: const EdgeInsets.only(top: 8),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.center,
+          children: [
+            Expanded(child: _buildNecessityInfo(theme)),
+            if (showAssignButton) ...[
+              const SizedBox(width: 12),
+              Flexible(
+                fit: FlexFit.loose,
+                child: OutlinedButton.icon(
+                  onPressed: onAssignToPeriod,
+                  icon: const Icon(Icons.event_available_outlined),
+                  label: const Text('Назначить в период'),
+                  style: OutlinedButton.styleFrom(
+                    visualDensity: VisualDensity.compact,
+                  ),
+                ),
               ),
-            ),
+            ],
           ],
-        ],
+        ),
       ),
     );
-
-    subtitleWidgets.add(chipRow);
 
     final trailingMenuItems = <PopupMenuEntry<_MasterMenuAction>>[
       const PopupMenuItem(
@@ -757,29 +760,54 @@ class _PlannedMasterTile extends StatelessWidget {
     );
   }
 
-  Widget _buildNecessityChip(ThemeData theme) {
-    if (view.type != 'expense' || view.necessityId == null) {
-      return Chip(
-        label: const Text('—'),
-        backgroundColor: theme.colorScheme.surfaceVariant,
-        labelStyle: theme.textTheme.bodySmall?.copyWith(
-          color: theme.colorScheme.onSurfaceVariant,
-        ),
-        visualDensity: VisualDensity.compact,
+  Widget _buildNecessityInfo(ThemeData theme) {
+    final baseStyle = theme.textTheme.bodySmall?.copyWith(
+      color: theme.colorScheme.onSurfaceVariant,
+    );
+    if (view.type != 'expense') {
+      return Text(
+        'Критичность: —',
+        style: baseStyle,
+        overflow: TextOverflow.ellipsis,
       );
     }
-    final background = view.necessityColor != null
+
+    final necessityName =
+        view.necessityName?.isNotEmpty == true ? view.necessityName! : '—';
+    final highlightColor = view.necessityColor != null
         ? Color(view.necessityColor!)
-        : theme.colorScheme.secondaryContainer;
-    final textColor = _contrastFor(background);
-    return Chip(
-      label: Text(view.necessityName ?? '—'),
-      backgroundColor: background,
-      labelStyle: theme.textTheme.bodySmall?.copyWith(
-        color: textColor,
-        fontWeight: FontWeight.w600,
+        : theme.colorScheme.primary;
+
+    return Text.rich(
+      TextSpan(
+        style: baseStyle,
+        children: [
+          const TextSpan(text: 'Критичность: '),
+          if (view.necessityColor != null)
+            WidgetSpan(
+              alignment: PlaceholderAlignment.middle,
+              child: Padding(
+                padding: const EdgeInsets.only(right: 4),
+                child: Container(
+                  width: 8,
+                  height: 8,
+                  decoration: BoxDecoration(
+                    color: highlightColor,
+                    shape: BoxShape.circle,
+                  ),
+                ),
+              ),
+            ),
+          TextSpan(
+            text: necessityName,
+            style: TextStyle(
+              color: highlightColor,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+        ],
       ),
-      visualDensity: VisualDensity.compact,
+      overflow: TextOverflow.ellipsis,
     );
   }
 
@@ -795,10 +823,6 @@ class _PlannedMasterTile extends StatelessWidget {
     }
   }
 
-  static Color _contrastFor(Color color) {
-    final brightness = ThemeData.estimateBrightnessForColor(color);
-    return brightness == Brightness.dark ? Colors.white : Colors.black;
-  }
 }
 
 class _TypeFilterChips extends StatelessWidget {
