@@ -1,6 +1,7 @@
 import 'package:sqflite/sqflite.dart';
 
 import '../db/app_database.dart';
+import 'necessity_repository.dart' as necessity_repo;
 
 class PlannedMaster {
   const PlannedMaster({
@@ -90,6 +91,133 @@ class PlannedMaster {
   }
 }
 
+class PlannedMasterView {
+  const PlannedMasterView({
+    required this.id,
+    required this.type,
+    required this.title,
+    this.defaultAmountMinor,
+    this.categoryId,
+    this.note,
+    required this.archived,
+    required this.createdAt,
+    required this.updatedAt,
+    required this.assignedNow,
+    this.necessityId,
+    this.necessityName,
+    this.necessityColor,
+  });
+
+  final int id;
+  final String type;
+  final String title;
+  final int? defaultAmountMinor;
+  final int? categoryId;
+  final String? note;
+  final bool archived;
+  final DateTime createdAt;
+  final DateTime updatedAt;
+  final bool assignedNow;
+  final int? necessityId;
+  final String? necessityName;
+  final int? necessityColor;
+
+  PlannedMaster toMaster() {
+    return PlannedMaster(
+      id: id,
+      type: type,
+      title: title,
+      defaultAmountMinor: defaultAmountMinor,
+      categoryId: categoryId,
+      note: note,
+      archived: archived,
+      createdAt: createdAt,
+      updatedAt: updatedAt,
+    );
+  }
+
+  factory PlannedMasterView.fromMap(Map<String, Object?> map) {
+    return PlannedMasterView(
+      id: _readInt(map['id']),
+      type: (map['type'] as String? ?? '').toLowerCase(),
+      title: map['title'] as String? ?? '',
+      defaultAmountMinor: _readNullableInt(map['default_amount_minor']),
+      categoryId: _readNullableInt(map['category_id']),
+      note: map['note'] as String?,
+      archived: _readBool(map['archived']),
+      createdAt: PlannedMaster._parseDateTime(map['created_at'] as String?),
+      updatedAt: PlannedMaster._parseDateTime(map['updated_at'] as String?),
+      assignedNow: _readBool(map['assigned_now']),
+      necessityId: _readNullableInt(map['necessity_id']),
+      necessityName: map['necessity_name'] as String?,
+      necessityColor: _parseColor(map['necessity_color']),
+    );
+  }
+
+  static int? _readNullableInt(Object? value) {
+    if (value == null) {
+      return null;
+    }
+    if (value is int) {
+      return value;
+    }
+    if (value is num) {
+      return value.toInt();
+    }
+    if (value is String) {
+      return int.tryParse(value);
+    }
+    return null;
+  }
+
+  static int _readInt(Object? value) {
+    final result = _readNullableInt(value);
+    return result ?? 0;
+  }
+
+  static bool _readBool(Object? value) {
+    if (value is bool) {
+      return value;
+    }
+    if (value is num) {
+      return value != 0;
+    }
+    if (value is String) {
+      return value == '1' || value.toLowerCase() == 'true';
+    }
+    return false;
+  }
+
+  static int? _parseColor(Object? raw) {
+    if (raw == null) {
+      return null;
+    }
+    if (raw is int) {
+      return raw;
+    }
+    if (raw is num) {
+      return raw.toInt();
+    }
+    if (raw is String) {
+      final normalized = raw.trim();
+      if (normalized.isEmpty) {
+        return null;
+      }
+      final hex = normalized.startsWith('#')
+          ? normalized.substring(1)
+          : normalized;
+      if (hex.length == 6) {
+        final value = int.tryParse(hex, radix: 16);
+        return value != null ? 0xFF000000 | value : null;
+      }
+      if (hex.length == 8) {
+        return int.tryParse(hex, radix: 16);
+      }
+    }
+    return null;
+  }
+}
+
 const Object _updateOptional = Object();
 
 abstract class PlannedMasterRepository {
@@ -102,6 +230,20 @@ abstract class PlannedMasterRepository {
     DateTime endExclusive, {
     String? type,
   });
+
+  Future<List<PlannedMasterView>> query({
+    String? type,
+    List<int>? necessityIds,
+    bool? assignedInPeriod,
+    bool archived = false,
+    String? search,
+    String sort = 'title',
+    bool desc = false,
+    required DateTime periodStart,
+    required DateTime periodEndEx,
+  });
+
+  Future<Map<int, necessity_repo.NecessityLabel>> listNecessityLabels();
 
   Future<int> create({
     required String type,
@@ -134,6 +276,16 @@ class SqlitePlannedMasterRepository implements PlannedMasterRepository {
   static const Set<String> _allowedTypes = {'expense', 'income', 'saving'};
 
   Future<Database> get _db async => _database.database;
+
+  static const String _assignedNowExpression = '''
+    EXISTS(
+      SELECT 1 FROM transactions t
+      WHERE t.is_planned = 1
+        AND t.planned_id = pm.id
+        AND t.date >= ?
+        AND t.date < ?
+    )
+  ''';
 
   @override
   Future<int> create({
@@ -229,6 +381,92 @@ class SqlitePlannedMasterRepository implements PlannedMasterRepository {
   }
 
   @override
+  Future<List<PlannedMasterView>> query({
+    String? type,
+    List<int>? necessityIds,
+    bool? assignedInPeriod,
+    bool archived = false,
+    String? search,
+    String sort = 'title',
+    bool desc = false,
+    required DateTime periodStart,
+    required DateTime periodEndEx,
+  }) async {
+    final db = await _db;
+    final normalizedType = type == null ? null : _normalizeType(type);
+    final sql = StringBuffer()
+      ..writeln('SELECT pm.*,')
+      ..writeln('       $_assignedNowExpression AS assigned_now,')
+      ..writeln('       pm.necessity_id AS necessity_id,')
+      ..writeln('       nl.name AS necessity_name,')
+      ..writeln('       nl.color AS necessity_color')
+      ..writeln('FROM planned_master pm')
+      ..writeln('LEFT JOIN necessity_labels nl ON nl.id = pm.necessity_id')
+      ..writeln('WHERE pm.archived = ?');
+
+    final args = <Object?>[
+      _formatDate(periodStart),
+      _formatDate(periodEndEx),
+      archived ? 1 : 0,
+    ];
+
+    if (normalizedType != null) {
+      sql.writeln('  AND pm.type = ?');
+      args.add(normalizedType);
+    }
+
+    if (search != null && search.trim().isNotEmpty) {
+      final pattern = '%${search.trim().replaceAll('%', '\\%').replaceAll('_', '\\_')}%';
+      sql.writeln('  AND pm.title LIKE ? ESCAPE "\\"');
+      args.add(pattern);
+    }
+
+    if (necessityIds != null && necessityIds.isNotEmpty) {
+      final placeholders = List.filled(necessityIds.length, '?').join(', ');
+      sql.writeln('  AND pm.necessity_id IN ($placeholders)');
+      args.addAll(necessityIds);
+    }
+
+    if (assignedInPeriod != null) {
+      sql.writeln(
+        assignedInPeriod
+            ? '  AND $_assignedNowExpression'
+            : '  AND NOT $_assignedNowExpression',
+      );
+      args
+        ..add(_formatDate(periodStart))
+        ..add(_formatDate(periodEndEx));
+    }
+
+    sql.writeln('ORDER BY ${_buildOrderBy(sort, desc)}');
+
+    final rows = await db.rawQuery(sql.toString(), args);
+    return rows.map(PlannedMasterView.fromMap).toList();
+  }
+
+  @override
+  Future<Map<int, necessity_repo.NecessityLabel>> listNecessityLabels() async {
+    final db = await _db;
+    final rows = await db.query(
+      'necessity_labels',
+      where: 'archived = 0',
+      orderBy: 'sort_order ASC, id ASC',
+    );
+    final result = <int, necessity_repo.NecessityLabel>{};
+    for (final row in rows) {
+      final id = _readInt(row['id']);
+      result[id] = necessity_repo.NecessityLabel(
+        id: id,
+        name: row['name'] as String? ?? '',
+        color: row['color'] as String?,
+        sortOrder: _readInt(row['sort_order']),
+        archived: _readInt(row['archived']) != 0,
+      );
+    }
+    return result;
+  }
+
+  @override
   Future<bool> update(
     int id, {
     String? type,
@@ -281,6 +519,24 @@ class SqlitePlannedMasterRepository implements PlannedMasterRepository {
       throw ArgumentError.value(type, 'type', 'Unsupported planned type');
     }
     return normalized;
+  }
+
+  String _buildOrderBy(String sort, bool desc) {
+    final direction = desc ? 'DESC' : 'ASC';
+    switch (sort) {
+      case 'amount':
+        return '''
+          CASE WHEN pm.default_amount_minor IS NULL THEN 1 ELSE 0 END ASC,
+          pm.default_amount_minor $direction,
+          pm.title COLLATE NOCASE ASC,
+          pm.id ASC
+        ''';
+      case 'updated_at':
+        return 'pm.updated_at $direction, pm.title COLLATE NOCASE ASC, pm.id ASC';
+      case 'title':
+      default:
+        return 'pm.title COLLATE NOCASE $direction, pm.id ASC';
+    }
   }
 
   int _readInt(Object? value) {
