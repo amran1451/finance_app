@@ -4,10 +4,10 @@ import '../data/models/category.dart';
 import '../data/models/transaction_record.dart';
 import '../data/repositories/categories_repository.dart';
 import '../data/repositories/transactions_repository.dart';
+import '../utils/period_utils.dart';
 import 'app_providers.dart';
 import 'budget_providers.dart';
 import 'db_refresh.dart';
-import 'planned_master_providers.dart';
 
 enum PlannedType { income, expense, saving }
 
@@ -54,24 +54,32 @@ class PlannedItemView {
   int get criticality => record.criticality;
 }
 
-Future<List<PlannedItemView>> _loadPlannedItems(
+String _typeToQuery(PlannedType type) {
+  switch (type) {
+    case PlannedType.income:
+      return 'income';
+    case PlannedType.expense:
+      return 'expense';
+    case PlannedType.saving:
+      return 'saving';
+  }
+}
+
+Future<List<PlannedItemView>> _loadPlannedItemsForPeriod(
   Ref ref,
-  PlannedType type, {
+  PlannedType type,
+  PeriodRef period, {
   required bool onlyIncluded,
 }) async {
   ref.watch(dbTickProvider);
   final transactionsRepo = ref.watch(transactionsRepoProvider);
   final categoriesRepo = ref.watch(categoriesRepositoryProvider);
-  final bounds = ref.watch(periodBoundsProvider);
-  final typeString = switch (type) {
-    PlannedType.income => 'income',
-    PlannedType.expense => 'expense',
-    PlannedType.saving => 'saving',
-  };
+  final (anchor1, anchor2) = ref.watch(anchorDaysProvider);
+  final bounds = period.bounds(anchor1, anchor2);
   final records = await transactionsRepo.listPlannedByPeriod(
-    start: bounds.$1,
-    endExclusive: bounds.$2,
-    type: typeString,
+    start: bounds.start,
+    endExclusive: bounds.endExclusive,
+    type: _typeToQuery(type),
     onlyIncluded: onlyIncluded ? true : null,
   );
   if (records.isEmpty) {
@@ -91,49 +99,57 @@ Future<List<PlannedItemView>> _loadPlannedItems(
   ];
 }
 
+typedef PlannedPeriodArgs = ({PlannedType type, PeriodRef period});
+
+final plannedForPeriodProvider = FutureProvider.family
+    <List<PlannedItemView>, PlannedPeriodArgs>((ref, args) async {
+  return _loadPlannedItemsForPeriod(
+    ref,
+    args.type,
+    args.period,
+    onlyIncluded: false,
+  );
+});
+
+final plannedIncludedForPeriodProvider = FutureProvider.family
+    <List<PlannedItemView>, PlannedPeriodArgs>((ref, args) async {
+  return _loadPlannedItemsForPeriod(
+    ref,
+    args.type,
+    args.period,
+    onlyIncluded: true,
+  );
+});
+
+final plannedIncludedSumProvider = FutureProvider.family<int, PlannedPeriodArgs>(
+    (ref, args) async {
+  final items = await ref.watch(plannedIncludedForPeriodProvider(args).future);
+  return items.fold<int>(0, (sum, item) => sum + item.record.amountMinor);
+});
+
 final plannedItemsByTypeProvider = FutureProvider.family
     <List<PlannedItemView>, PlannedType>((ref, type) async {
-  return _loadPlannedItems(ref, type, onlyIncluded: false);
+  final period = ref.watch(selectedPeriodRefProvider);
+  return ref
+      .watch(plannedForPeriodProvider((type: type, period: period)).future);
 });
 
 final plannedIncludedByTypeProvider = FutureProvider.family
     <List<PlannedItemView>, PlannedType>((ref, type) async {
-  final included =
-      await ref.watch(plannedIncludedForSelectedPeriodProvider(
-    switch (type) {
-      PlannedType.income => 'income',
-      PlannedType.expense => 'expense',
-      PlannedType.saving => 'saving',
-    },
-  ).future);
-  if (included.isEmpty) {
-    return const [];
-  }
-  final categoriesRepo = ref.watch(categoriesRepositoryProvider);
-  final categories = await categoriesRepo.getAll();
-  final categoriesById = {
-    for (final category in categories)
-      if (category.id != null) category.id!: category,
-  };
-  return [
-    for (final record in included)
-      PlannedItemView(
-        record: record,
-        category: categoriesById[record.categoryId],
-      ),
-  ];
+  final period = ref.watch(selectedPeriodRefProvider);
+  return ref.watch(
+    plannedIncludedForPeriodProvider((type: type, period: period)).future,
+  );
 });
 
 final plannedTotalByTypeProvider =
     FutureProvider.family<int, PlannedType>((ref, type) async {
-  ref.watch(dbTickProvider);
   final items = await ref.watch(plannedItemsByTypeProvider(type).future);
   return items.fold<int>(0, (sum, item) => sum + item.record.amountMinor);
 });
 
 final plannedIncludedTotalProvider =
     FutureProvider.family<int, PlannedType>((ref, type) async {
-  ref.watch(dbTickProvider);
   final items = await ref.watch(plannedIncludedByTypeProvider(type).future);
   return items.fold<int>(0, (sum, item) => sum + item.record.amountMinor);
 });

@@ -13,6 +13,7 @@ import '../../state/planned_providers.dart';
 import '../../state/db_refresh.dart';
 import '../../utils/formatting.dart';
 import '../../utils/ru_plural.dart';
+import '../planned/planned_quick_add_sheet.dart';
 import '../planned/planned_sheet.dart';
 import '../payouts/payout_edit_sheet.dart';
 import 'daily_limit_sheet.dart';
@@ -599,6 +600,30 @@ class _PlannedOverview extends StatelessWidget {
   Widget build(BuildContext context) {
     final payoutAsync = ref.watch(payoutForSelectedPeriodProvider);
     final plannedRemainderAsync = ref.watch(plannedRemainderForPeriodProvider);
+    Future<void> openQuickAdd(BuildContext context, PlannedType type) async {
+      final sheetNotifier = ref.read(isSheetOpenProvider.notifier);
+      sheetNotifier.state = true;
+      try {
+        final period = ref.read(selectedPeriodRefProvider);
+        final result = await showPlannedQuickAddForm(
+          context,
+          ref: ref,
+          type: switch (type) {
+            PlannedType.income => 'income',
+            PlannedType.expense => 'expense',
+            PlannedType.saving => 'saving',
+          },
+          period: period,
+        );
+        if (result == true && context.mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('План добавлен')),
+          );
+        }
+      } finally {
+        sheetNotifier.state = false;
+      }
+    }
     return payoutAsync.when(
       data: (payout) {
         if (payout == null) {
@@ -676,6 +701,12 @@ class _PlannedOverview extends StatelessWidget {
                 loading: () => const Text('Загрузка…'),
                 error: (error, _) => Text('Ошибка: $error'),
               ),
+              trailing: TextButton.icon(
+                key: const Key('planned_add_income'),
+                onPressed: () => openQuickAdd(context, PlannedType.income),
+                icon: const Icon(Icons.add),
+                label: const Text('Добавить'),
+              ),
               onTap: () => onOpenPlanned(PlannedType.income),
             ),
             const Divider(height: 0),
@@ -687,6 +718,12 @@ class _PlannedOverview extends StatelessWidget {
                 loading: () => const Text('Загрузка…'),
                 error: (error, _) => Text('Ошибка: $error'),
               ),
+              trailing: TextButton.icon(
+                key: const Key('planned_add_expense'),
+                onPressed: () => openQuickAdd(context, PlannedType.expense),
+                icon: const Icon(Icons.add),
+                label: const Text('Добавить'),
+              ),
               onTap: () => onOpenPlanned(PlannedType.expense),
             ),
             const Divider(height: 0),
@@ -697,6 +734,12 @@ class _PlannedOverview extends StatelessWidget {
                 data: (value) => Text(formatCurrencyMinor(value)),
                 loading: () => const Text('Загрузка…'),
                 error: (error, _) => Text('Ошибка: $error'),
+              ),
+              trailing: TextButton.icon(
+                key: const Key('planned_add_saving'),
+                onPressed: () => openQuickAdd(context, PlannedType.saving),
+                icon: const Icon(Icons.add),
+                label: const Text('Добавить'),
               ),
               onTap: () => onOpenPlanned(PlannedType.saving),
             ),
