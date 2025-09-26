@@ -10,6 +10,7 @@ import '../data/models/category.dart' as category_models;
 import '../data/repositories/accounts_repository.dart' as accounts_repo;
 import '../data/repositories/categories_repository.dart' as categories_repo;
 import '../data/repositories/payouts_repository.dart' as payouts_repo;
+import '../data/repositories/periods_repository.dart' as periods_repo;
 import '../data/repositories/necessity_repository.dart' as necessity_repo;
 import '../data/repositories/reason_repository.dart' as reason_repo;
 import '../data/repositories/settings_repository.dart' as settings_repo;
@@ -94,6 +95,11 @@ final transactionsRepoProvider =
 final payoutsRepoProvider = Provider<payouts_repo.PayoutsRepository>((ref) {
   final database = ref.watch(appDatabaseProvider);
   return payouts_repo.SqlitePayoutsRepository(database: database);
+});
+
+final periodsRepoProvider = Provider<periods_repo.PeriodsRepository>((ref) {
+  final database = ref.watch(appDatabaseProvider);
+  return periods_repo.SqlitePeriodsRepository(database: database);
 });
 
 final settingsRepoProvider = Provider<settings_repo.SettingsRepository>((ref) {
