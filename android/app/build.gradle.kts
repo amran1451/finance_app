@@ -51,46 +51,6 @@ android {
     }
 }
 
-@Suppress("UnstableApiUsage")
-fun apkFileName(verName: String, buildType: String) =
-    "Uchet_finansov-${verName}-${buildType}.apk"
-
-// Попытка определить версию AGP и выбрать API
-val agpVer: String = try {
-    com.android.Version.ANDROID_GRADLE_PLUGIN_VERSION
-} catch (_: Throwable) {
-    "8.0.0" // пусть по умолчанию будет новая ветка
-}
-
-if (agpVer.startsWith("8") || agpVer.startsWith("9")) {
-    // === AGP 8+ путь: androidComponents ===
-    androidComponents {
-        onVariants(selector().all()) { variant ->
-            // versionName: пробуем из variant, иначе из defaultConfig
-            val vName = variant.outputs.first().versionName.orNull
-                ?: android.defaultConfig.versionName
-                ?: "0.0.0"
-            val bType = variant.buildType ?: variant.name
-
-            variant.outputs.forEach { out ->
-                out.outputFileName.set(apkFileName(vName, bType))
-            }
-        }
-    }
-} else {
-    // === AGP 7.x путь: applicationVariants/all + internal API ===
-    @Suppress("DEPRECATION")
-    android.applicationVariants.all {
-        val vName = this.versionName ?: android.defaultConfig.versionName ?: "0.0.0"
-        val bType = this.buildType.name
-        outputs.all {
-            // Ветка для старых AGP: используем internal BaseVariantOutputImpl
-            val base = this as? com.android.build.gradle.internal.api.BaseVariantOutputImpl
-            base?.outputFileName = apkFileName(vName, bType)
-        }
-    }
-}
-
 flutter {
     source = "../.."
 }
