@@ -9,8 +9,8 @@ import '../../state/planned_master_providers.dart';
 import '../../state/app_providers.dart';
 import '../../state/planned_providers.dart';
 import '../../utils/formatting.dart';
+import '../../utils/period_utils.dart';
 import 'planned_assign_to_period_sheet.dart';
-import 'planned_add_form.dart';
 import 'planned_master_edit_sheet.dart';
 
 class PlannedMasterDetailScreen extends ConsumerStatefulWidget {
@@ -131,13 +131,12 @@ class _PlannedMasterDetailScreenState
   }
 
   Future<void> _editInstance(PlannedMaster master, TransactionRecord record) async {
-    final type = _plannedTypeFor(master.type);
-    if (type == null) {
-      return;
-    }
-    await showPlannedAddForm(
+    final (anchor1, anchor2) = ref.read(anchorDaysProvider);
+    final period = periodRefForDate(record.date, anchor1, anchor2);
+    await showPlannedAssignToPeriodSheet(
       context,
-      type: type,
+      master: master,
+      initialPeriod: period,
       initialRecord: record,
     );
   }
@@ -246,19 +245,6 @@ class _PlannedMasterDetailScreenState
       return;
     }
     bumpDbTick(ref);
-  }
-
-  PlannedType? _plannedTypeFor(String type) {
-    switch (type) {
-      case 'income':
-        return PlannedType.income;
-      case 'expense':
-        return PlannedType.expense;
-      case 'saving':
-        return PlannedType.saving;
-      default:
-        return null;
-    }
   }
 
 }
