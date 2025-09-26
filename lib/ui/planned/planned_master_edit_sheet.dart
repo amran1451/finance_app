@@ -220,7 +220,8 @@ class _PlannedMasterEditFormState
           const SizedBox(height: 12),
           TextFormField(
             controller: _amountController,
-            keyboardType: TextInputType.number,
+            keyboardType:
+                const TextInputType.numberWithOptions(decimal: true),
             decoration: const InputDecoration(
               labelText: 'Сумма ₽ *',
               prefixText: '₽ ',
@@ -231,11 +232,8 @@ class _PlannedMasterEditFormState
               if (text == null || text.isEmpty) {
                 return 'Введите сумму';
               }
-              final digitsOnly = RegExp(r'^\d+$');
-              if (!digitsOnly.hasMatch(text)) {
-                return 'Введите целое число';
-              }
-              final parsed = int.tryParse(text);
+              final normalized = text.replaceAll(' ', '').replaceAll(',', '.');
+              final parsed = double.tryParse(normalized);
               if (parsed == null) {
                 return 'Некорректная сумма';
               }
@@ -672,19 +670,11 @@ class _PlannedMasterEditFormState
   }
 
   bool _hasValidAmount(String raw) {
-    final text = raw.trim();
-    if (text.isEmpty) {
+    final amountMinor = _parseAmountMinorOrNull(raw);
+    if (amountMinor == null) {
       return false;
     }
-    final digitsOnly = RegExp(r'^\d+$');
-    if (!digitsOnly.hasMatch(text)) {
-      return false;
-    }
-    final parsed = int.tryParse(text);
-    if (parsed == null) {
-      return false;
-    }
-    return parsed > 0;
+    return amountMinor > 0;
   }
 
   int? _parseAmountMinorOrNull(String raw) {
@@ -692,15 +682,12 @@ class _PlannedMasterEditFormState
     if (text.isEmpty) {
       return null;
     }
-    final digitsOnly = RegExp(r'^\d+$');
-    if (!digitsOnly.hasMatch(text)) {
-      return null;
-    }
-    final parsed = int.tryParse(text);
+    final normalized = text.replaceAll(' ', '').replaceAll(',', '.');
+    final parsed = double.tryParse(normalized);
     if (parsed == null || parsed <= 0) {
       return null;
     }
-    return parsed * 100;
+    return (parsed * 100).round();
   }
 
   void _updateDirty() {
