@@ -282,6 +282,7 @@ abstract class PlannedMasterRepository {
     required String title,
     required int categoryId,
     required int amountMinor,
+    int? necessityId,
     String? note,
     DatabaseExecutor? executor,
   });
@@ -389,6 +390,7 @@ class SqlitePlannedMasterRepository implements PlannedMasterRepository {
     required String title,
     required int categoryId,
     required int amountMinor,
+    int? necessityId,
     String? note,
     DatabaseExecutor? executor,
   }) async {
@@ -396,12 +398,19 @@ class SqlitePlannedMasterRepository implements PlannedMasterRepository {
     final normalizedType = _normalizeType(type);
     final trimmedTitle = title.trim();
     final sanitizedNote = note == null || note.trim().isEmpty ? null : note.trim();
+    if (normalizedType == 'expense' && necessityId == null) {
+      throw ArgumentError('necessityId is required for expense planned masters');
+    }
+    if (categoryId <= 0) {
+      throw ArgumentError.value(categoryId, 'categoryId', 'Category must be provided');
+    }
     final now = DateTime.now().toUtc();
     final values = <String, Object?>{
       'type': normalizedType,
       'title': trimmedTitle,
       'default_amount_minor': amountMinor,
       'category_id': categoryId,
+      'necessity_id': necessityId,
       'note': sanitizedNote,
       'archived': 0,
       'created_at': now.toIso8601String(),
