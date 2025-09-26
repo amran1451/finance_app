@@ -1,4 +1,4 @@
-import com.android.build.api.variant.ApplicationVariant
+import com.android.build.api.variant.ApkVariantOutput
 
 plugins {
     id("com.android.application")
@@ -55,11 +55,14 @@ android {
 
 androidComponents {
     onVariants(selector().all()) { variant ->
-        if (variant is ApplicationVariant) {
-            val buildType = variant.buildType
-            val verName = variant.versionName.orNull ?: ""
-            variant.outputs.forEach { output ->
-                output.outputFileName.set("Uchet_finansov-${verName}-${buildType}.apk")
+        variant.outputs.forEach { out ->
+            if (out is ApkVariantOutput) {
+                // Пытаемся взять versionName из output; если нет — из defaultConfig; иначе "0.0.0"
+                val fallbackVer = android.defaultConfig.versionName ?: "0.0.0"
+                val verName = out.versionName.orNull ?: fallbackVer
+                val buildType = variant.buildType
+                // Итоговое имя файла APK
+                out.outputFileName.set("Uchet_finansov-${verName}-${buildType}.apk")
             }
         }
     }
