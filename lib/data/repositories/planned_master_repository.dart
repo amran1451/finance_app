@@ -225,6 +225,12 @@ abstract class PlannedMasterRepository {
 
   Future<PlannedMaster?> getById(int id);
 
+  Future<PlannedMaster?> findByTitleAndType(
+    String type,
+    String title, {
+    DatabaseExecutor? executor,
+  });
+
   Future<List<PlannedMaster>> listAssignableForPeriod(
     DateTime start,
     DateTime endExclusive, {
@@ -251,6 +257,15 @@ abstract class PlannedMasterRepository {
     int? defaultAmountMinor,
     int? categoryId,
     String? note,
+  });
+
+  Future<PlannedMaster> createMaster({
+    required String type,
+    required String title,
+    required int categoryId,
+    required int amountMinor,
+    String? note,
+    DatabaseExecutor? executor,
   });
 
   Future<bool> update(
@@ -308,6 +323,43 @@ class SqlitePlannedMasterRepository implements PlannedMasterRepository {
   }
 
   @override
+  Future<PlannedMaster> createMaster({
+    required String type,
+    required String title,
+    required int categoryId,
+    required int amountMinor,
+    String? note,
+    DatabaseExecutor? executor,
+  }) async {
+    final db = executor ?? await _db;
+    final normalizedType = _normalizeType(type);
+    final trimmedTitle = title.trim();
+    final sanitizedNote = note == null || note.trim().isEmpty ? null : note.trim();
+    final now = DateTime.now().toUtc();
+    final values = <String, Object?>{
+      'type': normalizedType,
+      'title': trimmedTitle,
+      'default_amount_minor': amountMinor,
+      'category_id': categoryId,
+      'note': sanitizedNote,
+      'archived': 0,
+      'created_at': now.toIso8601String(),
+      'updated_at': now.toIso8601String(),
+    };
+    final id = await db.insert('planned_master', values);
+    final rows = await db.query(
+      'planned_master',
+      where: 'id = ?',
+      whereArgs: [id],
+      limit: 1,
+    );
+    if (rows.isEmpty) {
+      throw StateError('Failed to create planned master for "$title"');
+    }
+    return PlannedMaster.fromMap(rows.first);
+  }
+
+  @override
   Future<void> delete(int id) async {
     final db = await _db;
     final linked = await db.rawQuery(
@@ -345,6 +397,30 @@ class SqlitePlannedMasterRepository implements PlannedMasterRepository {
       orderBy: 'archived ASC, title COLLATE NOCASE ASC, id ASC',
     );
     return rows.map(PlannedMaster.fromMap).toList();
+  }
+
+  @override
+  Future<PlannedMaster?> findByTitleAndType(
+    String type,
+    String title, {
+    DatabaseExecutor? executor,
+  }) async {
+    final db = executor ?? await _db;
+    final normalizedType = _normalizeType(type);
+    final normalizedTitle = title.trim().toLowerCase();
+    if (normalizedTitle.isEmpty) {
+      return null;
+    }
+    final rows = await db.query(
+      'planned_master',
+      where: 'type = ? AND archived = 0 AND LOWER(title) = ?',
+      whereArgs: [normalizedType, normalizedTitle],
+      limit: 1,
+    );
+    if (rows.isEmpty) {
+      return null;
+    }
+    return PlannedMaster.fromMap(rows.first);
   }
 
   @override
