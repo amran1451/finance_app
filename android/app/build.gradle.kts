@@ -74,7 +74,7 @@ if (agpVer.startsWith("8") || agpVer.startsWith("9")) {
 
             variant.outputs.forEach { out ->
                 // Без import: полное имя класса
-                val apkOut = out as? com.android.build.api.variant.VariantOutput
+                val apkOut = out as? com.android.build.api.variant.ApkVariantOutput
                 if (apkOut != null) {
                     apkOut.outputFileName.set(apkFileName(vName, bType))
                 }
