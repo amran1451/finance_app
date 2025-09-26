@@ -8,11 +8,13 @@ import '../../data/repositories/necessity_repository.dart' as necessity_repo;
 import '../../state/app_providers.dart';
 import '../../state/budget_providers.dart';
 import '../../state/db_refresh.dart';
+import '../../state/planned_library_providers.dart' as planned_library;
 import '../../state/planned_master_providers.dart';
 import '../../utils/app_exceptions.dart';
+import '../../utils/color_hex.dart';
 import '../../utils/formatting.dart';
 import '../../utils/period_utils.dart';
-import '../widgets/necessity_choice_chip.dart';
+import '../settings/necessity_settings_screen.dart';
 import 'planned_assign_to_period_sheet.dart';
 
 Future<void> showPlannedMasterEditSheet(
@@ -81,6 +83,9 @@ class _PlannedMasterEditFormState
           ? _formatAmount(initial!.defaultAmountMinor!)
           : '',
     );
+    if (_type != 'expense') {
+      _selectedNecessityId = null;
+    }
     _isAmountValid = _hasValidAmount(_amountController.text);
     _titleController.addListener(_handleTextChanged);
     _noteController.addListener(_handleTextChanged);
@@ -110,10 +115,8 @@ class _PlannedMasterEditFormState
         ? ref.watch(categoriesByTypeProvider(categoryType))
         : const AsyncValue<List<Category>>.data(<Category>[]);
     final necessityLabelsAsync = _isExpense
-        ? ref.watch(necessityLabelsFutureProvider)
-        : const AsyncValue<List<necessity_repo.NecessityLabel>>.data(
-            <necessity_repo.NecessityLabel>[],
-          );
+        ? ref.watch(planned_library.necessityLabelsProvider)
+        : const AsyncValue<Map<int, necessity_repo.NecessityLabel>>.data({});
     final masterId = widget.initial?.id;
     final assignmentsAsync = masterId == null
         ? const AsyncValue<List<TransactionRecord>>.data(<TransactionRecord>[])
@@ -169,7 +172,7 @@ class _PlannedMasterEditFormState
           const SizedBox(height: 12),
           TextFormField(
             controller: _titleController,
-            decoration: const InputDecoration(labelText: 'Название'),
+            decoration: const InputDecoration(labelText: 'Название *'),
             validator: (value) {
               if (value == null || value.trim().isEmpty) {
                 return 'Введите название';
@@ -182,19 +185,16 @@ class _PlannedMasterEditFormState
             categoriesAsync.when(
               data: (categories) {
                 if (categories.isEmpty) {
-                  return const SizedBox.shrink();
+                  return const Text(
+                    'Нет категорий для выбранного типа. Добавьте их в настройках.',
+                  );
                 }
-                return DropdownButtonFormField<int?>(
+                return DropdownButtonFormField<int>(
                   value: _categoryId,
-                  decoration:
-                      const InputDecoration(labelText: 'Категория (опц.)'),
+                  decoration: const InputDecoration(labelText: 'Категория *'),
                   items: [
-                    const DropdownMenuItem<int?>(
-                      value: null,
-                      child: Text('Без категории'),
-                    ),
                     for (final category in categories)
-                      DropdownMenuItem<int?>(
+                      DropdownMenuItem<int>(
                         value: category.id,
                         child: Text(category.name),
                       ),
@@ -202,6 +202,12 @@ class _PlannedMasterEditFormState
                   onChanged: (value) {
                     setState(() => _categoryId = value);
                     _updateDirty();
+                  },
+                  validator: (value) {
+                    if (value == null) {
+                      return 'Выберите категорию';
+                    }
+                    return null;
                   },
                 );
               },
@@ -214,9 +220,9 @@ class _PlannedMasterEditFormState
           const SizedBox(height: 12),
           TextFormField(
             controller: _amountController,
-            keyboardType: const TextInputType.numberWithOptions(decimal: true),
+            keyboardType: TextInputType.number,
             decoration: const InputDecoration(
-              labelText: 'Сумма ₽',
+              labelText: 'Сумма ₽ *',
               prefixText: '₽ ',
             ),
             autovalidateMode: AutovalidateMode.onUserInteraction,
@@ -225,7 +231,11 @@ class _PlannedMasterEditFormState
               if (text == null || text.isEmpty) {
                 return 'Введите сумму';
               }
-              final parsed = double.tryParse(text.replaceAll(',', '.'));
+              final digitsOnly = RegExp(r'^\d+$');
+              if (!digitsOnly.hasMatch(text)) {
+                return 'Введите целое число';
+              }
+              final parsed = int.tryParse(text);
               if (parsed == null) {
                 return 'Некорректная сумма';
               }
@@ -302,18 +312,30 @@ class _PlannedMasterEditFormState
     final noteText = _noteController.text.trim();
     final sanitizedNote = noteText.isEmpty ? null : noteText;
     final amountText = _amountController.text.trim();
-    final amountMinor = (_parseAmount(amountText) * 100).round();
+    final amountMinor = _parseAmountMinorOrNull(amountText);
     final necessityId = _isExpense ? _selectedNecessityId : null;
+
+    if (amountMinor == null) {
+      return;
+    }
 
     setState(() => _isSaving = true);
     try {
       final initial = widget.initial;
       if (initial == null) {
-        await repo.create(
+        final categoryId = _categoryId;
+        if (categoryId == null) {
+          throw ArgumentError('Category is required');
+        }
+        if (_isExpense && necessityId == null) {
+          throw ArgumentError('Necessity label is required for expenses');
+        }
+        await repo.createMaster(
           type: _type,
           title: title,
-          defaultAmountMinor: amountMinor,
-          categoryId: _categoryId,
+          categoryId: categoryId,
+          amountMinor: amountMinor,
+          necessityId: necessityId,
           note: sanitizedNote,
         );
         if (!mounted) {
@@ -382,49 +404,83 @@ class _PlannedMasterEditFormState
 
   Widget _buildNecessitySelector(
     BuildContext context,
-    List<necessity_repo.NecessityLabel> labels,
+    Map<int, necessity_repo.NecessityLabel> labels,
   ) {
     if (labels.isEmpty) {
-      return const SizedBox.shrink();
+      return Row(
+        children: [
+          const Expanded(child: Text('Критичность: нет ярлыков')),
+          TextButton(
+            onPressed: () async {
+              await Navigator.of(context).push(
+                MaterialPageRoute(
+                  builder: (_) => const NecessitySettingsScreen(),
+                ),
+              );
+              if (!mounted) {
+                return;
+              }
+              bumpDbTick(ref);
+            },
+            child: const Text('Создать ярлык'),
+          ),
+        ],
+      );
     }
+
     final theme = Theme.of(context);
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(
-          'Критичность/необходимость',
-          style: theme.textTheme.titleSmall,
-        ),
-        const SizedBox(height: 8),
-        Wrap(
-          spacing: 8,
-          runSpacing: 8,
-          children: [
-            ChoiceChip(
-              label: const Text('Без метки'),
-              selected: _selectedNecessityId == null,
-              onSelected: (selected) {
-                if (selected) {
-                  setState(() => _selectedNecessityId = null);
-                  _updateDirty();
-                }
-              },
-            ),
-            for (final label in labels)
-              NecessityChoiceChip(
-                label: label,
-                selected: label.id == _selectedNecessityId,
-                onSelected: (value) {
-                  if (!value) {
-                    return;
-                  }
-                  setState(() => _selectedNecessityId = label.id);
-                  _updateDirty();
-                },
+    final sorted = labels.values.toList()
+      ..sort((a, b) => a.sortOrder.compareTo(b.sortOrder));
+    final items = <DropdownMenuItem<int>>[
+      for (final label in sorted)
+        DropdownMenuItem(
+          value: label.id,
+          child: Row(
+            children: [
+              Container(
+                width: 14,
+                height: 14,
+                margin: const EdgeInsets.only(right: 8),
+                decoration: BoxDecoration(
+                  color: hexToColor(label.color) ??
+                      theme.colorScheme.secondaryContainer,
+                  shape: BoxShape.circle,
+                ),
               ),
-          ],
+              Flexible(child: Text(label.name)),
+            ],
+          ),
         ),
-      ],
+    ];
+
+    final selectedId = _selectedNecessityId;
+    if (selectedId != null && labels[selectedId] == null) {
+      items.insert(
+        0,
+        DropdownMenuItem(
+          value: selectedId,
+          child: Text('Метка #$selectedId'),
+        ),
+      );
+    }
+
+    return DropdownButtonFormField<int>(
+      value: selectedId,
+      isExpanded: true,
+      decoration: const InputDecoration(
+        labelText: 'Критичность / необходимость *',
+      ),
+      items: items,
+      onChanged: (value) {
+        setState(() => _selectedNecessityId = value);
+        _updateDirty();
+      },
+      validator: (value) {
+        if (_isExpense && value == null) {
+          return 'Выберите критичность';
+        }
+        return null;
+      },
     );
   }
 
@@ -615,17 +671,16 @@ class _PlannedMasterEditFormState
     return value.toStringAsFixed(2);
   }
 
-  double _parseAmount(String text) {
-    final normalized = text.replaceAll(',', '.');
-    return double.parse(normalized);
-  }
-
   bool _hasValidAmount(String raw) {
     final text = raw.trim();
     if (text.isEmpty) {
       return false;
     }
-    final parsed = double.tryParse(text.replaceAll(',', '.'));
+    final digitsOnly = RegExp(r'^\d+$');
+    if (!digitsOnly.hasMatch(text)) {
+      return false;
+    }
+    final parsed = int.tryParse(text);
     if (parsed == null) {
       return false;
     }
@@ -637,11 +692,15 @@ class _PlannedMasterEditFormState
     if (text.isEmpty) {
       return null;
     }
-    final parsed = double.tryParse(text.replaceAll(',', '.'));
-    if (parsed == null) {
+    final digitsOnly = RegExp(r'^\d+$');
+    if (!digitsOnly.hasMatch(text)) {
       return null;
     }
-    return (parsed * 100).round();
+    final parsed = int.tryParse(text);
+    if (parsed == null || parsed <= 0) {
+      return null;
+    }
+    return parsed * 100;
   }
 
   void _updateDirty() {
@@ -655,7 +714,10 @@ class _PlannedMasterEditFormState
     if (!_isAmountValid || amountMinor == null) {
       dirty = false;
     } else if (!_isEditMode) {
-      dirty = title.isNotEmpty && amountMinor > 0;
+      dirty = title.isNotEmpty &&
+          amountMinor > 0 &&
+          _categoryId != null &&
+          (!_isExpense || _selectedNecessityId != null);
     } else {
       final initial = widget.initial!;
       final initialNote =
@@ -665,6 +727,10 @@ class _PlannedMasterEditFormState
           sanitizedNote != initialNote ||
           necessityId != initial.necessityId ||
           _type != initial.type;
+    }
+
+    if (dirty && _isExpense && _selectedNecessityId == null) {
+      dirty = false;
     }
 
     if (dirty != _isDirty) {

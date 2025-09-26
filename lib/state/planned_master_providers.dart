@@ -197,6 +197,7 @@ class PlannedFacade {
         title: trimmedTitle,
         categoryId: categoryId,
         amountMinor: amountMinor,
+        necessityId: necessityId,
         note: sanitizedNote,
         executor: txn,
       );

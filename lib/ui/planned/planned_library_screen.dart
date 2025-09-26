@@ -137,6 +137,7 @@ class _PlannedLibraryScreenState
                     view: view,
                     subtitle: subtitleText,
                     hasInstances: hasInstances,
+                    showAssignButton: !widget.selectForAssignment,
                     onAssign: () {
                       _handleTap(context, master);
                     },
@@ -624,6 +625,7 @@ class _PlannedMasterTile extends StatelessWidget {
     required this.view,
     required this.subtitle,
     required this.hasInstances,
+    required this.showAssignButton,
     required this.onAssign,
     required this.onEdit,
     required this.onAssignToPeriod,
@@ -634,6 +636,7 @@ class _PlannedMasterTile extends StatelessWidget {
   final PlannedMasterView view;
   final String? subtitle;
   final bool hasInstances;
+  final bool showAssignButton;
   final VoidCallback onAssign;
   final VoidCallback onEdit;
   final VoidCallback onAssignToPeriod;
@@ -643,10 +646,6 @@ class _PlannedMasterTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final badgeColor = view.necessityColor != null
-        ? Color(view.necessityColor!)
-        : theme.colorScheme.surfaceVariant;
-    final badgeTextColor = _contrastFor(badgeColor);
     final subtitleWidgets = <Widget>[];
     if (subtitle != null) {
       subtitleWidgets.add(Text(subtitle!));
@@ -675,6 +674,29 @@ class _PlannedMasterTile extends StatelessWidget {
         ),
       );
     }
+
+    final chipRow = Padding(
+      padding: const EdgeInsets.only(top: 8),
+      child: Row(
+        children: [
+          _buildNecessityChip(theme),
+          if (showAssignButton) ...[
+            const SizedBox(width: 12),
+            const Spacer(),
+            OutlinedButton.icon(
+              onPressed: onAssignToPeriod,
+              icon: const Icon(Icons.event_available_outlined),
+              label: const Text('Назначить в период'),
+              style: OutlinedButton.styleFrom(
+                visualDensity: VisualDensity.compact,
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+
+    subtitleWidgets.add(chipRow);
 
     final trailingMenuItems = <PopupMenuEntry<_MasterMenuAction>>[
       const PopupMenuItem(
@@ -710,39 +732,54 @@ class _PlannedMasterTile extends StatelessWidget {
               mainAxisSize: MainAxisSize.min,
               children: subtitleWidgets,
             ),
-      trailing: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Chip(
-            label: Text(view.necessityName ?? '—'),
-            backgroundColor: badgeColor,
-            labelStyle: TextStyle(color: badgeTextColor),
-          ),
-          const SizedBox(width: 8),
-          PopupMenuButton<_MasterMenuAction>(
-            onSelected: (action) {
-              switch (action) {
-                case _MasterMenuAction.assign:
-                  onAssignToPeriod();
-                  break;
-                case _MasterMenuAction.edit:
-                  onEdit();
-                  break;
-                case _MasterMenuAction.toggleArchive:
-                  onToggleArchive();
-                  break;
-                case _MasterMenuAction.delete:
-                  if (onDelete != null) {
-                    onDelete!();
-                  }
-                  break;
+      trailing: PopupMenuButton<_MasterMenuAction>(
+        onSelected: (action) {
+          switch (action) {
+            case _MasterMenuAction.assign:
+              onAssignToPeriod();
+              break;
+            case _MasterMenuAction.edit:
+              onEdit();
+              break;
+            case _MasterMenuAction.toggleArchive:
+              onToggleArchive();
+              break;
+            case _MasterMenuAction.delete:
+              if (onDelete != null) {
+                onDelete!();
               }
-            },
-            itemBuilder: (context) => trailingMenuItems,
-          ),
-        ],
+              break;
+          }
+        },
+        itemBuilder: (context) => trailingMenuItems,
       ),
       onTap: onAssign,
+    );
+  }
+
+  Widget _buildNecessityChip(ThemeData theme) {
+    if (view.type != 'expense' || view.necessityId == null) {
+      return Chip(
+        label: const Text('—'),
+        backgroundColor: theme.colorScheme.surfaceVariant,
+        labelStyle: theme.textTheme.bodySmall?.copyWith(
+          color: theme.colorScheme.onSurfaceVariant,
+        ),
+        visualDensity: VisualDensity.compact,
+      );
+    }
+    final background = view.necessityColor != null
+        ? Color(view.necessityColor!)
+        : theme.colorScheme.secondaryContainer;
+    final textColor = _contrastFor(background);
+    return Chip(
+      label: Text(view.necessityName ?? '—'),
+      backgroundColor: background,
+      labelStyle: theme.textTheme.bodySmall?.copyWith(
+        color: textColor,
+        fontWeight: FontWeight.w600,
+      ),
+      visualDensity: VisualDensity.compact,
     );
   }
 
