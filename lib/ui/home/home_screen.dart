@@ -179,52 +179,55 @@ class HomeScreen extends ConsumerWidget {
               Padding(
                 padding:
                     const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                child: Row(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.center,
                   children: [
-                    Expanded(
-                      child: PeriodSelector(dense: true, label: label),
-                    ),
-                    if (periodClosed) ...[
-                      const SizedBox(width: 12),
-                      const _ClosedPeriodBadge(),
-                    ],
-                    AnimatedSwitcher(
-                      duration: const Duration(milliseconds: 180),
-                      switchInCurve: Curves.easeOut,
-                      switchOutCurve: Curves.easeIn,
-                      layoutBuilder: (currentChild, previousChildren) {
-                        return Stack(
-                          alignment: Alignment.centerRight,
-                          children: [
-                            ...previousChildren,
-                            if (currentChild != null) currentChild,
-                          ],
-                        );
-                      },
-                      transitionBuilder: (child, animation) {
-                        final slideAnimation = Tween<Offset>(
-                          begin: const Offset(0.12, 0),
-                          end: Offset.zero,
-                        ).animate(animation);
-                        return FadeTransition(
-                          opacity: animation,
-                          child: SlideTransition(
-                            position: slideAnimation,
-                            child: child,
+                    PeriodSelector(dense: true, label: label),
+                    if (periodClosed || daysLeft != null) ...[
+                      const SizedBox(height: 12),
+                      Wrap(
+                        spacing: 12,
+                        runSpacing: 12,
+                        crossAxisAlignment: WrapCrossAlignment.center,
+                        alignment: WrapAlignment.center,
+                        children: [
+                          if (periodClosed) const _ClosedPeriodBadge(),
+                          AnimatedSwitcher(
+                            duration: const Duration(milliseconds: 180),
+                            switchInCurve: Curves.easeOut,
+                            switchOutCurve: Curves.easeIn,
+                            layoutBuilder: (currentChild, previousChildren) {
+                              return Stack(
+                                alignment: Alignment.center,
+                                children: [
+                                  ...previousChildren,
+                                  if (currentChild != null) currentChild,
+                                ],
+                              );
+                            },
+                            transitionBuilder: (child, animation) {
+                              final slideAnimation = Tween<Offset>(
+                                begin: const Offset(0.12, 0),
+                                end: Offset.zero,
+                              ).animate(animation);
+                              return FadeTransition(
+                                opacity: animation,
+                                child: SlideTransition(
+                                  position: slideAnimation,
+                                  child: child,
+                                ),
+                              );
+                            },
+                            child: daysLeft == null
+                                ? const SizedBox.shrink()
+                                : _DaysLeftBadge(
+                                    key: ValueKey(daysLeft),
+                                    days: daysLeft,
+                                  ),
                           ),
-                        );
-                      },
-                      child: daysLeft == null
-                          ? const SizedBox.shrink()
-                          : Row(
-                              key: ValueKey(daysLeft),
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                const SizedBox(width: 12),
-                                _DaysLeftBadge(days: daysLeft),
-                              ],
-                            ),
-                    ),
+                        ],
+                      ),
+                    ],
                   ],
                 ),
               ),
