@@ -238,30 +238,31 @@ class SqlitePlannedMasterRepository implements PlannedMasterRepository {
     Object? note = _updateOptional,
     bool? archived,
   }) async {
+    final existing = await getById(id);
+    if (existing == null) {
+      return false;
+    }
+
+    final normalizedType = type == null ? null : _normalizeType(type);
+
+    final next = existing.copyWith(
+      type: normalizedType,
+      title: title,
+      defaultAmountMinor: defaultAmountMinor,
+      categoryId: categoryId,
+      note: note,
+      archived: archived,
+      updatedAt: DateTime.now().toUtc(),
+    );
+
+    final updatedValues = next.toMap()
+      ..remove('id')
+      ..remove('created_at');
+
     final db = await _db;
-    final values = <String, Object?>{};
-    if (type != null) {
-      values['type'] = _normalizeType(type);
-    }
-    if (title != null) {
-      values['title'] = title;
-    }
-    if (defaultAmountMinor != _updateOptional) {
-      values['default_amount_minor'] = defaultAmountMinor as int?;
-    }
-    if (categoryId != _updateOptional) {
-      values['category_id'] = categoryId as int?;
-    }
-    if (note != _updateOptional) {
-      values['note'] = note as String?;
-    }
-    if (archived != null) {
-      values['archived'] = archived ? 1 : 0;
-    }
-    values['updated_at'] = DateTime.now().toUtc().toIso8601String();
     final rowsUpdated = await db.update(
       'planned_master',
-      values,
+      updatedValues,
       where: 'id = ?',
       whereArgs: [id],
     );
