@@ -69,6 +69,7 @@ class _PlannedLibraryScreenState
 
   @override
   Widget build(BuildContext context) {
+    ref.watch(dbTickProvider);
     final body = widget.selectForAssignment
         ? _buildAssignmentBody(context)
         : _buildLibraryBody(context);

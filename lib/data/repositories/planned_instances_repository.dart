@@ -16,6 +16,17 @@ abstract class PlannedInstancesRepository {
     String? necessityLabel,
     DatabaseExecutor? executor,
   });
+
+  Future<int> upsertInstance({
+    required int masterId,
+    required DateTime start,
+    required DateTime endExclusive,
+    required bool includedInPeriod,
+    int? necessityId,
+    int? categoryId,
+    int? amountMinor,
+    String? note,
+  });
 }
 
 class SqlitePlannedInstancesRepository implements PlannedInstancesRepository {
@@ -66,6 +77,96 @@ class SqlitePlannedInstancesRepository implements PlannedInstancesRepository {
     await db.insert('transactions', values);
   }
 
+  @override
+  Future<int> upsertInstance({
+    required int masterId,
+    required DateTime start,
+    required DateTime endExclusive,
+    required bool includedInPeriod,
+    int? necessityId,
+    int? categoryId,
+    int? amountMinor,
+    String? note,
+  }) async {
+    final db = await _db;
+    final startDate = _formatDate(start);
+    final endDate = _formatDate(endExclusive);
+    final existing = await db.query(
+      'transactions',
+      where:
+          'is_planned = 1 AND planned_id = ? AND date >= ? AND date < ?',
+      whereArgs: [masterId, startDate, endDate],
+      orderBy: 'date ASC, id ASC',
+      limit: 1,
+    );
+    final sanitizedNote = note == null || note.trim().isEmpty ? null : note.trim();
+    final necessityLabel = await _loadNecessityLabel(necessityId);
+
+    if (existing.isNotEmpty) {
+      final id = existing.first['id'] as int?;
+      if (id == null) {
+        return 0;
+      }
+      final updateValues = <String, Object?>{
+        'included_in_period': includedInPeriod ? 1 : 0,
+        'necessity_id': necessityId,
+        'necessity_label': necessityLabel,
+        'note': sanitizedNote,
+      };
+      if (categoryId != null) {
+        updateValues['category_id'] = categoryId;
+      }
+      if (amountMinor != null) {
+        updateValues['amount_minor'] = amountMinor;
+      }
+      return db.update(
+        'transactions',
+        updateValues,
+        where: 'id = ?',
+        whereArgs: [id],
+      );
+    }
+
+    final masterRows = await db.query(
+      'planned_master',
+      where: 'id = ?',
+      whereArgs: [masterId],
+      limit: 1,
+    );
+    if (masterRows.isEmpty) {
+      throw StateError('Не найден шаблон с идентификатором $masterId');
+    }
+    final master = masterRows.first;
+    final masterType = (master['type'] as String? ?? 'expense').toLowerCase();
+    final resolvedCategoryId =
+        categoryId ?? (master['category_id'] as int? ?? 0);
+    final resolvedAmountMinor =
+        amountMinor ?? (master['default_amount_minor'] as int? ?? 0);
+    final instanceDate = _resolveInstanceDate(start, endExclusive);
+
+    final insertValues = <String, Object?>{
+      'planned_id': masterId,
+      'type': masterType,
+      'account_id': 0,
+      'category_id': resolvedCategoryId,
+      'amount_minor': resolvedAmountMinor,
+      'date': _formatDate(instanceDate),
+      'time': null,
+      'note': sanitizedNote,
+      'is_planned': 1,
+      'included_in_period': includedInPeriod ? 1 : 0,
+      'tags': null,
+      'criticality': 0,
+      'necessity_id': necessityId,
+      'necessity_label': necessityLabel,
+      'reason_id': null,
+      'reason_label': null,
+      'payout_id': null,
+    };
+    await db.insert('transactions', insertValues);
+    return 1;
+  }
+
   DateTime _resolveInstanceDate(DateTime start, DateTime endExclusive) {
     final normalizedStart = DateTime(start.year, start.month, start.day);
     final normalizedEndExclusive = DateTime(
@@ -83,5 +184,22 @@ class SqlitePlannedInstancesRepository implements PlannedInstancesRepository {
     final month = date.month.toString().padLeft(2, '0');
     final day = date.day.toString().padLeft(2, '0');
     return '${date.year.toString().padLeft(4, '0')}-$month-$day';
+  }
+
+  Future<String?> _loadNecessityLabel(int? id) async {
+    if (id == null) {
+      return null;
+    }
+    final db = await _db;
+    final rows = await db.query(
+      'necessity_labels',
+      where: 'id = ?',
+      whereArgs: [id],
+      limit: 1,
+    );
+    if (rows.isEmpty) {
+      return null;
+    }
+    return rows.first['name'] as String?;
   }
 }
