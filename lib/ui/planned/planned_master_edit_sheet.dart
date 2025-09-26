@@ -165,9 +165,23 @@ class _PlannedMasterEditFormState
             controller: _amountController,
             keyboardType: const TextInputType.numberWithOptions(decimal: true),
             decoration: const InputDecoration(
-              labelText: 'Сумма по умолчанию (опц.)',
+              labelText: 'Сумма по умолчанию',
               prefixText: '₽ ',
             ),
+            validator: (value) {
+              final text = value?.trim();
+              if (text == null || text.isEmpty) {
+                return 'Введите сумму';
+              }
+              final parsed = double.tryParse(text.replaceAll(',', '.'));
+              if (parsed == null) {
+                return 'Некорректная сумма';
+              }
+              if (parsed <= 0) {
+                return 'Сумма должна быть больше 0';
+              }
+              return null;
+            },
           ),
           const SizedBox(height: 12),
           TextFormField(
@@ -216,9 +230,7 @@ class _PlannedMasterEditFormState
         ? null
         : _noteController.text.trim();
     final amountText = _amountController.text.trim();
-    final amountMinor = amountText.isEmpty
-        ? null
-        : (_parseAmount(amountText) * 100).round();
+    final amountMinor = (_parseAmount(amountText) * 100).round();
 
     setState(() => _isSaving = true);
     try {
@@ -283,6 +295,6 @@ class _PlannedMasterEditFormState
 
   double _parseAmount(String text) {
     final normalized = text.replaceAll(',', '.');
-    return double.tryParse(normalized) ?? 0;
+    return double.parse(normalized);
   }
 }
