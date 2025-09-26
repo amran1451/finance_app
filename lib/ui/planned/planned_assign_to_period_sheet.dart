@@ -82,7 +82,12 @@ class _PlannedAssignToPeriodFormState
     final master = widget.master;
     final initialPeriod = widget.initialPeriod;
     if (initialPeriod != null) {
-      ref.read(selectedPeriodRefProvider.notifier).state = initialPeriod;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) {
+          return;
+        }
+        ref.read(selectedPeriodRefProvider.notifier).state = initialPeriod;
+      });
     }
     final existing = widget.initialRecord;
     if (existing != null) {
