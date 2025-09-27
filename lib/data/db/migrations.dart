@@ -171,8 +171,7 @@ class AppMigrations {
     required String columnName,
     required String alterStatement,
   }) async {
-    final columns =
-        await db.rawQuery("PRAGMA table_info(\$tableName)");
+    final columns = await db.rawQuery('PRAGMA table_info($tableName)');
     final normalizedColumnName = columnName.toLowerCase();
     final hasColumn = columns.any(
       (column) =>
