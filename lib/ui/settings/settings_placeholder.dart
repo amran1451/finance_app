@@ -205,7 +205,6 @@ class ThemeCallout extends ConsumerWidget {
                   onPressed: (index) => setMode(items[index].mode),
                   constraints: BoxConstraints(minHeight: 36, minWidth: minWidth),
                   borderRadius: BorderRadius.circular(12),
-                  visualDensity: VisualDensity.compact,
                   children: [
                     for (final item in items)
                       Tooltip(
