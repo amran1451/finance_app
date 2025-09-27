@@ -5,7 +5,7 @@ class AppMigrations {
   AppMigrations._();
 
   /// Latest schema version supported by the application.
-  static const int latestVersion = 9;
+  static const int latestVersion = 10;
 
   static final Map<int, List<String>> _migrationScripts = {
     1: [
@@ -35,6 +35,7 @@ class AppMigrations {
           'note TEXT NULL, '
           'is_planned INTEGER NOT NULL DEFAULT 0, '
           'included_in_period INTEGER NOT NULL DEFAULT 1, '
+          "updated_at TEXT NOT NULL DEFAULT (datetime('now')), "
           'tags TEXT NULL'
           ')',
       'CREATE INDEX idx_transactions_date ON transactions(date)',
@@ -120,6 +121,9 @@ class AppMigrations {
     9: [
       'ALTER TABLE planned_master ADD COLUMN necessity_id INTEGER NULL',
       'CREATE INDEX IF NOT EXISTS idx_planned_master_necessity_id ON planned_master(necessity_id)',
+    ],
+    10: [
+      "ALTER TABLE transactions ADD COLUMN updated_at TEXT NOT NULL DEFAULT (datetime('now'))",
     ],
   };
 

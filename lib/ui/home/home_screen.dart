@@ -655,15 +655,20 @@ class _PlannedOverviewState extends ConsumerState<_PlannedOverview> {
                         fontWeight: FontWeight.w600,
                       ),
                     ),
-                    loading: () => const Row(
-                      children: [
+                    loading: () => Row(
+                      children: const [
                         SizedBox(
                           width: 20,
                           height: 20,
                           child: CircularProgressIndicator(strokeWidth: 2),
                         ),
                         SizedBox(width: 8),
-                        Text('Доступно на планы: …'),
+                        Expanded(
+                          child: Text(
+                            'Доступно на планы: …',
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
                       ],
                     ),
                     error: (_, __) => Text(
