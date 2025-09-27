@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../data/models/category.dart';
 import '../data/models/transaction_record.dart';
 import '../data/repositories/categories_repository.dart';
+import '../data/repositories/planned_master_repository.dart';
 import '../data/repositories/transactions_repository.dart';
 import '../utils/period_utils.dart';
 import 'app_providers.dart';
@@ -30,10 +31,12 @@ class PlannedItemView {
   const PlannedItemView({
     required this.record,
     this.category,
+    this.master,
   });
 
   final TransactionRecord record;
   final Category? category;
+  final PlannedMaster? master;
 
   double get amount => record.amountMinor / 100;
 
@@ -44,6 +47,10 @@ class PlannedItemView {
   bool get isDone => isCompleted;
 
   String get title {
+    final masterTitle = master?.title;
+    if (masterTitle != null && masterTitle.trim().isNotEmpty) {
+      return masterTitle.trim();
+    }
     final note = record.note;
     if (note != null && note.trim().isNotEmpty) {
       return note.trim();
@@ -76,6 +83,7 @@ Future<List<PlannedItemView>> _loadPlannedItemsForPeriod(
   ref.watch(dbTickProvider);
   final transactionsRepo = ref.watch(transactionsRepoProvider);
   final categoriesRepo = ref.watch(categoriesRepositoryProvider);
+  final masterRepo = ref.watch(plannedMasterRepoProvider);
   final (anchor1, anchor2) = ref.watch(anchorDaysProvider);
   final bounds = period.bounds(anchor1, anchor2);
   final records = await transactionsRepo.listPlannedByPeriod(
@@ -92,11 +100,18 @@ Future<List<PlannedItemView>> _loadPlannedItemsForPeriod(
     for (final category in categories)
       if (category.id != null) category.id!: category,
   };
+  final masters = await masterRepo.list(includeArchived: true);
+  final mastersById = {
+    for (final master in masters)
+      if (master.id != null) master.id!: master,
+  };
   return [
     for (final record in records)
       PlannedItemView(
         record: record,
         category: categoriesById[record.categoryId],
+        master:
+            record.plannedId != null ? mastersById[record.plannedId!] : null,
       ),
   ];
 }

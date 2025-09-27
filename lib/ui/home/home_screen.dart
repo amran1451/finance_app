@@ -5,7 +5,6 @@ import 'package:go_router/go_router.dart';
 import '../../data/models/account.dart' as db_models;
 import '../../data/models/payout.dart';
 import '../../data/models/transaction_record.dart';
-import '../../data/repositories/necessity_repository.dart' as necessity_repo;
 import '../../routing/app_router.dart';
 import '../../state/app_providers.dart';
 import '../../state/budget_providers.dart';
@@ -13,10 +12,11 @@ import '../../state/entry_flow_providers.dart';
 import '../../state/planned_providers.dart';
 import '../../state/db_refresh.dart';
 import '../../utils/formatting.dart';
+import '../../utils/plan_formatting.dart';
 import '../../utils/period_utils.dart';
 import '../../utils/ru_plural.dart';
 import '../planned/planned_add_form.dart';
-import '../planned/planned_quick_add_sheet.dart';
+import '../planned/expense_plan_sheets.dart';
 import '../payouts/payout_edit_sheet.dart';
 import 'daily_limit_sheet.dart';
 import '../widgets/callout_card.dart';
@@ -578,16 +578,23 @@ class _PlannedOverviewState extends ConsumerState<_PlannedOverview> {
     sheetNotifier.state = true;
     try {
       final period = ref.read(selectedPeriodRefProvider);
-      final result = await showPlannedQuickAddForm(
-        context,
-        ref: ref,
-        type: 'expense',
-        period: period,
-      );
-      if (result == true && mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('План добавлен')),
-        );
+      final result = await showPlanExpenseAddEntry(context, period);
+      if (!mounted) {
+        return;
+      }
+      switch (result) {
+        case ExpensePlanResult.created:
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('План добавлен')),
+          );
+          break;
+        case ExpensePlanResult.assigned:
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('План назначен')),
+          );
+          break;
+        case ExpensePlanResult.none:
+          break;
       }
     } finally {
       sheetNotifier.state = false;
@@ -717,12 +724,6 @@ class _PlannedExpensesList extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final itemsAsync = ref.watch(plannedExpensesForPeriodProvider(period));
-    final necessityLabelsAsync = ref.watch(necessityLabelsFutureProvider);
-    final necessityLabels =
-        necessityLabelsAsync.value ?? const <necessity_repo.NecessityLabel>[];
-    final necessityById = {
-      for (final label in necessityLabels) label.id: label,
-    };
     final theme = Theme.of(context);
 
     return itemsAsync.when(
@@ -739,24 +740,15 @@ class _PlannedExpensesList extends ConsumerWidget {
           children.add(
             ListTile(
               dense: true,
-              contentPadding: EdgeInsets.zero,
+              visualDensity: VisualDensity.compact,
               title: Text(
-                item.title,
+                oneLinePlan(
+                  item.title,
+                  item.record.amountMinor,
+                  item.necessityLabel,
+                ),
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
-              ),
-              subtitle: Wrap(
-                spacing: 8,
-                runSpacing: 4,
-                crossAxisAlignment: WrapCrossAlignment.center,
-                children: [
-                  Text(formatCurrencyMinor(item.record.amountMinor)),
-                  ..._buildNecessityChip(
-                    context,
-                    item,
-                    necessityById,
-                  ),
-                ],
               ),
               trailing: Checkbox(
                 value: item.record.includedInPeriod,
@@ -779,7 +771,7 @@ class _PlannedExpensesList extends ConsumerWidget {
             ),
           );
           if (i != items.length - 1) {
-            children.add(const Divider(height: 12));
+            children.add(const Divider(height: 0));
           }
         }
         return Column(children: children);
@@ -788,69 +780,6 @@ class _PlannedExpensesList extends ConsumerWidget {
       error: (error, _) => Text('Ошибка: $error'),
     );
   }
-
-  List<Widget> _buildNecessityChip(
-    BuildContext context,
-    PlannedItemView item,
-    Map<int, necessity_repo.NecessityLabel> necessityById,
-  ) {
-    final record = item.record;
-    final label = record.necessityLabel;
-    final necessity =
-        record.necessityId != null ? necessityById[record.necessityId!] : null;
-    final labelText = label?.isNotEmpty == true
-        ? label!
-        : necessity?.name?.isNotEmpty == true
-            ? necessity!.name
-            : record.criticality > 0
-                ? 'Критичность ${record.criticality}'
-                : null;
-    if (labelText == null) {
-      return const [];
-    }
-    final theme = Theme.of(context);
-    final background = _necessityColorFromHex(necessity?.color) ??
-        theme.colorScheme.secondaryContainer;
-    final brightness = ThemeData.estimateBrightnessForColor(background);
-    final labelColor = brightness == Brightness.dark
-        ? Colors.white
-        : theme.colorScheme.onSecondaryContainer;
-
-    return [
-      Chip(
-        label: Text(labelText),
-        labelStyle: theme.textTheme.labelSmall?.copyWith(
-          color: labelColor,
-          fontWeight: FontWeight.w600,
-        ),
-        visualDensity: VisualDensity.compact,
-        backgroundColor: background,
-        materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
-      ),
-    ];
-  }
-}
-
-Color? _necessityColorFromHex(String? raw) {
-  if (raw == null) {
-    return null;
-  }
-  final normalized = raw.trim();
-  if (normalized.isEmpty) {
-    return null;
-  }
-  final hex = normalized.startsWith('#') ? normalized.substring(1) : normalized;
-  final value = int.tryParse(hex, radix: 16);
-  if (value == null) {
-    return null;
-  }
-  if (hex.length == 6) {
-    return Color(0xFF000000 | value);
-  }
-  if (hex.length == 8) {
-    return Color(value);
-  }
-  return null;
 }
 
 class _HomeAccountTile extends ConsumerWidget {
