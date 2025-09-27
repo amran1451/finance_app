@@ -148,7 +148,7 @@ class _PlannedMasterDetailScreenState
       return;
     }
     final repo = ref.read(transactionsRepoProvider);
-    await repo.setIncludedInPeriod(transactionId: id, value: value);
+    await repo.setPlannedIncluded(id, value);
     if (!mounted) {
       return;
     }

@@ -1,5 +1,6 @@
 import 'package:sqflite/sqflite.dart';
 
+import '../../utils/period_utils.dart';
 import '../db/app_database.dart';
 import '../models/category.dart';
 import '../models/transaction_record.dart';
@@ -94,6 +95,14 @@ abstract class TransactionsRepository {
     required int transactionId,
     required bool value,
   });
+
+  Future<int> sumIncludedPlannedExpenses({
+    required PeriodRef period,
+    required DateTime start,
+    required DateTime endExclusive,
+  });
+
+  Future<void> setPlannedIncluded(int plannedId, bool included);
 
   /// Сумма внеплановых расходов в [date] (учитывая границы активного периода)
   Future<int> sumUnplannedExpensesOnDate(DateTime date);
@@ -429,6 +438,48 @@ class SqliteTransactionsRepository implements TransactionsRepository {
       {'included_in_period': value ? 1 : 0},
       where: 'id = ?',
       whereArgs: [transactionId],
+    );
+  }
+
+  @override
+  Future<int> sumIncludedPlannedExpenses({
+    required PeriodRef period,
+    required DateTime start,
+    required DateTime endExclusive,
+  }) async {
+    assert(start.isBefore(endExclusive), 'Empty period bounds for $period');
+    final db = await _db;
+    final rows = await db.rawQuery(
+      'SELECT COALESCE(SUM(amount_minor), 0) AS total '
+      'FROM transactions '
+      "WHERE is_planned = 1 AND included_in_period = 1 "
+      "AND type = 'expense' AND date >= ? AND date < ?",
+      [_formatDate(start), _formatDate(endExclusive)],
+    );
+    if (rows.isEmpty) {
+      return 0;
+    }
+    final value = rows.first['total'];
+    if (value is int) {
+      return value;
+    }
+    if (value is num) {
+      return value.toInt();
+    }
+    return 0;
+  }
+
+  @override
+  Future<void> setPlannedIncluded(int plannedId, bool included) async {
+    final db = await _db;
+    await db.update(
+      'transactions',
+      {
+        'included_in_period': included ? 1 : 0,
+        'updated_at': DateTime.now().toIso8601String(),
+      },
+      where: 'is_planned = 1 AND id = ?',
+      whereArgs: [plannedId],
     );
   }
 

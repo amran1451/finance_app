@@ -313,7 +313,7 @@ final periodBudgetMinorProvider = FutureProvider<int>((ref) async {
   return dailyLimit * remainingDays;
 });
 
-final plannedPoolMinorProvider = FutureProvider<int>((ref) async {
+final plannedPoolBaseProvider = FutureProvider<int>((ref) async {
   ref.watch(dbTickProvider);
   final payout = await ref.watch(payoutForSelectedPeriodProvider.future);
   if (payout == null) {
