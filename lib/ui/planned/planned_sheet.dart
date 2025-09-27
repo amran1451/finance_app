@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 
 import '../../data/models/transaction_record.dart';
 import '../../state/app_providers.dart';
+import '../../state/budget_providers.dart';
 import '../../state/planned_providers.dart';
 import '../../state/db_refresh.dart';
 import '../../utils/formatting.dart';
@@ -61,6 +62,8 @@ class _PlannedSheetContentState extends ConsumerState<_PlannedSheetContent> {
       builder: (ctx, scroll) {
         final itemsAsync = ref.watch(plannedItemsByTypeProvider(widget.type));
         final actions = ref.read(plannedActionsProvider);
+        final period = ref.watch(selectedPeriodRefProvider);
+        final remainingAsync = ref.watch(plannedPoolRemainingProvider(period));
 
         Future<void> handleLongPress(PlannedItemView item) async {
           final action = await showModalBottomSheet<_PlannedItemAction>(
@@ -174,6 +177,34 @@ class _PlannedSheetContentState extends ConsumerState<_PlannedSheetContent> {
                 onClose: () => Navigator.of(ctx).pop(),
               ),
               const SizedBox(height: 16),
+              Align(
+                alignment: Alignment.centerLeft,
+                child: remainingAsync.when(
+                  data: (value) => Text(
+                    'Доступно на планы: ${formatCurrencyMinor(value)}',
+                    style: Theme.of(ctx).textTheme.bodyMedium?.copyWith(
+                          fontWeight: FontWeight.w600,
+                        ),
+                  ),
+                  loading: () => const Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      SizedBox(
+                        width: 18,
+                        height: 18,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      ),
+                      SizedBox(width: 8),
+                      Text('Доступно на планы: …'),
+                    ],
+                  ),
+                  error: (error, _) => Text(
+                    'Доступно на планы: —',
+                    style: Theme.of(ctx).textTheme.bodyMedium,
+                  ),
+                ),
+              ),
+              const SizedBox(height: 12),
               Expanded(
                 child: itemsAsync.when(
                   data: (items) {
@@ -204,10 +235,9 @@ class _PlannedSheetContentState extends ConsumerState<_PlannedSheetContent> {
                               return;
                             }
                             final ok = value ?? false;
-                            await ref.read(transactionsRepoProvider).setIncludedInPeriod(
-                                  transactionId: id,
-                                  value: ok,
-                                );
+                            await ref
+                                .read(transactionsRepoProvider)
+                                .setPlannedIncluded(id, ok);
                             bumpDbTick(ref);
                           },
                           onLongPress: () => handleLongPress(item),

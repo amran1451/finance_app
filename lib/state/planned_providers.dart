@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../data/models/category.dart';
@@ -134,6 +136,18 @@ final plannedItemsByTypeProvider = FutureProvider.family
       .watch(plannedForPeriodProvider((type: type, period: period)).future);
 });
 
+final plannedExpensesForPeriodProvider = FutureProvider.family
+    <List<PlannedItemView>, PeriodRef>((ref, period) async {
+  ref.watch(dbTickProvider);
+  ref.watch(selectedPeriodRefProvider);
+  return _loadPlannedItemsForPeriod(
+    ref,
+    PlannedType.expense,
+    period,
+    onlyIncluded: false,
+  );
+});
+
 final plannedIncludedByTypeProvider = FutureProvider.family
     <List<PlannedItemView>, PlannedType>((ref, type) async {
   final period = ref.watch(selectedPeriodRefProvider);
@@ -192,6 +206,30 @@ final plannedActionsProvider = Provider<PlannedActions>((ref) {
   return PlannedActions(repo);
 });
 
+final sumIncludedPlannedExpensesProvider =
+    FutureProvider.family<int, PeriodRef>((ref, period) async {
+  ref.watch(dbTickProvider);
+  ref.watch(selectedPeriodRefProvider);
+  final (anchor1, anchor2) = ref.watch(anchorDaysProvider);
+  final bounds = period.bounds(anchor1, anchor2);
+  final repository = ref.watch(transactionsRepoProvider);
+  return repository.sumIncludedPlannedExpenses(
+    period: period,
+    start: bounds.start,
+    endExclusive: bounds.endExclusive,
+  );
+});
+
+final plannedPoolRemainingProvider =
+    FutureProvider.family<int, PeriodRef>((ref, period) async {
+  ref.watch(dbTickProvider);
+  ref.watch(selectedPeriodRefProvider);
+  final base = await ref.watch(plannedPoolBaseProvider.future);
+  final used = await ref.watch(sumIncludedPlannedExpensesProvider(period).future);
+  final remaining = base - used;
+  return math.max(remaining, 0);
+});
+
 class PlannedActions {
   const PlannedActions(this._repository);
 
@@ -210,9 +248,6 @@ class PlannedActions {
   }
 
   Future<void> toggle(int id, bool value) {
-    return _repository.setIncludedInPeriod(
-      transactionId: id,
-      value: value,
-    );
+    return _repository.setPlannedIncluded(id, value);
   }
 }

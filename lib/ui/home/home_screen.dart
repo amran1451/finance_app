@@ -5,6 +5,7 @@ import 'package:go_router/go_router.dart';
 import '../../data/models/account.dart' as db_models;
 import '../../data/models/payout.dart';
 import '../../data/models/transaction_record.dart';
+import '../../data/repositories/necessity_repository.dart' as necessity_repo;
 import '../../routing/app_router.dart';
 import '../../state/app_providers.dart';
 import '../../state/budget_providers.dart';
@@ -12,9 +13,10 @@ import '../../state/entry_flow_providers.dart';
 import '../../state/planned_providers.dart';
 import '../../state/db_refresh.dart';
 import '../../utils/formatting.dart';
+import '../../utils/period_utils.dart';
 import '../../utils/ru_plural.dart';
+import '../planned/planned_add_form.dart';
 import '../planned/planned_quick_add_sheet.dart';
-import '../planned/planned_sheet.dart';
 import '../payouts/payout_edit_sheet.dart';
 import 'daily_limit_sheet.dart';
 import '../widgets/callout_card.dart';
@@ -46,29 +48,6 @@ class HomeScreen extends ConsumerWidget {
     );
     final generalPayoutLabel =
         'Добавить выплату (по периоду: ${payoutTypeLabel(suggestedType)})';
-    final plannedRemainderAsync = ref.watch(plannedRemainderForPeriodProvider);
-    final plannedRemainderSubtitle = plannedRemainderAsync.when(
-      data: (value) {
-        if (value == null) {
-          return 'Остаток на планы: —';
-        }
-        return 'Остаток на планы: ${formatCurrencyMinor(value.remainderMinor)}';
-      },
-      loading: () => 'Остаток на планы: …',
-      error: (error, _) => 'Остаток на планы: —',
-    );
-
-    void openPlannedSheet(PlannedType type) {
-      final notifier = ref.read(isSheetOpenProvider.notifier);
-      notifier.state = true;
-      showPlannedSheet(
-        context,
-        type: type,
-        onClosed: () {
-          notifier.state = false;
-        },
-      );
-    }
 
     final transactions = transactionsAsync.asData?.value ?? const [];
     final isTransactionsLoading = transactionsAsync.isLoading;
@@ -286,8 +265,7 @@ class HomeScreen extends ConsumerWidget {
               ),
               const SizedBox(height: 16),
               CalloutCard(
-                title: 'Запланировано',
-                subtitle: plannedRemainderSubtitle,
+                title: 'Планы расходов',
                 trailing: IconButton(
                   icon: const Icon(Icons.edit_outlined),
                   tooltip: 'Редактировать выплату',
@@ -319,10 +297,7 @@ class HomeScreen extends ConsumerWidget {
                     }
                   },
                 ),
-                child: _PlannedOverview(
-                  ref: ref,
-                  onOpenPlanned: openPlannedSheet,
-                ),
+                child: const _PlannedOverview(),
               ),
               const SizedBox(height: 16),
               CalloutCard(
@@ -588,43 +563,51 @@ class _DaysLeftBadge extends StatelessWidget {
   }
 }
 
-class _PlannedOverview extends StatelessWidget {
-  const _PlannedOverview({
-    required this.ref,
-    required this.onOpenPlanned,
-  });
+class _PlannedOverview extends ConsumerStatefulWidget {
+  const _PlannedOverview();
 
-  final WidgetRef ref;
-  final void Function(PlannedType type) onOpenPlanned;
+  @override
+  ConsumerState<_PlannedOverview> createState() => _PlannedOverviewState();
+}
+
+class _PlannedOverviewState extends ConsumerState<_PlannedOverview> {
+  bool _expanded = false;
+
+  Future<void> _openQuickAdd(BuildContext context) async {
+    final sheetNotifier = ref.read(isSheetOpenProvider.notifier);
+    sheetNotifier.state = true;
+    try {
+      final period = ref.read(selectedPeriodRefProvider);
+      final result = await showPlannedQuickAddForm(
+        context,
+        ref: ref,
+        type: 'expense',
+        period: period,
+      );
+      if (result == true && mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('План добавлен')),
+        );
+      }
+    } finally {
+      sheetNotifier.state = false;
+    }
+  }
+
+  void _toggleExpanded() {
+    setState(() {
+      _expanded = !_expanded;
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
     final payoutAsync = ref.watch(payoutForSelectedPeriodProvider);
-    final plannedRemainderAsync = ref.watch(plannedRemainderForPeriodProvider);
-    Future<void> openQuickAdd(BuildContext context, PlannedType type) async {
-      final sheetNotifier = ref.read(isSheetOpenProvider.notifier);
-      sheetNotifier.state = true;
-      try {
-        final period = ref.read(selectedPeriodRefProvider);
-        final result = await showPlannedQuickAddForm(
-          context,
-          ref: ref,
-          type: switch (type) {
-            PlannedType.income => 'income',
-            PlannedType.expense => 'expense',
-            PlannedType.saving => 'saving',
-          },
-          period: period,
-        );
-        if (result == true && context.mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('План добавлен')),
-          );
-        }
-      } finally {
-        sheetNotifier.state = false;
-      }
-    }
+    final period = ref.watch(selectedPeriodRefProvider);
+    final baseAsync = ref.watch(plannedPoolBaseProvider);
+    final remainingAsync = ref.watch(plannedPoolRemainingProvider(period));
+    final usedAsync = ref.watch(sumIncludedPlannedExpensesProvider(period));
+
     return payoutAsync.when(
       data: (payout) {
         if (payout == null) {
@@ -633,32 +616,17 @@ class _PlannedOverview extends StatelessWidget {
           );
         }
 
-        final incomeTotalAsync =
-            ref.watch(plannedIncludedTotalProvider(PlannedType.income));
-        final expenseTotalAsync =
-            ref.watch(plannedIncludedTotalProvider(PlannedType.expense));
-        final savingTotalAsync =
-            ref.watch(plannedIncludedTotalProvider(PlannedType.saving));
-        final plannedPool = ref.watch(plannedPoolMinorProvider);
-        final remainderData =
-            plannedRemainderAsync.maybeWhen<PlannedRemainder?>(
-          data: (value) => value,
-          orElse: () => null,
-        );
-        final deficitMinor = remainderData?.deficitMinor ?? 0;
         final theme = Theme.of(context);
         final colorScheme = theme.colorScheme;
+        final baseValue = baseAsync.valueOrNull;
+        final usedValue = usedAsync.valueOrNull;
+        final deficitMinor = baseValue != null && usedValue != null && usedValue > baseValue
+            ? usedValue - baseValue
+            : 0;
 
         return Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            Text(
-              'Быстрый доступ к будущим операциям',
-              style: theme.textTheme.bodyMedium?.copyWith(
-                color: colorScheme.onSurfaceVariant,
-              ),
-            ),
-            const SizedBox(height: 12),
             if (deficitMinor > 0) ...[
               Container(
                 padding: const EdgeInsets.all(12),
@@ -676,74 +644,51 @@ class _PlannedOverview extends StatelessWidget {
               ),
               const SizedBox(height: 12),
             ],
-            plannedPool.when(
-              data: (value) => ListTile(
-                contentPadding: EdgeInsets.zero,
-                title: const Text('Доступно на планы'),
-                subtitle: Text(formatCurrencyMinor(value)),
-              ),
-              loading: () => const ListTile(
-                contentPadding: EdgeInsets.zero,
-                title: Text('Доступно на планы'),
-                subtitle: Text('Загрузка…'),
-              ),
-              error: (_, __) => const ListTile(
-                contentPadding: EdgeInsets.zero,
-                title: Text('Доступно на планы'),
-                subtitle: Text('Не удалось загрузить'),
-              ),
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.center,
+              children: [
+                Expanded(
+                  child: remainingAsync.when(
+                    data: (value) => Text(
+                      'Доступно на планы: ${formatCurrencyMinor(value)}',
+                      style: theme.textTheme.titleMedium?.copyWith(
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                    loading: () => const Row(
+                      children: [
+                        SizedBox(
+                          width: 20,
+                          height: 20,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        ),
+                        SizedBox(width: 8),
+                        Text('Доступно на планы: …'),
+                      ],
+                    ),
+                    error: (_, __) => Text(
+                      'Доступно на планы: —',
+                      style: theme.textTheme.titleMedium,
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                FilledButton.icon(
+                  icon: const Icon(Icons.add),
+                  label: const Text('Добавить'),
+                  onPressed: () => _openQuickAdd(context),
+                ),
+                IconButton(
+                  icon: Icon(_expanded ? Icons.expand_less : Icons.expand_more),
+                  tooltip: _expanded ? 'Скрыть планы' : 'Показать планы',
+                  onPressed: _toggleExpanded,
+                ),
+              ],
             ),
-            const Divider(height: 0),
-            ListTile(
-              contentPadding: EdgeInsets.zero,
-              title: const Text('Доходы'),
-              subtitle: incomeTotalAsync.when(
-                data: (value) => Text(formatCurrencyMinor(value)),
-                loading: () => const Text('Загрузка…'),
-                error: (error, _) => Text('Ошибка: $error'),
-              ),
-              trailing: TextButton.icon(
-                key: const Key('planned_add_income'),
-                onPressed: () => openQuickAdd(context, PlannedType.income),
-                icon: const Icon(Icons.add),
-                label: const Text('Добавить'),
-              ),
-              onTap: () => onOpenPlanned(PlannedType.income),
-            ),
-            const Divider(height: 0),
-            ListTile(
-              contentPadding: EdgeInsets.zero,
-              title: const Text('Расходы'),
-              subtitle: expenseTotalAsync.when(
-                data: (value) => Text(formatCurrencyMinor(value)),
-                loading: () => const Text('Загрузка…'),
-                error: (error, _) => Text('Ошибка: $error'),
-              ),
-              trailing: TextButton.icon(
-                key: const Key('planned_add_expense'),
-                onPressed: () => openQuickAdd(context, PlannedType.expense),
-                icon: const Icon(Icons.add),
-                label: const Text('Добавить'),
-              ),
-              onTap: () => onOpenPlanned(PlannedType.expense),
-            ),
-            const Divider(height: 0),
-            ListTile(
-              contentPadding: EdgeInsets.zero,
-              title: const Text('Сбережения'),
-              subtitle: savingTotalAsync.when(
-                data: (value) => Text(formatCurrencyMinor(value)),
-                loading: () => const Text('Загрузка…'),
-                error: (error, _) => Text('Ошибка: $error'),
-              ),
-              trailing: TextButton.icon(
-                key: const Key('planned_add_saving'),
-                onPressed: () => openQuickAdd(context, PlannedType.saving),
-                icon: const Icon(Icons.add),
-                label: const Text('Добавить'),
-              ),
-              onTap: () => onOpenPlanned(PlannedType.saving),
-            ),
+            if (_expanded) ...[
+              const SizedBox(height: 12),
+              _PlannedExpensesList(period: period),
+            ],
           ],
         );
       },
@@ -757,6 +702,150 @@ class _PlannedOverview extends StatelessWidget {
       ),
     );
   }
+}
+
+class _PlannedExpensesList extends ConsumerWidget {
+  const _PlannedExpensesList({required this.period});
+
+  final PeriodRef period;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final itemsAsync = ref.watch(plannedExpensesForPeriodProvider(period));
+    final necessityLabelsAsync = ref.watch(necessityLabelsFutureProvider);
+    final necessityLabels =
+        necessityLabelsAsync.value ?? const <necessity_repo.NecessityLabel>[];
+    final necessityById = {
+      for (final label in necessityLabels) label.id: label,
+    };
+    final theme = Theme.of(context);
+
+    return itemsAsync.when(
+      data: (items) {
+        if (items.isEmpty) {
+          return Text(
+            'Пока нет планов расходов в этом периоде.',
+            style: theme.textTheme.bodyMedium,
+          );
+        }
+        final children = <Widget>[];
+        for (var i = 0; i < items.length; i++) {
+          final item = items[i];
+          children.add(
+            ListTile(
+              dense: true,
+              contentPadding: EdgeInsets.zero,
+              title: Text(
+                item.title,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
+              subtitle: Wrap(
+                spacing: 8,
+                runSpacing: 4,
+                crossAxisAlignment: WrapCrossAlignment.center,
+                children: [
+                  Text(formatCurrencyMinor(item.record.amountMinor)),
+                  ..._buildNecessityChip(
+                    context,
+                    item,
+                    necessityById,
+                  ),
+                ],
+              ),
+              trailing: Checkbox(
+                value: item.record.includedInPeriod,
+                onChanged: (value) async {
+                  final transactionId = item.record.id;
+                  if (transactionId == null) {
+                    return;
+                  }
+                  await ref
+                      .read(transactionsRepoProvider)
+                      .setPlannedIncluded(transactionId, value ?? false);
+                  bumpDbTick(ref);
+                },
+              ),
+              onTap: () => showPlannedAddForm(
+                context,
+                type: PlannedType.expense,
+                initialRecord: item.record,
+              ),
+            ),
+          );
+          if (i != items.length - 1) {
+            children.add(const Divider(height: 12));
+          }
+        }
+        return Column(children: children);
+      },
+      loading: () => const LinearProgressIndicator(minHeight: 2),
+      error: (error, _) => Text('Ошибка: $error'),
+    );
+  }
+
+  List<Widget> _buildNecessityChip(
+    BuildContext context,
+    PlannedItemView item,
+    Map<int, necessity_repo.NecessityLabel> necessityById,
+  ) {
+    final record = item.record;
+    final label = record.necessityLabel;
+    final necessity =
+        record.necessityId != null ? necessityById[record.necessityId!] : null;
+    final labelText = label?.isNotEmpty == true
+        ? label!
+        : necessity?.name?.isNotEmpty == true
+            ? necessity!.name
+            : record.criticality > 0
+                ? 'Критичность ${record.criticality}'
+                : null;
+    if (labelText == null) {
+      return const [];
+    }
+    final theme = Theme.of(context);
+    final background = _necessityColorFromHex(necessity?.color) ??
+        theme.colorScheme.secondaryContainer;
+    final brightness = ThemeData.estimateBrightnessForColor(background);
+    final labelColor = brightness == Brightness.dark
+        ? Colors.white
+        : theme.colorScheme.onSecondaryContainer;
+
+    return [
+      Chip(
+        label: Text(labelText),
+        labelStyle: theme.textTheme.labelSmall?.copyWith(
+          color: labelColor,
+          fontWeight: FontWeight.w600,
+        ),
+        visualDensity: VisualDensity.compact,
+        backgroundColor: background,
+        materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+      ),
+    ];
+  }
+}
+
+Color? _necessityColorFromHex(String? raw) {
+  if (raw == null) {
+    return null;
+  }
+  final normalized = raw.trim();
+  if (normalized.isEmpty) {
+    return null;
+  }
+  final hex = normalized.startsWith('#') ? normalized.substring(1) : normalized;
+  final value = int.tryParse(hex, radix: 16);
+  if (value == null) {
+    return null;
+  }
+  if (hex.length == 6) {
+    return Color(0xFF000000 | value);
+  }
+  if (hex.length == 8) {
+    return Color(value);
+  }
+  return null;
 }
 
 class _HomeAccountTile extends ConsumerWidget {
