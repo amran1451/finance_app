@@ -290,7 +290,11 @@ class _PlannedMasterEditFormState
                       const SizedBox(width: 12),
                       Expanded(
                         child: FilledButton(
-                          onPressed: _isSaving || !_isAmountValid ||
+                          onPressed: _isSaving ||
+                                  !_isAmountValid ||
+                                  (!_isEditMode &&
+                                      _isExpense &&
+                                      _selectedNecessityId == null) ||
                                   (_isEditMode && !_isDirty)
                               ? null
                               : _submit,
