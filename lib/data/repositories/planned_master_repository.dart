@@ -114,6 +114,7 @@ class PlannedMasterView {
     this.necessityId,
     this.necessityName,
     this.necessityColor,
+    this.categoryName,
   });
 
   final int id;
@@ -129,6 +130,7 @@ class PlannedMasterView {
   final int? necessityId;
   final String? necessityName;
   final int? necessityColor;
+  final String? categoryName;
 
   PlannedMaster toMaster() {
     return PlannedMaster(
@@ -160,6 +162,7 @@ class PlannedMasterView {
       necessityId: _readNullableInt(map['necessity_id']),
       necessityName: map['necessity_name'] as String?,
       necessityColor: _parseColor(map['necessity_color']),
+      categoryName: map['category_name'] as String?,
     );
   }
 
@@ -265,6 +268,15 @@ abstract class PlannedMasterRepository {
     bool desc = false,
     required DateTime periodStart,
     required DateTime periodEndEx,
+  });
+
+  Future<List<PlannedMasterView>> queryAvailableForPeriod({
+    required DateTime start,
+    required DateTime endExclusive,
+    int? categoryId,
+    int? necessityId,
+    String? search,
+    bool sortByAmountDesc = false,
   });
 
   Future<Map<int, necessity_repo.NecessityLabel>> listNecessityLabels();
@@ -545,9 +557,11 @@ class SqlitePlannedMasterRepository implements PlannedMasterRepository {
       ..writeln('       $_assignedNowExpression AS assigned_now,')
       ..writeln('       pm.necessity_id AS necessity_id,')
       ..writeln('       nl.name AS necessity_name,')
-      ..writeln('       nl.color AS necessity_color')
+      ..writeln('       nl.color AS necessity_color,')
+      ..writeln('       c.name AS category_name')
       ..writeln('FROM planned_master pm')
       ..writeln('LEFT JOIN necessity_labels nl ON nl.id = pm.necessity_id')
+      ..writeln('LEFT JOIN categories c ON c.id = pm.category_id')
       ..writeln('WHERE pm.archived = ?');
 
     final args = <Object?>[
@@ -585,6 +599,77 @@ class SqlitePlannedMasterRepository implements PlannedMasterRepository {
     }
 
     sql.writeln('ORDER BY ${_buildOrderBy(sort, desc)}');
+
+    final rows = await db.rawQuery(sql.toString(), args);
+    return rows.map(PlannedMasterView.fromMap).toList();
+  }
+
+  @override
+  Future<List<PlannedMasterView>> queryAvailableForPeriod({
+    required DateTime start,
+    required DateTime endExclusive,
+    int? categoryId,
+    int? necessityId,
+    String? search,
+    bool sortByAmountDesc = false,
+  }) async {
+    final db = await _db;
+    final normalizedSearch = search?.trim();
+    final sql = StringBuffer()
+      ..writeln('SELECT pm.*,')
+      ..writeln('       0 AS assigned_now,')
+      ..writeln('       pm.necessity_id AS necessity_id,')
+      ..writeln('       nl.name AS necessity_name,')
+      ..writeln('       nl.color AS necessity_color,')
+      ..writeln('       c.name AS category_name')
+      ..writeln('FROM planned_master pm')
+      ..writeln('LEFT JOIN necessity_labels nl ON nl.id = pm.necessity_id')
+      ..writeln('LEFT JOIN categories c ON c.id = pm.category_id')
+      ..writeln('WHERE pm.archived = 0')
+      ..writeln("  AND pm.type = 'expense'")
+      ..writeln('  AND NOT EXISTS (')
+      ..writeln('    SELECT 1 FROM transactions t')
+      ..writeln('    WHERE t.is_planned = 1')
+      ..writeln('      AND t.planned_id = pm.id')
+      ..writeln('      AND t.date >= ?')
+      ..writeln('      AND t.date < ?')
+      ..writeln('  )');
+
+    final args = <Object?>[
+      _formatDate(start),
+      _formatDate(endExclusive),
+    ];
+
+    if (categoryId != null) {
+      sql.writeln('  AND pm.category_id = ?');
+      args.add(categoryId);
+    }
+
+    if (necessityId != null) {
+      sql.writeln('  AND pm.necessity_id = ?');
+      args.add(necessityId);
+    }
+
+    if (normalizedSearch != null && normalizedSearch.isNotEmpty) {
+      final pattern =
+          '%${normalizedSearch.replaceAll('%', r'\%').replaceAll('_', r'\_')}%';
+      sql.writeln('  AND pm.title LIKE ? ESCAPE "\\"');
+      args.add(pattern);
+    }
+
+    if (sortByAmountDesc) {
+      sql.writeln('ORDER BY');
+      sql.writeln('  CASE WHEN pm.default_amount_minor IS NULL THEN 1 ELSE 0 END ASC,');
+      sql.writeln('  pm.default_amount_minor DESC,');
+      sql.writeln('  pm.title COLLATE NOCASE ASC,');
+      sql.writeln('  pm.id ASC');
+    } else {
+      sql.writeln('ORDER BY');
+      sql.writeln('  CASE WHEN pm.default_amount_minor IS NULL THEN 1 ELSE 0 END ASC,');
+      sql.writeln('  pm.default_amount_minor ASC,');
+      sql.writeln('  pm.title COLLATE NOCASE ASC,');
+      sql.writeln('  pm.id ASC');
+    }
 
     final rows = await db.rawQuery(sql.toString(), args);
     return rows.map(PlannedMasterView.fromMap).toList();

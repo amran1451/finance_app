@@ -10,8 +10,8 @@ import '../../state/budget_providers.dart';
 import '../../state/db_refresh.dart';
 import '../../state/planned_library_providers.dart';
 import '../../state/planned_master_providers.dart';
-import '../../utils/color_hex.dart';
 import '../../utils/formatting.dart';
+import '../../utils/plan_formatting.dart';
 import 'planned_assign_to_period_sheet.dart';
 import 'planned_master_edit_sheet.dart';
 
@@ -550,71 +550,64 @@ class PlannedMasterTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final categoryText = (categoryName?.isNotEmpty ?? false) ? categoryName! : '—';
-    final amountText = view.defaultAmountMinor != null
-        ? '${formatCurrencyMinorPlain(view.defaultAmountMinor!)} ₽'
-        : '—';
-    final amountStyle = theme.textTheme.bodyMedium?.copyWith(
-          fontWeight: FontWeight.w600,
-          color: theme.textTheme.bodySmall?.color,
-        ) ??
-        theme.textTheme.bodySmall?.copyWith(fontWeight: FontWeight.w600);
+    final subtitle = _buildSubtitleText();
 
     return ListTile(
       contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
       dense: true,
       visualDensity: VisualDensity.compact,
-      leading: Icon(
-        _iconForType(view.type),
-        color: theme.colorScheme.onSurfaceVariant,
-      ),
       title: Text(
-        view.title,
+        oneLinePlan(
+          view.title,
+          view.defaultAmountMinor,
+          view.necessityName,
+        ),
         maxLines: 1,
         overflow: TextOverflow.ellipsis,
       ),
-      subtitle: _buildSubtitle(theme, categoryText, amountText, amountStyle),
-      trailing: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          IconButton(
-            tooltip: 'Назначить в период',
-            icon: const Icon(Icons.event_available),
-            color: theme.colorScheme.primary,
-            onPressed: onAssign,
-          ),
-          PopupMenuButton<String>(
-            icon: const Icon(Icons.more_vert),
-            onSelected: (value) {
-              switch (value) {
-                case 'edit':
-                  onEdit();
-                  break;
-                case 'archive':
-                  onArchiveToggle();
-                  break;
-                case 'delete':
-                  if (onDelete != null) {
-                    onDelete!();
-                  }
-                  break;
+      subtitle: Text(
+        subtitle,
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+        style: theme.textTheme.bodySmall,
+      ),
+      trailing: PopupMenuButton<_MasterMenuAction>(
+        icon: const Icon(Icons.more_vert),
+        onSelected: (value) {
+          switch (value) {
+            case _MasterMenuAction.assign:
+              onAssign();
+              break;
+            case _MasterMenuAction.edit:
+              onEdit();
+              break;
+            case _MasterMenuAction.toggleArchive:
+              onArchiveToggle();
+              break;
+            case _MasterMenuAction.delete:
+              if (onDelete != null) {
+                onDelete!();
               }
-            },
-            itemBuilder: (context) => [
-              const PopupMenuItem(
-                value: 'edit',
-                child: Text('Редактировать'),
-              ),
-              PopupMenuItem(
-                value: 'archive',
-                child: Text(view.archived ? 'Разархивировать' : 'Архивировать'),
-              ),
-              PopupMenuItem(
-                value: 'delete',
-                enabled: onDelete != null,
-                child: const Text('Удалить'),
-              ),
-            ],
+              break;
+          }
+        },
+        itemBuilder: (context) => [
+          const PopupMenuItem(
+            value: _MasterMenuAction.assign,
+            child: Text('Назначить в период'),
+          ),
+          const PopupMenuItem(
+            value: _MasterMenuAction.edit,
+            child: Text('Редактировать'),
+          ),
+          PopupMenuItem(
+            value: _MasterMenuAction.toggleArchive,
+            child: Text(view.archived ? 'Разархивировать' : 'Архивировать'),
+          ),
+          PopupMenuItem(
+            value: _MasterMenuAction.delete,
+            enabled: onDelete != null,
+            child: const Text('Удалить'),
           ),
         ],
       ),
@@ -622,125 +615,31 @@ class PlannedMasterTile extends StatelessWidget {
     );
   }
 
-  Widget _buildSubtitle(
-    ThemeData theme,
-    String categoryText,
-    String amountText,
-    TextStyle? amountStyle,
-  ) {
-    final spans = <InlineSpan>[
-      TextSpan(text: categoryText),
-      const TextSpan(text: ' • '),
-      TextSpan(
-        text: amountText,
-        style: amountStyle ??
-            theme.textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w600),
-      ),
-    ];
-    final details = <Widget>[];
-
-    if (view.type == 'expense') {
-      details.add(_NecessityChip(view: view));
-    }
+  String _buildSubtitleText() {
+    final parts = <String>[];
+    final categoryText =
+        (categoryName?.isNotEmpty ?? false) ? categoryName! : '—';
+    parts.add(categoryText);
+    parts.add(_typeLabel(view.type));
     if (view.assignedNow) {
-      details.add(
-        _AssignedBadge(color: theme.colorScheme.primary),
-      );
+      parts.add('Назначен');
     }
-
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        RichText(
-          maxLines: 1,
-          overflow: TextOverflow.ellipsis,
-          text: TextSpan(
-            style: theme.textTheme.bodySmall,
-            children: spans,
-          ),
-        ),
-        if (details.isNotEmpty) ...[
-          const SizedBox(height: 4),
-          Wrap(
-            spacing: 8,
-            runSpacing: 4,
-            crossAxisAlignment: WrapCrossAlignment.center,
-            children: details,
-          ),
-        ],
-      ],
-    );
+    if (view.archived) {
+      parts.add('Архив');
+    }
+    return parts.join(' • ');
   }
 
-  IconData _iconForType(String type) {
+  String _typeLabel(String type) {
     switch (type) {
       case 'income':
-        return Icons.arrow_upward;
+        return 'Доход';
       case 'saving':
-        return Icons.savings;
+        return 'Сбережение';
       case 'expense':
-        return Icons.arrow_downward;
       default:
-        return Icons.all_inclusive;
+        return 'Расход';
     }
-  }
-}
-
-class _NecessityChip extends StatelessWidget {
-  const _NecessityChip({required this.view});
-
-  final PlannedMasterView view;
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final background = view.necessityColor != null
-        ? Color(view.necessityColor!)
-        : theme.colorScheme.secondaryContainer;
-    final brightness = ThemeData.estimateBrightnessForColor(background);
-    final labelColor = brightness == Brightness.dark
-        ? Colors.white
-        : theme.colorScheme.onSecondaryContainer;
-
-    return Chip(
-      label: Text(
-        view.necessityName?.isNotEmpty == true
-            ? view.necessityName!
-            : '—',
-      ),
-      labelStyle: theme.textTheme.labelSmall?.copyWith(
-        fontWeight: FontWeight.w600,
-        color: labelColor,
-      ),
-      visualDensity: VisualDensity.compact,
-      backgroundColor: background,
-      materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
-    );
-  }
-}
-
-class _AssignedBadge extends StatelessWidget {
-  const _AssignedBadge({required this.color});
-
-  final Color color;
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    return Row(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Icon(Icons.check_circle, size: 16, color: color),
-        const SizedBox(width: 4),
-        Text(
-          'в периоде',
-          style: theme.textTheme.labelSmall?.copyWith(
-            color: theme.colorScheme.onSurfaceVariant,
-          ),
-        ),
-      ],
-    );
   }
 }
 

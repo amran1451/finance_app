@@ -80,6 +80,17 @@ abstract class TransactionsRepository {
     int criticality = 0,
   });
 
+  Future<void> assignMasterToPeriod({
+    required int masterId,
+    required DateTime start,
+    required DateTime endExclusive,
+    required int categoryId,
+    required int amountMinor,
+    required bool included,
+    int? necessityId,
+    String? note,
+  });
+
   Future<List<TransactionItem>> listPlannedByPeriod({
     required DateTime start,
     required DateTime endExclusive,
@@ -380,6 +391,56 @@ class SqliteTransactionsRepository implements TransactionsRepository {
   }
 
   @override
+  Future<void> assignMasterToPeriod({
+    required int masterId,
+    required DateTime start,
+    required DateTime endExclusive,
+    required int categoryId,
+    required int amountMinor,
+    required bool included,
+    int? necessityId,
+    String? note,
+  }) async {
+    final db = await _db;
+    await db.transaction((txn) async {
+      final masterRows = await txn.query(
+        'planned_master',
+        where: 'id = ?',
+        whereArgs: [masterId],
+        limit: 1,
+      );
+      if (masterRows.isEmpty) {
+        throw StateError('Не найден шаблон с идентификатором $masterId');
+      }
+      final master = masterRows.first;
+      final type = (master['type'] as String? ?? 'expense').toLowerCase();
+      final sanitizedNote = note == null || note.trim().isEmpty ? null : note.trim();
+      final necessityLabel = await _loadNecessityLabel(txn, necessityId);
+      final instanceDate = _resolveInstanceDate(start, endExclusive);
+      final values = <String, Object?>{
+        'planned_id': masterId,
+        'type': type,
+        'account_id': 0,
+        'category_id': categoryId,
+        'amount_minor': amountMinor,
+        'date': _formatDate(instanceDate),
+        'time': null,
+        'note': sanitizedNote,
+        'is_planned': 1,
+        'included_in_period': included ? 1 : 0,
+        'tags': null,
+        'criticality': 0,
+        'necessity_id': necessityId,
+        'necessity_label': necessityLabel,
+        'reason_id': null,
+        'reason_label': null,
+        'payout_id': null,
+      };
+      await txn.insert('transactions', values);
+    });
+  }
+
+  @override
   Future<List<TransactionItem>> listPlannedByPeriod({
     required DateTime start,
     required DateTime endExclusive,
@@ -560,6 +621,32 @@ class SqliteTransactionsRepository implements TransactionsRepository {
     final month = date.month.toString().padLeft(2, '0');
     final day = date.day.toString().padLeft(2, '0');
     return '${date.year.toString().padLeft(4, '0')}-$month-$day';
+  }
+
+  DateTime _resolveInstanceDate(DateTime start, DateTime endExclusive) {
+    final normalizedStart = DateTime(start.year, start.month, start.day);
+    final normalizedEndExclusive =
+        DateTime(endExclusive.year, endExclusive.month, endExclusive.day);
+    if (normalizedEndExclusive.isAfter(normalizedStart)) {
+      return normalizedStart;
+    }
+    return normalizedStart;
+  }
+
+  Future<String?> _loadNecessityLabel(DatabaseExecutor txn, int? id) async {
+    if (id == null) {
+      return null;
+    }
+    final rows = await txn.query(
+      'necessity_labels',
+      where: 'id = ?',
+      whereArgs: [id],
+      limit: 1,
+    );
+    if (rows.isEmpty) {
+      return null;
+    }
+    return rows.first['name'] as String?;
   }
 
   List<TransactionListItem> _aggregateSavingPairs(

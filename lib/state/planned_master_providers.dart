@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../data/db/app_database.dart';
@@ -13,9 +14,77 @@ import 'app_providers.dart';
 import 'budget_providers.dart';
 import 'db_refresh.dart';
 
+@immutable
+class ExpenseMasterFilters {
+  const ExpenseMasterFilters({
+    this.categoryId,
+    this.necessityId,
+    this.search = '',
+    this.sortDesc = false,
+  });
+
+  final int? categoryId;
+  final int? necessityId;
+  final String search;
+  final bool sortDesc;
+
+  ExpenseMasterFilters copyWith({
+    int? categoryId,
+    Object? necessityId = _sentinel,
+    String? search,
+    bool? sortDesc,
+  }) {
+    return ExpenseMasterFilters(
+      categoryId: categoryId ?? this.categoryId,
+      necessityId: necessityId == _sentinel
+          ? this.necessityId
+          : necessityId as int?,
+      search: search ?? this.search,
+      sortDesc: sortDesc ?? this.sortDesc,
+    );
+  }
+
+  static const Object _sentinel = Object();
+
+  @override
+  bool operator ==(Object other) {
+    if (identical(this, other)) {
+      return true;
+    }
+    return other is ExpenseMasterFilters &&
+        other.categoryId == categoryId &&
+        other.necessityId == necessityId &&
+        other.search == search &&
+        other.sortDesc == sortDesc;
+  }
+
+  @override
+  int get hashCode => Object.hash(categoryId, necessityId, search, sortDesc);
+}
+
 final plannedMasterRepoProvider = Provider<PlannedMasterRepository>((ref) {
   final database = ref.watch(appDatabaseProvider);
   return SqlitePlannedMasterRepository(database: database);
+});
+
+final availableExpenseMastersProvider = FutureProvider.family<
+    List<PlannedMasterView>, (PeriodRef, ExpenseMasterFilters)>((ref, args) async {
+  ref.watch(dbTickProvider);
+  ref.watch(selectedPeriodRefProvider);
+  final (anchor1, anchor2) = ref.watch(anchorDaysProvider);
+  final period = args.$1;
+  final filters = args.$2;
+  final bounds = period.bounds(anchor1, anchor2);
+  final repository = ref.watch(plannedMasterRepoProvider);
+  final search = filters.search.trim().isEmpty ? null : filters.search.trim();
+  return repository.queryAvailableForPeriod(
+    start: bounds.start,
+    endExclusive: bounds.endExclusive,
+    categoryId: filters.categoryId,
+    necessityId: filters.necessityId,
+    search: search,
+    sortByAmountDesc: filters.sortDesc,
+  );
 });
 
 final plannedInstancesRepoProvider =
