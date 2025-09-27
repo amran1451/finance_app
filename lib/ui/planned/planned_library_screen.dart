@@ -33,8 +33,10 @@ class PlannedLibraryScreen extends ConsumerStatefulWidget {
 class _PlannedLibraryScreenState
     extends ConsumerState<PlannedLibraryScreen> {
   bool _showAssigned = false;
+  bool _isSearchVisible = false;
   Timer? _searchDebounce;
   late final TextEditingController _searchController;
+  late final FocusNode _searchFocusNode;
   ProviderSubscription<PlannedLibraryFilters>? _filtersSubscription;
 
   @override
@@ -44,6 +46,7 @@ class _PlannedLibraryScreenState
     _searchController = TextEditingController(
       text: widget.selectForAssignment ? '' : initialFilters.search,
     );
+    _searchFocusNode = FocusNode();
     if (!widget.selectForAssignment) {
       _filtersSubscription = ref.listenManual<PlannedLibraryFilters>(
         plannedLibraryFiltersProvider,
@@ -64,6 +67,7 @@ class _PlannedLibraryScreenState
     _filtersSubscription?.close();
     _searchDebounce?.cancel();
     _searchController.dispose();
+    _searchFocusNode.dispose();
     super.dispose();
   }
 
@@ -85,7 +89,13 @@ class _PlannedLibraryScreenState
           ),
         ],
       ),
-      body: body,
+      body: ListTileTheme(
+        data: const ListTileThemeData(
+          dense: true,
+          visualDensity: VisualDensity.compact,
+        ),
+        child: body,
+      ),
     );
   }
 
@@ -101,9 +111,61 @@ class _PlannedLibraryScreenState
     final counts = ref.watch(plannedInstancesCountByMasterProvider).value ??
         const <int, int>{};
 
+    final labelsList = necessityLabels.values.toList()
+      ..sort((a, b) => a.sortOrder.compareTo(b.sortOrder));
+    final selectedNecessity = filters.necessityIds.length == 1
+        ? necessityLabels[filters.necessityIds.first]
+        : null;
+    final hasMultipleNecessities = filters.necessityIds.length > 1;
+
     return Column(
       children: [
-        _buildFilterPanel(context, filters, necessityLabels),
+        Material(
+          color: Theme.of(context).colorScheme.surface,
+          child: SizedBox(
+            height: 56,
+            child: AnimatedSwitcher(
+              duration: const Duration(milliseconds: 200),
+              child: _isSearchVisible
+                  ? _InlineSearchBar(
+                      key: const ValueKey('search'),
+                      controller: _searchController,
+                      focusNode: _searchFocusNode,
+                      onChanged: _handleSearchChanged,
+                      onSubmitted: (value) {
+                        _applySearch(value);
+                        _closeSearchBar();
+                      },
+                      onClear: () {
+                        _searchController.clear();
+                        _applySearch('');
+                      },
+                      onClose: _closeSearchBar,
+                    )
+                  : Padding(
+                      key: const ValueKey('filters'),
+                      padding: const EdgeInsets.symmetric(horizontal: 8),
+                      child: CompactFiltersBar(
+                        filters: filters,
+                        selectedNecessity: selectedNecessity,
+                        hasMultipleNecessities: hasMultipleNecessities,
+                        onTypeChange: (type) {
+                          ref.read(plannedLibraryFiltersProvider.notifier).update(
+                                (state) => state.copyWith(type: type),
+                              );
+                        },
+                        onOpenAdvanced: () => _openAdvancedFilters(
+                          context,
+                          filters,
+                          labelsList,
+                        ),
+                        onSearch: _openSearchBar,
+                      ),
+                    ),
+            ),
+          ),
+        ),
+        const Divider(height: 1),
         Expanded(
           child: mastersAsync.when(
             data: (masters) {
@@ -127,19 +189,18 @@ class _PlannedLibraryScreenState
                   final categoryName = view.categoryId != null
                       ? categories[view.categoryId]?.name
                       : null;
-                  final amount = view.defaultAmountMinor != null
-                      ? formatCurrencyMinor(view.defaultAmountMinor!)
-                      : null;
-                  final subtitleText = _buildSubtitle(categoryName, amount);
                   final hasInstances = (counts[view.id] ?? 0) > 0;
                   final master = view.toMaster();
-                  return _PlannedMasterTile(
+                  return PlannedMasterTile(
                     view: view,
-                    subtitle: subtitleText,
-                    hasInstances: hasInstances,
-                    showAssignButton: !widget.selectForAssignment,
+                    categoryName: categoryName,
                     onAssign: () {
-                      _handleTap(context, master);
+                      _handleMenuAction(
+                        context,
+                        master,
+                        _MasterMenuAction.assign,
+                        canDelete: !hasInstances,
+                      );
                     },
                     onEdit: () {
                       _handleMenuAction(
@@ -149,15 +210,7 @@ class _PlannedLibraryScreenState
                         canDelete: !hasInstances,
                       );
                     },
-                    onAssignToPeriod: () {
-                      _handleMenuAction(
-                        context,
-                        master,
-                        _MasterMenuAction.assign,
-                        canDelete: !hasInstances,
-                      );
-                    },
-                    onToggleArchive: () {
+                    onArchiveToggle: () {
                       _handleMenuAction(
                         context,
                         master,
@@ -192,95 +245,47 @@ class _PlannedLibraryScreenState
     );
   }
 
-  Widget _buildFilterPanel(
+  void _openSearchBar() {
+    if (_isSearchVisible) {
+      return;
+    }
+    setState(() {
+      _isSearchVisible = true;
+    });
+    Future.delayed(const Duration(milliseconds: 50), () {
+      if (mounted) {
+        _searchFocusNode.requestFocus();
+      }
+    });
+  }
+
+  void _closeSearchBar() {
+    if (!_isSearchVisible) {
+      return;
+    }
+    setState(() {
+      _isSearchVisible = false;
+    });
+    FocusScope.of(context).unfocus();
+  }
+
+  Future<void> _openAdvancedFilters(
     BuildContext context,
     PlannedLibraryFilters filters,
-    Map<int, necessity_repo.NecessityLabel> necessityLabels,
-  ) {
-    final theme = Theme.of(context);
-    final notifier = ref.read(plannedLibraryFiltersProvider.notifier);
-    final labelsList = necessityLabels.values.toList()
-      ..sort((a, b) => a.sortOrder.compareTo(b.sortOrder));
-
-    return Material(
-      color: theme.colorScheme.surfaceVariant.withOpacity(0.4),
-      child: Padding(
-        padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Wrap(
-              spacing: 12,
-              runSpacing: 12,
-              crossAxisAlignment: WrapCrossAlignment.center,
-              children: [
-                _TypeFilterChips(
-                  filters: filters,
-                  onChanged: (next) => notifier.update(
-                    (state) => state.copyWith(type: next),
-                  ),
-                ),
-                _AssignmentSegment(
-                  filters: filters,
-                  onChanged: (value) => notifier.update(
-                    (state) => state.copyWith(assignedInPeriod: value),
-                  ),
-                ),
-                _StatusSegment(
-                  archived: filters.archived,
-                  onChanged: (value) => notifier.update(
-                    (state) => state.copyWith(archived: value),
-                  ),
-                ),
-                _NecessityDropdown(
-                  filters: filters,
-                  labels: labelsList,
-                  onSelectAll: () => notifier.update(
-                    (state) => state.copyWith(necessityIds: <int>{}),
-                  ),
-                  onSelectSingle: (id) => notifier.update(
-                    (state) => state.copyWith(necessityIds: {id}),
-                  ),
-                  onSelectMultiple: () => _showNecessityMultiSelect(
-                    context,
-                    labelsList,
-                    filters.necessityIds,
-                  ),
-                ),
-                _SortChip(
-                  filters: filters,
-                  onChanged: (sort, desc) => notifier.update(
-                    (state) => state.copyWith(sort: sort, desc: desc),
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 12),
-            TextField(
-              controller: _searchController,
-              textInputAction: TextInputAction.search,
-              decoration: InputDecoration(
-                prefixIcon: const Icon(Icons.search),
-                suffixIcon: filters.search.isNotEmpty
-                    ? IconButton(
-                        tooltip: 'Очистить',
-                        onPressed: () {
-                          _searchController.clear();
-                          _applySearch('');
-                        },
-                        icon: const Icon(Icons.clear),
-                      )
-                    : null,
-                hintText: 'Поиск по названию',
-                border: const OutlineInputBorder(),
-              ),
-              onChanged: _handleSearchChanged,
-              onSubmitted: _applySearch,
-            ),
-          ],
-        ),
+    List<necessity_repo.NecessityLabel> labels,
+  ) async {
+    final result = await showModalBottomSheet<PlannedLibraryFilters>(
+      context: context,
+      useSafeArea: true,
+      isScrollControlled: true,
+      builder: (modalContext) => AdvancedFiltersSheet(
+        filters: filters,
+        labels: labels,
       ),
     );
+    if (result != null && mounted) {
+      ref.read(plannedLibraryFiltersProvider.notifier).state = result;
+    }
   }
 
   Widget _buildAssignmentBody(BuildContext context) {
@@ -411,103 +416,6 @@ class _PlannedLibraryScreenState
         );
   }
 
-  Future<void> _showNecessityMultiSelect(
-    BuildContext context,
-    List<necessity_repo.NecessityLabel> labels,
-    Set<int> current,
-  ) async {
-    final initialSelection = Set<int>.from(current);
-    final result = await showModalBottomSheet<Set<int>>(
-      context: context,
-      useSafeArea: true,
-      builder: (modalContext) {
-        final theme = Theme.of(modalContext);
-        var selection = Set<int>.from(initialSelection);
-        return StatefulBuilder(
-          builder: (context, setState) {
-            return Padding(
-              padding: const EdgeInsets.all(16),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  Row(
-                    children: [
-                      Expanded(
-                        child: Text(
-                          'Выберите ярлыки критичности',
-                          style: theme.textTheme.titleMedium,
-                        ),
-                      ),
-                      TextButton(
-                        onPressed: () => setState(() {
-                          selection.clear();
-                        }),
-                        child: const Text('Сбросить'),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 12),
-                  Flexible(
-                    child: SingleChildScrollView(
-                      child: Column(
-                        children: [
-                          for (final label in labels)
-                            CheckboxListTile(
-                              value: selection.contains(label.id),
-                              onChanged: (checked) => setState(() {
-                                if (checked == true) {
-                                  selection.add(label.id);
-                                } else {
-                                  selection.remove(label.id);
-                                }
-                              }),
-                              title: Text(label.name),
-                              secondary: CircleAvatar(
-                                backgroundColor:
-                                    hexToColor(label.color) ?? theme.colorScheme.surfaceVariant,
-                              ),
-                              dense: true,
-                              controlAffinity: ListTileControlAffinity.leading,
-                            ),
-                        ],
-                      ),
-                    ),
-                  ),
-                  const SizedBox(height: 12),
-                  Row(
-                    children: [
-                      Expanded(
-                        child: OutlinedButton(
-                          onPressed: () => Navigator.of(context).pop(),
-                          child: const Text('Отмена'),
-                        ),
-                      ),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: FilledButton(
-                          onPressed: () => Navigator.of(context)
-                              .pop(Set<int>.from(selection)),
-                          child: const Text('Применить'),
-                        ),
-                      ),
-                    ],
-                  ),
-                ],
-              ),
-            );
-          },
-        );
-      },
-    );
-
-    if (result != null) {
-      ref.read(plannedLibraryFiltersProvider.notifier).update(
-            (state) => state.copyWith(necessityIds: result),
-          );
-    }
-  }
-
   String? _buildSubtitle(String? categoryName, String? amount) {
     if ((categoryName == null || categoryName.isEmpty) && amount == null) {
       return null;
@@ -522,12 +430,13 @@ class _PlannedLibraryScreenState
   IconData _iconForType(String type) {
     switch (type) {
       case 'income':
-        return Icons.trending_up;
+        return Icons.arrow_upward;
       case 'saving':
-        return Icons.savings_outlined;
+        return Icons.savings;
       case 'expense':
+        return Icons.arrow_downward;
       default:
-        return Icons.shopping_bag_outlined;
+        return Icons.all_inclusive;
     }
   }
 
@@ -620,509 +529,749 @@ class _PlannedLibraryScreenState
   }
 }
 
-class _PlannedMasterTile extends StatelessWidget {
-  const _PlannedMasterTile({
+class PlannedMasterTile extends StatelessWidget {
+  const PlannedMasterTile({
+    super.key,
     required this.view,
-    required this.subtitle,
-    required this.hasInstances,
-    required this.showAssignButton,
+    this.categoryName,
     required this.onAssign,
     required this.onEdit,
-    required this.onAssignToPeriod,
-    required this.onToggleArchive,
-    required this.onDelete,
+    required this.onArchiveToggle,
+    this.onDelete,
   });
 
   final PlannedMasterView view;
-  final String? subtitle;
-  final bool hasInstances;
-  final bool showAssignButton;
+  final String? categoryName;
   final VoidCallback onAssign;
   final VoidCallback onEdit;
-  final VoidCallback onAssignToPeriod;
-  final VoidCallback onToggleArchive;
+  final VoidCallback onArchiveToggle;
   final VoidCallback? onDelete;
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final subtitleWidgets = <Widget>[];
-    if (subtitle != null) {
-      subtitleWidgets.add(Text(subtitle!));
-    }
-    if (view.assignedNow) {
-      subtitleWidgets.add(
-        Padding(
-          padding: const EdgeInsets.only(top: 4),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Icon(
-                Icons.check_circle,
-                color: theme.colorScheme.primary,
-                size: 16,
-              ),
-              const SizedBox(width: 4),
-              Text(
-                'в периоде',
-                style: theme.textTheme.bodySmall?.copyWith(
-                  color: theme.colorScheme.primary,
-                ),
-              ),
-            ],
-          ),
-        ),
-      );
-    }
-
-    subtitleWidgets.add(
-      Padding(
-        padding: const EdgeInsets.only(top: 8),
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.center,
-          children: [
-            Expanded(child: _buildNecessityInfo(theme)),
-            if (showAssignButton) ...[
-              const SizedBox(width: 12),
-              Flexible(
-                fit: FlexFit.loose,
-                child: OutlinedButton.icon(
-                  onPressed: onAssignToPeriod,
-                  icon: const Icon(Icons.event_available_outlined),
-                  label: const Text('Назначить в период'),
-                  style: OutlinedButton.styleFrom(
-                    visualDensity: VisualDensity.compact,
-                  ),
-                ),
-              ),
-            ],
-          ],
-        ),
-      ),
-    );
-
-    final trailingMenuItems = <PopupMenuEntry<_MasterMenuAction>>[
-      const PopupMenuItem(
-        value: _MasterMenuAction.assign,
-        child: Text('Назначить в период'),
-      ),
-      const PopupMenuItem(
-        value: _MasterMenuAction.edit,
-        child: Text('Редактировать'),
-      ),
-      PopupMenuItem(
-        value: _MasterMenuAction.toggleArchive,
-        child: Text(view.archived ? 'Разархивировать' : 'Архивировать'),
-      ),
-      if (!hasInstances)
-        const PopupMenuItem(
-          value: _MasterMenuAction.delete,
-          child: Text('Удалить'),
-        ),
-    ];
+    final categoryText = (categoryName?.isNotEmpty ?? false) ? categoryName! : '—';
+    final amountText = view.defaultAmountMinor != null
+        ? '${formatCurrencyMinorPlain(view.defaultAmountMinor!)} ₽'
+        : '—';
+    final amountStyle = theme.textTheme.bodyMedium?.copyWith(
+          fontWeight: FontWeight.w600,
+          color: theme.textTheme.bodySmall?.color,
+        ) ??
+        theme.textTheme.bodySmall?.copyWith(fontWeight: FontWeight.w600);
 
     return ListTile(
-      contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-      leading: CircleAvatar(
-        backgroundColor: Colors.transparent,
-        child: Icon(_iconForType(view.type)),
+      contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+      dense: true,
+      visualDensity: VisualDensity.compact,
+      leading: Icon(
+        _iconForType(view.type),
+        color: theme.colorScheme.onSurfaceVariant,
       ),
-      title: Text(view.title),
-      subtitle: subtitleWidgets.isEmpty
-          ? null
-          : Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisSize: MainAxisSize.min,
-              children: subtitleWidgets,
-            ),
-      trailing: PopupMenuButton<_MasterMenuAction>(
-        onSelected: (action) {
-          switch (action) {
-            case _MasterMenuAction.assign:
-              onAssignToPeriod();
-              break;
-            case _MasterMenuAction.edit:
-              onEdit();
-              break;
-            case _MasterMenuAction.toggleArchive:
-              onToggleArchive();
-              break;
-            case _MasterMenuAction.delete:
-              if (onDelete != null) {
-                onDelete!();
-              }
-              break;
-          }
-        },
-        itemBuilder: (context) => trailingMenuItems,
-      ),
-      onTap: onAssign,
-    );
-  }
-
-  Widget _buildNecessityInfo(ThemeData theme) {
-    final baseStyle = theme.textTheme.bodySmall?.copyWith(
-      color: theme.colorScheme.onSurfaceVariant,
-    );
-    if (view.type != 'expense') {
-      return Text(
-        'Критичность: —',
-        style: baseStyle,
+      title: Text(
+        view.title,
+        maxLines: 1,
         overflow: TextOverflow.ellipsis,
-      );
-    }
-
-    final necessityName =
-        view.necessityName?.isNotEmpty == true ? view.necessityName! : '—';
-    final highlightColor = view.necessityColor != null
-        ? Color(view.necessityColor!)
-        : theme.colorScheme.primary;
-
-    return Text.rich(
-      TextSpan(
-        style: baseStyle,
+      ),
+      subtitle: _buildSubtitle(theme, categoryText, amountText, amountStyle),
+      trailing: Row(
+        mainAxisSize: MainAxisSize.min,
         children: [
-          const TextSpan(text: 'Критичность: '),
-          if (view.necessityColor != null)
-            WidgetSpan(
-              alignment: PlaceholderAlignment.middle,
-              child: Padding(
-                padding: const EdgeInsets.only(right: 4),
-                child: Container(
-                  width: 8,
-                  height: 8,
-                  decoration: BoxDecoration(
-                    color: highlightColor,
-                    shape: BoxShape.circle,
-                  ),
-                ),
+          IconButton(
+            tooltip: 'Назначить в период',
+            icon: const Icon(Icons.event_available),
+            color: theme.colorScheme.primary,
+            onPressed: onAssign,
+          ),
+          PopupMenuButton<String>(
+            icon: const Icon(Icons.more_vert),
+            onSelected: (value) {
+              switch (value) {
+                case 'edit':
+                  onEdit();
+                  break;
+                case 'archive':
+                  onArchiveToggle();
+                  break;
+                case 'delete':
+                  if (onDelete != null) {
+                    onDelete!();
+                  }
+                  break;
+              }
+            },
+            itemBuilder: (context) => [
+              const PopupMenuItem(
+                value: 'edit',
+                child: Text('Редактировать'),
               ),
-            ),
-          TextSpan(
-            text: necessityName,
-            style: TextStyle(
-              color: highlightColor,
-              fontWeight: FontWeight.w600,
-            ),
+              PopupMenuItem(
+                value: 'archive',
+                child: Text(view.archived ? 'Разархивировать' : 'Архивировать'),
+              ),
+              PopupMenuItem(
+                value: 'delete',
+                enabled: onDelete != null,
+                child: const Text('Удалить'),
+              ),
+            ],
           ),
         ],
       ),
-      overflow: TextOverflow.ellipsis,
+      onTap: onEdit,
+    );
+  }
+
+  Widget _buildSubtitle(
+    ThemeData theme,
+    String categoryText,
+    String amountText,
+    TextStyle? amountStyle,
+  ) {
+    final spans = <InlineSpan>[
+      TextSpan(text: categoryText),
+      const TextSpan(text: ' • '),
+      TextSpan(
+        text: amountText,
+        style: amountStyle ??
+            theme.textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w600),
+      ),
+    ];
+    final details = <Widget>[];
+
+    if (view.type == 'expense') {
+      details.add(_NecessityChip(view: view));
+    }
+    if (view.assignedNow) {
+      details.add(
+        _AssignedBadge(color: theme.colorScheme.primary),
+      );
+    }
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        RichText(
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          text: TextSpan(
+            style: theme.textTheme.bodySmall,
+            children: spans,
+          ),
+        ),
+        if (details.isNotEmpty) ...[
+          const SizedBox(height: 4),
+          Wrap(
+            spacing: 8,
+            runSpacing: 4,
+            crossAxisAlignment: WrapCrossAlignment.center,
+            children: details,
+          ),
+        ],
+      ],
     );
   }
 
   IconData _iconForType(String type) {
     switch (type) {
       case 'income':
-        return Icons.trending_up;
+        return Icons.arrow_upward;
       case 'saving':
-        return Icons.savings_outlined;
+        return Icons.savings;
       case 'expense':
+        return Icons.arrow_downward;
       default:
-        return Icons.shopping_bag_outlined;
+        return Icons.all_inclusive;
     }
   }
-
 }
 
-class _TypeFilterChips extends StatelessWidget {
-  const _TypeFilterChips({
-    required this.filters,
-    required this.onChanged,
-  });
+class _NecessityChip extends StatelessWidget {
+  const _NecessityChip({required this.view});
 
-  final PlannedLibraryFilters filters;
-  final ValueChanged<String?> onChanged;
-
-  @override
-  Widget build(BuildContext context) {
-    return Wrap(
-      spacing: 8,
-      crossAxisAlignment: WrapCrossAlignment.center,
-      children: [
-        const Text('Тип'),
-        ChoiceChip(
-          label: const Text('Все'),
-          selected: filters.type == null,
-          onSelected: (_) => onChanged(null),
-        ),
-        ChoiceChip(
-          label: const Text('Расходы'),
-          selected: filters.type == 'expense',
-          onSelected: (_) => onChanged(
-            filters.type == 'expense' ? null : 'expense',
-          ),
-        ),
-        ChoiceChip(
-          label: const Text('Доходы'),
-          selected: filters.type == 'income',
-          onSelected: (_) => onChanged(
-            filters.type == 'income' ? null : 'income',
-          ),
-        ),
-        ChoiceChip(
-          label: const Text('Сбережения'),
-          selected: filters.type == 'saving',
-          onSelected: (_) => onChanged(
-            filters.type == 'saving' ? null : 'saving',
-          ),
-        ),
-      ],
-    );
-  }
-}
-
-class _AssignmentSegment extends StatelessWidget {
-  const _AssignmentSegment({
-    required this.filters,
-    required this.onChanged,
-  });
-
-  final PlannedLibraryFilters filters;
-  final ValueChanged<bool?> onChanged;
-
-  @override
-  Widget build(BuildContext context) {
-    final selected = <String>{
-      switch (filters.assignedInPeriod) {
-        true => 'assigned',
-        false => 'unassigned',
-        null => 'all',
-      }
-    };
-
-    return Column(
-      mainAxisSize: MainAxisSize.min,
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        const Text('Назначение'),
-        const SizedBox(height: 4),
-        SegmentedButton<String>(
-          segments: const [
-            ButtonSegment(value: 'all', label: Text('Все')),
-            ButtonSegment(value: 'assigned', label: Text('В периоде')),
-            ButtonSegment(value: 'unassigned', label: Text('Не в периоде')),
-          ],
-          selected: selected,
-          onSelectionChanged: (values) {
-            final value = values.isEmpty ? 'all' : values.first;
-            switch (value) {
-              case 'assigned':
-                onChanged(true);
-                break;
-              case 'unassigned':
-                onChanged(false);
-                break;
-              case 'all':
-              default:
-                onChanged(null);
-            }
-          },
-        ),
-      ],
-    );
-  }
-}
-
-class _StatusSegment extends StatelessWidget {
-  const _StatusSegment({
-    required this.archived,
-    required this.onChanged,
-  });
-
-  final bool archived;
-  final ValueChanged<bool> onChanged;
-
-  @override
-  Widget build(BuildContext context) {
-    return Column(
-      mainAxisSize: MainAxisSize.min,
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        const Text('Статус'),
-        const SizedBox(height: 4),
-        SegmentedButton<bool>(
-          segments: const [
-            ButtonSegment(value: false, label: Text('Активные')),
-            ButtonSegment(value: true, label: Text('Архив')),
-          ],
-          selected: {archived},
-          onSelectionChanged: (values) {
-            onChanged(values.first);
-          },
-        ),
-      ],
-    );
-  }
-}
-
-class _NecessityDropdown extends StatelessWidget {
-  const _NecessityDropdown({
-    required this.filters,
-    required this.labels,
-    required this.onSelectAll,
-    required this.onSelectSingle,
-    required this.onSelectMultiple,
-  });
-
-  final PlannedLibraryFilters filters;
-  final List<necessity_repo.NecessityLabel> labels;
-  final VoidCallback onSelectAll;
-  final ValueChanged<int> onSelectSingle;
-  final VoidCallback onSelectMultiple;
-
-  @override
-  Widget build(BuildContext context) {
-    final value = _currentValue();
-    final items = <DropdownMenuItem<String>>[
-      const DropdownMenuItem(
-        value: 'all',
-        child: Text('Все'),
-      ),
-      for (final label in labels)
-        DropdownMenuItem(
-          value: 'id:${label.id}',
-          child: Text(label.name),
-        ),
-      DropdownMenuItem(
-        value: 'multi',
-        child: Text(
-          filters.necessityIds.length > 1
-              ? 'Несколько… (${filters.necessityIds.length})'
-              : 'Несколько…',
-        ),
-      ),
-    ];
-
-    final missing = filters.necessityIds.length == 1
-        ? filters.necessityIds.firstWhere(
-            (id) => labels.every((label) => label.id != id),
-            orElse: () => -1,
-          )
-        : -1;
-    if (missing > 0) {
-      items.insert(
-        1,
-        DropdownMenuItem(
-          value: 'id:$missing',
-          child: Text('Метка #$missing'),
-        ),
-      );
-    }
-
-    return Column(
-      mainAxisSize: MainAxisSize.min,
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        const Text('Критичность'),
-        const SizedBox(height: 4),
-        DropdownButtonFormField<String>(
-          value: value,
-          items: items,
-          onChanged: (selected) {
-            if (selected == null) {
-              return;
-            }
-            if (selected == 'all') {
-              onSelectAll();
-            } else if (selected == 'multi') {
-              onSelectMultiple();
-            } else if (selected.startsWith('id:')) {
-              final id = int.tryParse(selected.substring(3));
-              if (id != null) {
-                onSelectSingle(id);
-              }
-            }
-          },
-        ),
-      ],
-    );
-  }
-
-  String _currentValue() {
-    if (filters.necessityIds.isEmpty) {
-      return 'all';
-    }
-    if (filters.necessityIds.length == 1) {
-      final id = filters.necessityIds.first;
-      final exists = labels.any((label) => label.id == id);
-      if (exists) {
-        return 'id:$id';
-      }
-    }
-    return 'multi';
-  }
-}
-
-class _SortChip extends StatelessWidget {
-  const _SortChip({
-    required this.filters,
-    required this.onChanged,
-  });
-
-  final PlannedLibraryFilters filters;
-  final void Function(String sort, bool desc) onChanged;
-
-  static const _options = [
-    _SortSelection(sort: 'title', desc: false, label: 'Название ↑'),
-    _SortSelection(sort: 'title', desc: true, label: 'Название ↓'),
-    _SortSelection(sort: 'amount', desc: false, label: 'Сумма ↑'),
-    _SortSelection(sort: 'amount', desc: true, label: 'Сумма ↓'),
-    _SortSelection(sort: 'updated_at', desc: false, label: 'Обновлено ↑'),
-    _SortSelection(sort: 'updated_at', desc: true, label: 'Обновлено ↓'),
-  ];
+  final PlannedMasterView view;
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final label = _labelFor(filters);
-    return PopupMenuButton<_SortSelection>(
-      position: PopupMenuPosition.under,
-      tooltip: 'Сортировка',
-      onSelected: (option) => onChanged(option.sort, option.desc),
-      itemBuilder: (context) => [
-        for (final option in _options)
-          PopupMenuItem<_SortSelection>(
-            value: option,
-            child: Text(option.label),
+    final background = view.necessityColor != null
+        ? Color(view.necessityColor!)
+        : theme.colorScheme.secondaryContainer;
+    final brightness = ThemeData.estimateBrightnessForColor(background);
+    final labelColor = brightness == Brightness.dark
+        ? Colors.white
+        : theme.colorScheme.onSecondaryContainer;
+
+    return Chip(
+      label: Text(
+        view.necessityName?.isNotEmpty == true
+            ? view.necessityName!
+            : '—',
+      ),
+      labelStyle: theme.textTheme.labelSmall?.copyWith(
+        fontWeight: FontWeight.w600,
+        color: labelColor,
+      ),
+      visualDensity: VisualDensity.compact,
+      backgroundColor: background,
+      materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+    );
+  }
+}
+
+class _AssignedBadge extends StatelessWidget {
+  const _AssignedBadge({required this.color});
+
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Icon(Icons.check_circle, size: 16, color: color),
+        const SizedBox(width: 4),
+        Text(
+          'в периоде',
+          style: theme.textTheme.labelSmall?.copyWith(
+            color: theme.colorScheme.onSurfaceVariant,
           ),
-      ],
-      child: Chip(
-        avatar: Icon(
-          Icons.sort,
-          size: 18,
-          color: theme.colorScheme.onSecondaryContainer,
         ),
-        label: Text(label),
-        backgroundColor: theme.colorScheme.secondaryContainer,
+      ],
+    );
+  }
+}
+
+class CompactFiltersBar extends StatelessWidget {
+  const CompactFiltersBar({
+    super.key,
+    required this.filters,
+    required this.onTypeChange,
+    required this.onOpenAdvanced,
+    required this.onSearch,
+    this.selectedNecessity,
+    this.hasMultipleNecessities = false,
+  });
+
+  final PlannedLibraryFilters filters;
+  final void Function(String? type) onTypeChange;
+  final VoidCallback onOpenAdvanced;
+  final VoidCallback onSearch;
+  final necessity_repo.NecessityLabel? selectedNecessity;
+  final bool hasMultipleNecessities;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final label = () {
+      if (selectedNecessity != null) {
+        return selectedNecessity!.name;
+      }
+      if (hasMultipleNecessities) {
+        return 'Несколько';
+      }
+      return 'Все';
+    }();
+
+    final avatar = () {
+      if (selectedNecessity != null) {
+        final color = selectedNecessity!.color != null
+            ? hexToColor(selectedNecessity!.color!)
+            : theme.colorScheme.secondary;
+        return CircleAvatar(
+          radius: 7,
+          backgroundColor: color ?? theme.colorScheme.secondary,
+        );
+      }
+      if (hasMultipleNecessities) {
+        return const Icon(Icons.label, size: 16);
+      }
+      return const Icon(Icons.label_outline, size: 16);
+    }();
+
+    return Row(
+      children: [
+        Flexible(
+          flex: 3,
+          child: _TypeSegmented(
+            value: filters.type,
+            onChanged: onTypeChange,
+          ),
+        ),
+        const SizedBox(width: 8),
+        Expanded(
+          child: Align(
+            alignment: Alignment.centerLeft,
+            child: ActionChip(
+              visualDensity: VisualDensity.compact,
+              avatar: avatar,
+              label: Text(
+                label,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
+              onPressed: onOpenAdvanced,
+            ),
+          ),
+        ),
+        IconButton(
+          tooltip: 'Поиск',
+          icon: const Icon(Icons.search),
+          onPressed: onSearch,
+        ),
+        IconButton(
+          tooltip: 'Расширенные фильтры',
+          icon: const Icon(Icons.tune),
+          onPressed: onOpenAdvanced,
+        ),
+      ],
+    );
+  }
+}
+
+class _TypeSegmented extends StatelessWidget {
+  const _TypeSegmented({
+    required this.value,
+    required this.onChanged,
+  });
+
+  final String? value;
+  final void Function(String? value) onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    final selected = {value ?? 'all'};
+    return SegmentedButton<String>(
+      segments: const [
+        ButtonSegment(value: 'all', icon: Icon(Icons.all_inclusive)),
+        ButtonSegment(value: 'expense', icon: Icon(Icons.arrow_downward)),
+        ButtonSegment(value: 'income', icon: Icon(Icons.arrow_upward)),
+        ButtonSegment(value: 'saving', icon: Icon(Icons.savings)),
+      ],
+      selected: selected,
+      onSelectionChanged: (values) {
+        final next = values.first;
+        onChanged(next == 'all' ? null : next);
+      },
+      style: ButtonStyle(
+        visualDensity: VisualDensity.compact,
+        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+        padding: MaterialStateProperty.all(const EdgeInsets.symmetric(horizontal: 8)),
+      ),
+      showSelectedIcon: false,
+    );
+  }
+}
+
+class _InlineSearchBar extends StatelessWidget {
+  const _InlineSearchBar({
+    super.key,
+    required this.controller,
+    required this.focusNode,
+    required this.onChanged,
+    required this.onSubmitted,
+    required this.onClear,
+    required this.onClose,
+  });
+
+  final TextEditingController controller;
+  final FocusNode focusNode;
+  final ValueChanged<String> onChanged;
+  final ValueChanged<String> onSubmitted;
+  final VoidCallback onClear;
+  final VoidCallback onClose;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Material(
+      color: theme.colorScheme.surface,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 8),
+        child: Row(
+          children: [
+            Expanded(
+              child: ValueListenableBuilder<TextEditingValue>(
+                valueListenable: controller,
+                builder: (context, value, _) {
+                  return TextField(
+                    controller: controller,
+                    focusNode: focusNode,
+                    autofocus: true,
+                    onChanged: onChanged,
+                    onSubmitted: onSubmitted,
+                    decoration: InputDecoration(
+                      hintText: 'Поиск по названию',
+                      prefixIcon: const Icon(Icons.search),
+                      suffixIcon: value.text.isEmpty
+                          ? null
+                          : IconButton(
+                              tooltip: 'Очистить',
+                              icon: const Icon(Icons.clear),
+                              onPressed: onClear,
+                            ),
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      isDense: true,
+                      contentPadding: const EdgeInsets.symmetric(vertical: 12),
+                    ),
+                  );
+                },
+              ),
+            ),
+            IconButton(
+              tooltip: 'Закрыть поиск',
+              icon: const Icon(Icons.close),
+              onPressed: onClose,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class AdvancedFiltersSheet extends StatefulWidget {
+  const AdvancedFiltersSheet({
+    super.key,
+    required this.filters,
+    required this.labels,
+  });
+
+  final PlannedLibraryFilters filters;
+  final List<necessity_repo.NecessityLabel> labels;
+
+  @override
+  State<AdvancedFiltersSheet> createState() => _AdvancedFiltersSheetState();
+}
+
+class _AdvancedFiltersSheetState extends State<AdvancedFiltersSheet> {
+  late String? _type;
+  late Set<int> _necessityIds;
+  late bool? _assignedInPeriod;
+  late bool _archived;
+  late String _sort;
+  late bool _desc;
+  late final TextEditingController _searchController;
+
+  @override
+  void initState() {
+    super.initState();
+    _type = widget.filters.type;
+    _necessityIds = Set<int>.from(widget.filters.necessityIds);
+    _assignedInPeriod = widget.filters.assignedInPeriod;
+    _archived = widget.filters.archived;
+    _sort = widget.filters.sort;
+    _desc = widget.filters.desc;
+    _searchController = TextEditingController(text: widget.filters.search);
+  }
+
+  @override
+  void dispose() {
+    _searchController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return FractionallySizedBox(
+      heightFactor: 0.9,
+      child: SafeArea(
+        child: Column(
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      'Фильтры',
+                      style: theme.textTheme.titleLarge,
+                    ),
+                  ),
+                  IconButton(
+                    icon: const Icon(Icons.close),
+                    onPressed: () => Navigator.of(context).pop(),
+                  ),
+                ],
+              ),
+            ),
+            Expanded(
+              child: SingleChildScrollView(
+                padding: const EdgeInsets.symmetric(horizontal: 16),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    _SectionTitle('Тип'),
+                    ..._buildTypeSection(),
+                    const SizedBox(height: 16),
+                    _SectionTitle('Критичность'),
+                    ..._buildNecessitySection(theme),
+                    const SizedBox(height: 16),
+                    _SectionTitle('Назначение'),
+                    ..._buildAssignmentSection(),
+                    const SizedBox(height: 16),
+                    _SectionTitle('Статус'),
+                    ..._buildStatusSection(),
+                    const SizedBox(height: 16),
+                    _SectionTitle('Сортировка'),
+                    _buildSortSection(),
+                    const SizedBox(height: 16),
+                    _SectionTitle('Поиск'),
+                    const SizedBox(height: 8),
+                    TextField(
+                      controller: _searchController,
+                      decoration: const InputDecoration(
+                        border: OutlineInputBorder(),
+                        isDense: true,
+                        hintText: 'Поиск по названию',
+                      ),
+                    ),
+                    const SizedBox(height: 24),
+                  ],
+                ),
+              ),
+            ),
+            Padding(
+              padding: EdgeInsets.only(
+                left: 16,
+                right: 16,
+                bottom: 16 + MediaQuery.of(context).viewInsets.bottom,
+                top: 8,
+              ),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: TextButton(
+                      onPressed: _reset,
+                      child: const Text('Сбросить'),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: FilledButton(
+                      onPressed: _apply,
+                      child: const Text('Применить'),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
 
-  String _labelFor(PlannedLibraryFilters filters) {
-    final direction = filters.desc ? '↓' : '↑';
-    switch (filters.sort) {
-      case 'amount':
-        return 'Сумма $direction';
-      case 'updated_at':
-        return 'Обновлено $direction';
-      case 'title':
-      default:
-        return 'Название $direction';
+  List<Widget> _buildTypeSection() {
+    return [
+      RadioListTile<String?>(
+        title: const Text('Все'),
+        value: null,
+        groupValue: _type,
+        onChanged: (value) => setState(() => _type = value),
+        dense: true,
+        visualDensity: VisualDensity.compact,
+      ),
+      RadioListTile<String?>(
+        title: const Text('Расходы'),
+        value: 'expense',
+        groupValue: _type,
+        onChanged: (value) => setState(() => _type = value),
+        dense: true,
+        visualDensity: VisualDensity.compact,
+      ),
+      RadioListTile<String?>(
+        title: const Text('Доходы'),
+        value: 'income',
+        groupValue: _type,
+        onChanged: (value) => setState(() => _type = value),
+        dense: true,
+        visualDensity: VisualDensity.compact,
+      ),
+      RadioListTile<String?>(
+        title: const Text('Сбережения'),
+        value: 'saving',
+        groupValue: _type,
+        onChanged: (value) => setState(() => _type = value),
+        dense: true,
+        visualDensity: VisualDensity.compact,
+      ),
+    ];
+  }
+
+  List<Widget> _buildNecessitySection(ThemeData theme) {
+    if (widget.labels.isEmpty) {
+      return [
+        const Padding(
+          padding: EdgeInsets.symmetric(vertical: 8),
+          child: Text('Нет доступных меток.'),
+        ),
+      ];
     }
+    return [
+      for (final label in widget.labels)
+        CheckboxListTile(
+          value: _necessityIds.contains(label.id),
+          title: Text(label.name),
+          dense: true,
+          visualDensity: VisualDensity.compact,
+          secondary: CircleAvatar(
+            radius: 10,
+            backgroundColor: label.color != null
+                ? hexToColor(label.color!) ?? theme.colorScheme.secondaryContainer
+                : theme.colorScheme.secondaryContainer,
+          ),
+          controlAffinity: ListTileControlAffinity.leading,
+          onChanged: (checked) {
+            setState(() {
+              if (checked == true) {
+                _necessityIds.add(label.id);
+              } else {
+                _necessityIds.remove(label.id);
+              }
+            });
+          },
+        ),
+    ];
+  }
+
+  List<Widget> _buildAssignmentSection() {
+    return [
+      RadioListTile<bool?>(
+        title: const Text('Все'),
+        value: null,
+        groupValue: _assignedInPeriod,
+        onChanged: (value) => setState(() => _assignedInPeriod = value),
+        dense: true,
+        visualDensity: VisualDensity.compact,
+      ),
+      RadioListTile<bool?>(
+        title: const Text('В периоде'),
+        value: true,
+        groupValue: _assignedInPeriod,
+        onChanged: (value) => setState(() => _assignedInPeriod = value),
+        dense: true,
+        visualDensity: VisualDensity.compact,
+      ),
+      RadioListTile<bool?>(
+        title: const Text('Не в периоде'),
+        value: false,
+        groupValue: _assignedInPeriod,
+        onChanged: (value) => setState(() => _assignedInPeriod = value),
+        dense: true,
+        visualDensity: VisualDensity.compact,
+      ),
+    ];
+  }
+
+  List<Widget> _buildStatusSection() {
+    return [
+      RadioListTile<bool>(
+        title: const Text('Активные'),
+        value: false,
+        groupValue: _archived,
+        onChanged: (value) => setState(() => _archived = value ?? false),
+        dense: true,
+        visualDensity: VisualDensity.compact,
+      ),
+      RadioListTile<bool>(
+        title: const Text('Архив'),
+        value: true,
+        groupValue: _archived,
+        onChanged: (value) => setState(() => _archived = value ?? true),
+        dense: true,
+        visualDensity: VisualDensity.compact,
+      ),
+    ];
+  }
+
+  Widget _buildSortSection() {
+    return Row(
+      children: [
+        Expanded(
+          child: DropdownButtonFormField<String>(
+            value: _sort,
+            decoration: const InputDecoration(
+              labelText: 'Поле',
+              isDense: true,
+            ),
+            items: const [
+              DropdownMenuItem(value: 'title', child: Text('Название')),
+              DropdownMenuItem(value: 'amount', child: Text('Сумма')),
+              DropdownMenuItem(value: 'updated_at', child: Text('Обновлено')),
+            ],
+            onChanged: (value) {
+              if (value != null) {
+                setState(() => _sort = value);
+              }
+            },
+          ),
+        ),
+        const SizedBox(width: 12),
+        SegmentedButton<bool>(
+          segments: const [
+            ButtonSegment(value: false, icon: Icon(Icons.arrow_upward)),
+            ButtonSegment(value: true, icon: Icon(Icons.arrow_downward)),
+          ],
+          selected: {_desc},
+          onSelectionChanged: (values) {
+            setState(() => _desc = values.first);
+          },
+          style: ButtonStyle(
+            visualDensity: VisualDensity.compact,
+            tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+          ),
+          showSelectedIcon: false,
+        ),
+      ],
+    );
+  }
+
+  void _reset() {
+    setState(() {
+      _type = null;
+      _necessityIds.clear();
+      _assignedInPeriod = null;
+      _archived = false;
+      _sort = 'title';
+      _desc = false;
+      _searchController.text = '';
+    });
+  }
+
+  void _apply() {
+    Navigator.of(context).pop(
+      widget.filters.copyWith(
+        type: _type,
+        necessityIds: _necessityIds,
+        assignedInPeriod: _assignedInPeriod,
+        archived: _archived,
+        search: _searchController.text.trim(),
+        sort: _sort,
+        desc: _desc,
+      ),
+    );
   }
 }
 
-class _SortSelection {
-  const _SortSelection({
-    required this.sort,
-    required this.desc,
-    required this.label,
-  });
+class _SectionTitle extends StatelessWidget {
+  const _SectionTitle(this.text);
 
-  final String sort;
-  final bool desc;
-  final String label;
+  final String text;
+
+  @override
+  Widget build(BuildContext context) {
+    return Text(
+      text,
+      style: Theme.of(context).textTheme.titleSmall,
+    );
+  }
 }
 
 enum _MasterMenuAction { edit, assign, toggleArchive, delete }
+
