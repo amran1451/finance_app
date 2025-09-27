@@ -122,9 +122,7 @@ class AppMigrations {
       'ALTER TABLE planned_master ADD COLUMN necessity_id INTEGER NULL',
       'CREATE INDEX IF NOT EXISTS idx_planned_master_necessity_id ON planned_master(necessity_id)',
     ],
-    10: [
-      "ALTER TABLE transactions ADD COLUMN updated_at TEXT NOT NULL DEFAULT (datetime('now'))",
-    ],
+    10: [],
   };
 
   /// Applies migrations from [oldVersion] (exclusive) up to [newVersion] (inclusive).
@@ -146,6 +144,15 @@ class AppMigrations {
         case 4:
           await _seedReasonLabels(db);
           break;
+        case 10:
+          await _ensureColumnExists(
+            db,
+            tableName: 'transactions',
+            columnName: 'updated_at',
+            alterStatement:
+                "ALTER TABLE transactions ADD COLUMN updated_at TEXT NOT NULL DEFAULT (datetime('now'))",
+          );
+          break;
         default:
           break;
       }
@@ -155,6 +162,25 @@ class AppMigrations {
   static Future<void> _executeStatements(Database db, List<String> statements) async {
     for (final statement in statements) {
       await db.execute(statement);
+    }
+  }
+
+  static Future<void> _ensureColumnExists(
+    Database db, {
+    required String tableName,
+    required String columnName,
+    required String alterStatement,
+  }) async {
+    final columns =
+        await db.rawQuery("PRAGMA table_info(\$tableName)");
+    final normalizedColumnName = columnName.toLowerCase();
+    final hasColumn = columns.any(
+      (column) =>
+          (column['name'] as String?)?.toLowerCase() == normalizedColumnName,
+    );
+
+    if (!hasColumn) {
+      await db.execute(alterStatement);
     }
   }
 
