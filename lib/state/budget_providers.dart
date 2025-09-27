@@ -112,6 +112,12 @@ final payoutSuggestedTypeProvider = Provider<PayoutType>((ref) {
 String payoutTypeLabel(PayoutType type) =>
     type == PayoutType.salary ? 'Зарплата' : 'Аванс';
 
+final payoutsHistoryProvider = FutureProvider<List<Payout>>((ref) {
+  ref.watch(dbTickProvider);
+  final repository = ref.watch(payoutsRepoProvider);
+  return repository.getHistory(30);
+});
+
 /// (start, endExclusive) для выбранного периода (конкретный месяц)
 final periodBoundsProvider = Provider<(DateTime start, DateTime endExclusive)>((ref) {
   final (a1, a2) = ref.watch(anchorDaysProvider);
