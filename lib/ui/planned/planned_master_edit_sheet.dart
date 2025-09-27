@@ -123,181 +123,194 @@ class _PlannedMasterEditFormState
         : ref.watch(plannedInstancesByMasterProvider(masterId));
     final anchors = ref.watch(anchorDaysProvider);
 
-    return Form(
-      key: _formKey,
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Center(
-            child: Container(
-              width: 36,
-              height: 4,
-              decoration: BoxDecoration(
-                color: Theme.of(context).colorScheme.outlineVariant,
-                borderRadius: BorderRadius.circular(2),
-              ),
-            ),
-          ),
-          const SizedBox(height: 16),
-          Text(
-            _isEditMode ? 'Редактирование шаблона' : 'Новый шаблон',
-            style: Theme.of(context).textTheme.titleMedium,
-            textAlign: TextAlign.center,
-          ),
-          const SizedBox(height: 16),
-          SegmentedButton<String>(
-            segments: const [
-              ButtonSegment(value: 'expense', label: Text('Расход')),
-              ButtonSegment(value: 'income', label: Text('Доход')),
-              ButtonSegment(value: 'saving', label: Text('Сбережение')),
-            ],
-            selected: {_type},
-            onSelectionChanged: (values) {
-              if (values.isEmpty) {
-                return;
-              }
-              setState(() {
-                _type = values.first;
-                if (!_isEditMode) {
-                  _categoryId = null;
-                }
-                if (_type != 'expense') {
-                  _selectedNecessityId = null;
-                }
-              });
-              _updateDirty();
-            },
-          ),
-          const SizedBox(height: 12),
-          TextFormField(
-            controller: _titleController,
-            decoration: const InputDecoration(labelText: 'Название *'),
-            validator: (value) {
-              if (value == null || value.trim().isEmpty) {
-                return 'Введите название';
-              }
-              return null;
-            },
-          ),
-          if (!_isEditMode) ...[
-            const SizedBox(height: 12),
-            categoriesAsync.when(
-              data: (categories) {
-                if (categories.isEmpty) {
-                  return const Text(
-                    'Нет категорий для выбранного типа. Добавьте их в настройках.',
-                  );
-                }
-                return DropdownButtonFormField<int>(
-                  value: _categoryId,
-                  decoration: const InputDecoration(labelText: 'Категория *'),
-                  items: [
-                    for (final category in categories)
-                      DropdownMenuItem<int>(
-                        value: category.id,
-                        child: Text(category.name),
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        return SingleChildScrollView(
+          child: ConstrainedBox(
+            constraints: BoxConstraints(minWidth: constraints.maxWidth),
+            child: Form(
+              key: _formKey,
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Center(
+                    child: Container(
+                      width: 36,
+                      height: 4,
+                      decoration: BoxDecoration(
+                        color: Theme.of(context).colorScheme.outlineVariant,
+                        borderRadius: BorderRadius.circular(2),
                       ),
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  Text(
+                    _isEditMode ? 'Редактирование шаблона' : 'Новый шаблон',
+                    style: Theme.of(context).textTheme.titleMedium,
+                    textAlign: TextAlign.center,
+                  ),
+                  const SizedBox(height: 16),
+                  SegmentedButton<String>(
+                    segments: const [
+                      ButtonSegment(value: 'expense', label: Text('Расход')),
+                      ButtonSegment(value: 'income', label: Text('Доход')),
+                      ButtonSegment(value: 'saving', label: Text('Сбережение')),
+                    ],
+                    selected: {_type},
+                    onSelectionChanged: (values) {
+                      if (values.isEmpty) {
+                        return;
+                      }
+                      setState(() {
+                        _type = values.first;
+                        if (!_isEditMode) {
+                          _categoryId = null;
+                        }
+                        if (_type != 'expense') {
+                          _selectedNecessityId = null;
+                        }
+                      });
+                      _updateDirty();
+                    },
+                  ),
+                  const SizedBox(height: 12),
+                  TextFormField(
+                    controller: _titleController,
+                    decoration: const InputDecoration(labelText: 'Название *'),
+                    validator: (value) {
+                      if (value == null || value.trim().isEmpty) {
+                        return 'Введите название';
+                      }
+                      return null;
+                    },
+                  ),
+                  if (!_isEditMode) ...[
+                    const SizedBox(height: 12),
+                    categoriesAsync.when(
+                      data: (categories) {
+                        if (categories.isEmpty) {
+                          return const Text(
+                            'Нет категорий для выбранного типа. Добавьте их в настройках.',
+                          );
+                        }
+                        return DropdownButtonFormField<int>(
+                          value: _categoryId,
+                          decoration:
+                              const InputDecoration(labelText: 'Категория *'),
+                          items: [
+                            for (final category in categories)
+                              DropdownMenuItem<int>(
+                                value: category.id,
+                                child: Text(category.name),
+                              ),
+                          ],
+                          onChanged: (value) {
+                            setState(() => _categoryId = value);
+                            _updateDirty();
+                          },
+                          validator: (value) {
+                            if (value == null) {
+                              return 'Выберите категорию';
+                            }
+                            return null;
+                          },
+                        );
+                      },
+                      loading: () =>
+                          const Center(child: CircularProgressIndicator()),
+                      error: (error, _) =>
+                          Text('Не удалось загрузить категории: $error'),
+                    ),
                   ],
-                  onChanged: (value) {
-                    setState(() => _categoryId = value);
-                    _updateDirty();
-                  },
-                  validator: (value) {
-                    if (value == null) {
-                      return 'Выберите категорию';
-                    }
-                    return null;
-                  },
-                );
-              },
-              loading: () =>
-                  const Center(child: CircularProgressIndicator()),
-              error: (error, _) =>
-                  Text('Не удалось загрузить категории: $error'),
-            ),
-          ],
-          const SizedBox(height: 12),
-          TextFormField(
-            controller: _amountController,
-            keyboardType:
-                const TextInputType.numberWithOptions(decimal: true),
-            decoration: const InputDecoration(
-              labelText: 'Сумма ₽ *',
-              prefixText: '₽ ',
-            ),
-            autovalidateMode: AutovalidateMode.onUserInteraction,
-            validator: (value) {
-              final text = value?.trim();
-              if (text == null || text.isEmpty) {
-                return 'Введите сумму';
-              }
-              final normalized = text.replaceAll(' ', '').replaceAll(',', '.');
-              final parsed = double.tryParse(normalized);
-              if (parsed == null) {
-                return 'Некорректная сумма';
-              }
-              if (parsed <= 0) {
-                return 'Сумма должна быть больше 0';
-              }
-              return null;
-            },
-          ),
-          if (_isExpense) ...[
-            const SizedBox(height: 12),
-            necessityLabelsAsync.when(
-              data: (labels) => _buildNecessitySelector(context, labels),
-              loading: () =>
-                  const Center(child: CircularProgressIndicator()),
-              error: (error, _) =>
-                  Text('Не удалось загрузить критичность: $error'),
-            ),
-          ],
-          const SizedBox(height: 12),
-          TextFormField(
-            controller: _noteController,
-            decoration: const InputDecoration(labelText: 'Заметка'),
-            maxLines: 3,
-          ),
-          if (_isEditMode && masterId != null) ...[
-            const SizedBox(height: 24),
-            Text(
-              'Назначения по периодам',
-              style: Theme.of(context).textTheme.titleSmall,
-            ),
-            const SizedBox(height: 12),
-            _buildAssignmentsSection(context, assignmentsAsync, anchors),
-          ],
-          const SizedBox(height: 20),
-          Row(
-            children: [
-              Expanded(
-                child: OutlinedButton(
-                  onPressed:
-                      _isSaving ? null : () => Navigator.of(context).pop(),
-                  child: const Text('Отмена'),
-                ),
+                  const SizedBox(height: 12),
+                  TextFormField(
+                    controller: _amountController,
+                    keyboardType:
+                        const TextInputType.numberWithOptions(decimal: true),
+                    decoration: const InputDecoration(
+                      labelText: 'Сумма ₽ *',
+                      prefixText: '₽ ',
+                    ),
+                    autovalidateMode: AutovalidateMode.onUserInteraction,
+                    validator: (value) {
+                      final text = value?.trim();
+                      if (text == null || text.isEmpty) {
+                        return 'Введите сумму';
+                      }
+                      final normalized =
+                          text.replaceAll(' ', '').replaceAll(',', '.');
+                      final parsed = double.tryParse(normalized);
+                      if (parsed == null) {
+                        return 'Некорректная сумма';
+                      }
+                      if (parsed <= 0) {
+                        return 'Сумма должна быть больше 0';
+                      }
+                      return null;
+                    },
+                  ),
+                  if (_isExpense) ...[
+                    const SizedBox(height: 12),
+                    necessityLabelsAsync.when(
+                      data: (labels) =>
+                          _buildNecessitySelector(context, labels),
+                      loading: () =>
+                          const Center(child: CircularProgressIndicator()),
+                      error: (error, _) =>
+                          Text('Не удалось загрузить критичность: $error'),
+                    ),
+                  ],
+                  const SizedBox(height: 12),
+                  TextFormField(
+                    controller: _noteController,
+                    decoration: const InputDecoration(labelText: 'Заметка'),
+                    maxLines: 3,
+                  ),
+                  if (_isEditMode && masterId != null) ...[
+                    const SizedBox(height: 24),
+                    Text(
+                      'Назначения по периодам',
+                      style: Theme.of(context).textTheme.titleSmall,
+                    ),
+                    const SizedBox(height: 12),
+                    _buildAssignmentsSection(context, assignmentsAsync, anchors),
+                  ],
+                  const SizedBox(height: 20),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: OutlinedButton(
+                          onPressed: _isSaving
+                              ? null
+                              : () => Navigator.of(context).pop(),
+                          child: const Text('Отмена'),
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: FilledButton(
+                          onPressed: _isSaving || !_isAmountValid ||
+                                  (_isEditMode && !_isDirty)
+                              ? null
+                              : _submit,
+                          child: _isSaving
+                              ? const SizedBox(
+                                  height: 18,
+                                  width: 18,
+                                  child: CircularProgressIndicator(strokeWidth: 2),
+                                )
+                              : const Text('Сохранить'),
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
               ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: FilledButton(
-                  onPressed: _isSaving || !_isAmountValid ||
-                          (_isEditMode && !_isDirty)
-                      ? null
-                      : _submit,
-                  child: _isSaving
-                      ? const SizedBox(
-                          height: 18,
-                          width: 18,
-                          child: CircularProgressIndicator(strokeWidth: 2),
-                        )
-                      : const Text('Сохранить'),
-                ),
-              ),
-            ],
+            ),
           ),
-        ],
-      ),
+        );
+      },
     );
   }
 
