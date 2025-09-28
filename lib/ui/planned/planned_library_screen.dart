@@ -623,7 +623,15 @@ class PlannedMasterTile extends StatelessWidget {
     parts.add(categoryText);
     parts.add(_typeLabel(view.type));
     if (view.assignedNow) {
-      parts.add('Назначен');
+      final periodLabel = compactPeriodLabel(
+        view.assignedPeriodStart,
+        view.assignedPeriodEndExclusive,
+      );
+      if (periodLabel != null) {
+        parts.add('Назначен $periodLabel');
+      } else {
+        parts.add('Назначен');
+      }
     }
     if (view.archived) {
       parts.add('Архив');
