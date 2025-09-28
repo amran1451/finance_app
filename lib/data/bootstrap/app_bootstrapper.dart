@@ -5,12 +5,15 @@ import '../repositories/categories_repository.dart';
 
 /// Seeds initial data required for the application on first launch.
 class AppBootstrapper {
-  AppBootstrapper({AppDatabase? database})
-      : _database = database ?? AppDatabase.instance;
+  AppBootstrapper({AppDatabase? database, CategoriesRepository? categoriesRepository})
+      : _database = database ?? AppDatabase.instance,
+        _categoriesRepository =
+            categoriesRepository ?? SqliteCategoriesRepository(database: database ?? AppDatabase.instance);
 
   static const String _seedFlagKey = '_initial_seed_completed';
 
   final AppDatabase _database;
+  final CategoriesRepository _categoriesRepository;
 
   Future<Database> get _db async => _database.database;
 
@@ -25,13 +28,10 @@ class AppBootstrapper {
     await db.transaction((txn) async {
       await _seedAccounts(txn);
       await _seedSettings(txn);
-      await _markSeedCompleted(txn);
     });
 
-    // Seed categories separately to reuse repository helpers.
-    final categoriesRepository =
-        SqliteCategoriesRepository(database: _database);
-    await categoriesRepository.restoreDefaults();
+    await _categoriesRepository.restoreDefaults();
+    await _markSeedCompleted(db);
   }
 
   Future<bool> _isSeedCompleted(DatabaseExecutor executor) async {
