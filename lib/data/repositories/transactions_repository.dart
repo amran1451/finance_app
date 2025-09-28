@@ -571,7 +571,8 @@ class SqliteTransactionsRepository implements TransactionsRepository {
     final rows = await db.rawQuery(
       'SELECT SUM(amount_minor) AS total '
       'FROM transactions '
-      "WHERE type = 'expense' AND is_planned = 0 AND date BETWEEN ? AND ?",
+      "WHERE type = 'expense' AND is_planned = 0 "
+      "AND included_in_period = 1 AND date BETWEEN ? AND ?",
       [_formatDate(normalizedFrom), _formatDate(endInclusive)],
     );
 

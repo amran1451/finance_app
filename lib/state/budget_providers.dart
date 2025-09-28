@@ -336,6 +336,7 @@ final halfPeriodTransactionsProvider = FutureProvider<List<TransactionRecord>>((
     start,
     endInclusive,
     isPlanned: false,
+    includedInPeriod: true,
   );
 });
 
