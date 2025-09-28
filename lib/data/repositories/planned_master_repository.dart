@@ -111,6 +111,8 @@ class PlannedMasterView {
     required this.createdAt,
     required this.updatedAt,
     required this.assignedNow,
+    this.assignedPeriodStart,
+    this.assignedPeriodEndExclusive,
     this.necessityId,
     this.necessityName,
     this.necessityColor,
@@ -127,6 +129,8 @@ class PlannedMasterView {
   final DateTime createdAt;
   final DateTime updatedAt;
   final bool assignedNow;
+  final DateTime? assignedPeriodStart;
+  final DateTime? assignedPeriodEndExclusive;
   final int? necessityId;
   final String? necessityName;
   final int? necessityColor;
@@ -159,6 +163,8 @@ class PlannedMasterView {
       createdAt: PlannedMaster._parseDateTime(map['created_at'] as String?),
       updatedAt: PlannedMaster._parseDateTime(map['updated_at'] as String?),
       assignedNow: _readBool(map['assigned_now']),
+      assignedPeriodStart: _parseDate(map['assigned_period_start']),
+      assignedPeriodEndExclusive: _parseDate(map['assigned_period_end_exclusive']),
       necessityId: _readNullableInt(map['necessity_id']),
       necessityName: map['necessity_name'] as String?,
       necessityColor: _parseColor(map['necessity_color']),
@@ -225,6 +231,19 @@ class PlannedMasterView {
       if (hex.length == 8) {
         return int.tryParse(hex, radix: 16);
       }
+    }
+    return null;
+  }
+
+  static DateTime? _parseDate(Object? raw) {
+    if (raw == null) {
+      return null;
+    }
+    if (raw is DateTime) {
+      return raw;
+    }
+    if (raw is String && raw.isNotEmpty) {
+      return DateTime.tryParse(raw);
     }
     return null;
   }
@@ -555,16 +574,33 @@ class SqlitePlannedMasterRepository implements PlannedMasterRepository {
     final sql = StringBuffer()
       ..writeln('SELECT pm.*,')
       ..writeln('       $_assignedNowExpression AS assigned_now,')
+      ..writeln('       ap.period_start AS assigned_period_start,')
+      ..writeln('       ap.period_end_exclusive AS assigned_period_end_exclusive,')
       ..writeln('       pm.necessity_id AS necessity_id,')
       ..writeln('       nl.name AS necessity_name,')
       ..writeln('       nl.color AS necessity_color,')
       ..writeln('       c.name AS category_name')
       ..writeln('FROM planned_master pm')
+      ..writeln('LEFT JOIN (')
+      ..writeln('  SELECT t.planned_id AS planned_id,')
+      ..writeln('         MIN(p.start) AS period_start,')
+      ..writeln('         MIN(p.end_exclusive) AS period_end_exclusive')
+      ..writeln('  FROM transactions t')
+      ..writeln('  JOIN periods p')
+      ..writeln('    ON t.date >= p.start')
+      ..writeln('   AND t.date < p.end_exclusive')
+      ..writeln('  WHERE t.is_planned = 1')
+      ..writeln('    AND t.date >= ?')
+      ..writeln('    AND t.date < ?')
+      ..writeln('  GROUP BY t.planned_id')
+      ..writeln(') ap ON ap.planned_id = pm.id')
       ..writeln('LEFT JOIN necessity_labels nl ON nl.id = pm.necessity_id')
       ..writeln('LEFT JOIN categories c ON c.id = pm.category_id')
       ..writeln('WHERE pm.archived = ?');
 
     final args = <Object?>[
+      _formatDate(periodStart),
+      _formatDate(periodEndEx),
       _formatDate(periodStart),
       _formatDate(periodEndEx),
       archived ? 1 : 0,
