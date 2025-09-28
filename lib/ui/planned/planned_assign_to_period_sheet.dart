@@ -273,16 +273,29 @@ class _PlannedAssignToPeriodFormState
                   style: TextStyle(color: Colors.redAccent),
                 );
               }
+              final selectedCategoryId = _categoryId;
+              final items = <DropdownMenuItem<int>>[
+                for (final category in categories)
+                  DropdownMenuItem<int>(
+                    value: category.id,
+                    child: Text(category.name),
+                  ),
+              ];
+              final hasSelectedCategory = selectedCategoryId != null &&
+                  categories.any((category) => category.id == selectedCategoryId);
+              if (selectedCategoryId != null && !hasSelectedCategory) {
+                items.insert(
+                  0,
+                  DropdownMenuItem<int>(
+                    value: selectedCategoryId,
+                    child: Text('Категория #$selectedCategoryId (удалена)'),
+                  ),
+                );
+              }
               return DropdownButtonFormField<int>(
-                value: _categoryId,
+                value: selectedCategoryId,
                 decoration: const InputDecoration(labelText: 'Категория'),
-                items: [
-                  for (final category in categories)
-                    DropdownMenuItem<int>(
-                      value: category.id,
-                      child: Text(category.name),
-                    ),
-                ],
+                items: items,
                 onChanged: (value) => setState(() => _categoryId = value),
                 validator: (value) => value == null ? 'Выберите категорию' : null,
               );
@@ -333,16 +346,29 @@ class _PlannedAssignToPeriodFormState
               if (accounts.isEmpty) {
                 return const Text('Добавьте счёт, чтобы продолжить.');
               }
+              final selectedAccountId = _accountId;
+              final items = <DropdownMenuItem<int>>[
+                for (final account in accounts)
+                  DropdownMenuItem<int>(
+                    value: account.id,
+                    child: Text(account.name),
+                  ),
+              ];
+              final hasSelectedAccount = selectedAccountId != null &&
+                  accounts.any((account) => account.id == selectedAccountId);
+              if (selectedAccountId != null && !hasSelectedAccount) {
+                items.insert(
+                  0,
+                  DropdownMenuItem<int>(
+                    value: selectedAccountId,
+                    child: Text('Счёт #$selectedAccountId (удалён)'),
+                  ),
+                );
+              }
               return DropdownButtonFormField<int>(
-                value: _accountId,
+                value: selectedAccountId,
                 decoration: const InputDecoration(labelText: 'Счёт'),
-                items: [
-                  for (final account in accounts)
-                    DropdownMenuItem<int>(
-                      value: account.id,
-                      child: Text(account.name),
-                    ),
-                ],
+                items: items,
                 onChanged: (value) => setState(() => _accountId = value),
                 validator: (value) => value == null ? 'Выберите счёт' : null,
               );
