@@ -575,7 +575,7 @@ class _SelectFromMasterSheetState
                   child: Padding(
                     padding: EdgeInsets.all(24),
                     child: Text(
-                      'Нет подходящих планов. Убедитесь, что шаблон не архивирован и не назначен.',
+                      'Нет подходящих планов. Убедитесь, что план не архивирован и не назначен.',
                       textAlign: TextAlign.center,
                     ),
                   ),
@@ -782,7 +782,7 @@ class _SelectFromMasterSheetState
     final amountMinor = master.defaultAmountMinor;
     if (categoryId == null || amountMinor == null) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('У шаблона не задана сумма или категория')), 
+        const SnackBar(content: Text('У плана не задана сумма или категория')),
       );
       return;
     }

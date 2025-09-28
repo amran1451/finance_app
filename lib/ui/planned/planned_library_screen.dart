@@ -85,7 +85,7 @@ class _PlannedLibraryScreenState
         actions: [
           IconButton(
             icon: const Icon(Icons.add),
-            tooltip: 'Новый шаблон',
+            tooltip: 'Новый план',
             onPressed: () => showPlannedMasterEditSheet(context),
           ),
         ],
@@ -175,7 +175,7 @@ class _PlannedLibraryScreenState
                   child: Padding(
                     padding: EdgeInsets.all(24),
                     child: Text(
-                      'Нет шаблонов, подходящих под выбранные фильтры.',
+                      'Нет планов, подходящих под выбранные фильтры.',
                       textAlign: TextAlign.center,
                     ),
                   ),
@@ -314,7 +314,7 @@ class _PlannedLibraryScreenState
             children: const [
               Padding(
                 padding: EdgeInsets.symmetric(horizontal: 24, vertical: 16),
-                child: Text('Нет доступных шаблонов для выбранного периода.'),
+                child: Text('Нет доступных планов для выбранного периода.'),
               ),
             ],
           );
@@ -504,7 +504,7 @@ class _PlannedLibraryScreenState
     final confirm = await showDialog<bool>(
       context: context,
       builder: (dialogContext) => AlertDialog(
-        title: const Text('Удалить шаблон?'),
+        title: const Text('Удалить план?'),
         content: const Text('Это действие нельзя отменить.'),
         actions: [
           TextButton(

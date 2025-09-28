@@ -40,7 +40,7 @@ class _PlannedMasterDetailScreenState
       body: masterAsync.when(
         data: (master) {
           if (master == null) {
-            return const Center(child: Text('Шаблон не найден'));
+            return const Center(child: Text('План не найден'));
           }
           final categoryName = master.categoryId != null
               ? categoriesMap[master.categoryId!]?.name
@@ -86,7 +86,7 @@ class _PlannedMasterDetailScreenState
                         .toList();
                     if (filtered.isEmpty) {
                       return const Text(
-                        'В выбранном периоде нет экземпляров. Назначьте шаблон, чтобы он появился здесь.',
+                        'В выбранном периоде нет экземпляров. Назначьте план, чтобы он появился здесь.',
                       );
                     }
                     return Column(
@@ -196,9 +196,9 @@ class _PlannedMasterDetailScreenState
     final choice = await showDialog<_DeleteMasterChoice>(
       context: context,
       builder: (dialogContext) => AlertDialog(
-        title: const Text('Удалить шаблон из общего плана'),
+        title: const Text('Удалить план из общего плана'),
         content: const Text(
-          'Удалить сам шаблон и все его назначения во всех периодах?',
+          'Удалить сам план и все его назначения во всех периодах?',
         ),
         actions: [
           FilledButton(
@@ -421,7 +421,7 @@ class _InstanceTile extends StatelessWidget {
                     ),
                     PopupMenuItem(
                       value: _InstanceMenuAction.deleteMaster,
-                      child: Text('Удалить шаблон и все экземпляры…'),
+                      child: Text('Удалить план и все экземпляры…'),
                     ),
                   ],
                 ),

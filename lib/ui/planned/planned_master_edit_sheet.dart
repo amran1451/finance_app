@@ -146,7 +146,7 @@ class _PlannedMasterEditFormState
                   ),
                   const SizedBox(height: 16),
                   Text(
-                    _isEditMode ? 'Редактирование шаблона' : 'Новый шаблон',
+                    _isEditMode ? 'Редактирование плана' : 'Новый план',
                     style: Theme.of(context).textTheme.titleMedium,
                     textAlign: TextAlign.center,
                   ),
@@ -507,7 +507,7 @@ class _PlannedMasterEditFormState
     return assignments.when(
       data: (records) {
         if (records.isEmpty) {
-          return const Text('Нет назначений для этого шаблона.');
+          return const Text('Нет назначений для этого плана.');
         }
         return Column(
           children: [
