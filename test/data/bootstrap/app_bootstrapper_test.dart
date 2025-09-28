@@ -3,7 +3,6 @@ import 'dart:io';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:path/path.dart' as p;
 import 'package:sqflite/sqflite.dart';
-import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
 import 'package:finance_app/data/bootstrap/app_bootstrapper.dart';
 import 'package:finance_app/data/db/app_database.dart';
@@ -71,11 +70,6 @@ class _FailingCategoriesRepository implements CategoriesRepository {
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
-  setUpAll(() {
-    sqfliteFfiInit();
-    databaseFactory = databaseFactoryFfi;
-  });
-
   late Directory dbDir;
 
   setUp(() async {
@@ -83,7 +77,7 @@ void main() {
     final dbPath = p.join(dbDir.path, 'finance_app.db');
 
     await AppDatabase.instance.close();
-    await databaseFactoryFfi.setDatabasesPath(dbDir.path);
+    await databaseFactory.setDatabasesPath(dbDir.path);
     await deleteDatabase(dbPath);
   });
 

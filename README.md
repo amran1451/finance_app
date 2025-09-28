@@ -15,6 +15,15 @@ For help getting started with Flutter development, view the
 [online documentation](https://docs.flutter.dev/), which offers tutorials,
 samples, guidance on mobile development, and a full API reference.
 
+## Dependency maintenance
+
+After updating dependencies, run:
+
+```bash
+flutter pub get
+# При проблемах с кешем: flutter pub cache repair
+```
+
 ## Android build commands
 
 Execute the following commands locally to produce a universal debug APK with 32-bit and 64-bit support:
