@@ -13,6 +13,34 @@ import '../utils/period_utils.dart';
 
 typedef BudgetPeriodInfo = ({DateTime start, DateTime end, int days});
 
+int? calculateMaxDailyLimitMinor({
+  required Payout payout,
+  required BudgetPeriodInfo period,
+  DateTime? today,
+}) {
+  var periodDays = period.days;
+  if (periodDays <= 0) {
+    return null;
+  }
+
+  final normalizedToday = normalizeDate(today ?? DateTime.now());
+  final periodStart = normalizeDate(period.start);
+  final periodEndExclusive = normalizeDate(period.end);
+
+  final isWithinPeriod = !normalizedToday.isBefore(periodStart) &&
+      normalizedToday.isBefore(periodEndExclusive);
+  if (isWithinPeriod) {
+    final remainingDays = periodEndExclusive.difference(normalizedToday).inDays;
+    if (remainingDays > 0 && remainingDays < periodDays) {
+      periodDays = remainingDays;
+    } else if (remainingDays <= 0) {
+      periodDays = 1;
+    }
+  }
+
+  return payout.amountMinor ~/ periodDays;
+}
+
 // TODO: Persist selected period in Settings (ui.selected_period_ref).
 
 final anchorDaysFutureProvider = FutureProvider<(int, int)>((ref) async {
@@ -431,8 +459,17 @@ class BudgetLimitManager {
       return null;
     }
 
-    final maxDaily = payout.amountMinor ~/ periodDays;
-    if (maxDaily < 0 || currentDailyLimit <= maxDaily) {
+    final periodInfo = (
+      start: bounds.start,
+      end: bounds.endExclusive,
+      days: periodDays,
+    );
+    final maxDaily = calculateMaxDailyLimitMinor(
+      payout: payout,
+      period: periodInfo,
+      today: DateTime.now(),
+    );
+    if (maxDaily == null || currentDailyLimit <= maxDaily) {
       return null;
     }
 
