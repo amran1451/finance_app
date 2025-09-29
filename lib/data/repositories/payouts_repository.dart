@@ -421,17 +421,23 @@ class SqlitePayoutsRepository implements PayoutsRepository {
     if (picked.isBefore(allowBefore)) {
       final prev = selected.prevHalf();
       final prevBounds = periodBoundsFor(prev, anchor1, anchor2);
-      final prevDate = prevBounds.endExclusive.subtract(const Duration(days: 1));
+      final prevLastDay = prevBounds.endExclusive.subtract(const Duration(days: 1));
+      final prevDate = clampDateToPeriod(
+        prevLastDay,
+        prevBounds.start,
+        prevBounds.endExclusive,
+      );
       return (prevDate, prev);
     }
 
+    final clampedCurrent = clampDateToPeriod(picked, start, endEx);
+
     if (picked.isBefore(endEx)) {
-      final date = picked.isBefore(start) ? start : picked;
-      return (date, selected);
+      return (clampedCurrent, selected);
     }
 
     if (picked.isBefore(allowAfterExclusive)) {
-      return (picked, selected);
+      return (clampedCurrent, selected);
     }
 
     var target = selected.nextHalf();
@@ -441,6 +447,12 @@ class SqlitePayoutsRepository implements PayoutsRepository {
       targetBounds = periodBoundsFor(target, anchor1, anchor2);
     }
 
-    return (picked, target);
+    final clampedTarget = clampDateToPeriod(
+      picked,
+      targetBounds.start,
+      targetBounds.endExclusive,
+    );
+
+    return (clampedTarget, target);
   }
 }
