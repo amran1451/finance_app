@@ -10,6 +10,7 @@ import '../../state/budget_providers.dart';
 import '../../state/db_refresh.dart';
 import '../../state/planned_library_providers.dart' as planned_library;
 import '../../state/planned_master_providers.dart';
+import '../../state/planned_providers.dart';
 import '../../utils/app_exceptions.dart';
 import '../../utils/color_hex.dart';
 import '../../utils/formatting.dart';
@@ -602,6 +603,7 @@ class _PlannedMasterEditFormState
         return;
       }
       bumpDbTick(ref);
+      _refreshBudgetSummaries(record.date);
     } catch (error) {
       if (!mounted) {
         return;
@@ -617,12 +619,15 @@ class _PlannedMasterEditFormState
     }
     final anchors = ref.read(anchorDaysProvider);
     final period = periodRefForDate(record.date, anchors.$1, anchors.$2);
-    await showPlannedAssignToPeriodSheet(
+    final saved = await showPlannedAssignToPeriodSheet(
       context,
       master: master,
       initialPeriod: period,
       initialRecord: record,
     );
+    if (saved == true) {
+      _refreshBudgetSummaries(record.date);
+    }
   }
 
   Future<void> _handleDeleteInstance(TransactionRecord record) async {
@@ -656,6 +661,7 @@ class _PlannedMasterEditFormState
         return;
       }
       bumpDbTick(ref);
+      _refreshBudgetSummaries(record.date);
       _showSnack('Удалено');
     } catch (error) {
       if (!mounted) {
@@ -740,6 +746,23 @@ class _PlannedMasterEditFormState
     if (dirty != _isDirty) {
       setState(() => _isDirty = dirty);
     }
+  }
+
+  void _refreshBudgetSummaries(DateTime date) {
+    final selectedPeriod = ref.read(selectedPeriodRefProvider);
+    ref.invalidate(plannedPoolRemainingProvider(selectedPeriod));
+    ref.invalidate(sumIncludedPlannedExpensesProvider(selectedPeriod));
+
+    final anchors = ref.read(anchorDaysProvider);
+    final period = periodRefForDate(date, anchors.$1, anchors.$2);
+    if (!_isSamePeriod(period, selectedPeriod)) {
+      ref.invalidate(plannedPoolRemainingProvider(period));
+      ref.invalidate(sumIncludedPlannedExpensesProvider(period));
+    }
+  }
+
+  bool _isSamePeriod(PeriodRef a, PeriodRef b) {
+    return a.year == b.year && a.month == b.month && a.half == b.half;
   }
 
   String _formatPeriodLabel(DateTime start, DateTime endExclusive) {
