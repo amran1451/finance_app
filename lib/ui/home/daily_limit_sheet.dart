@@ -141,21 +141,26 @@ class _DailyLimitSheetState extends ConsumerState<_DailyLimitSheet> {
     }
 
     final period = await ref.read(currentPeriodProvider.future);
-    final days = period.days;
-    if (days <= 0) {
-      return null;
-    }
 
-    return payout.amountMinor ~/ days;
+    return calculateMaxDailyLimitMinor(
+      payout: payout,
+      period: period,
+      today: DateTime.now(),
+    );
   }
 
   @override
   Widget build(BuildContext context) {
     final payout = ref.watch(payoutForSelectedPeriodProvider).asData?.value;
     final period = ref.watch(currentPeriodProvider).asData?.value;
-    final maxDaily = payout != null && period != null && period.days > 0
-        ? payout.amountMinor ~/ period.days
-        : null;
+    final maxDaily =
+        payout != null && period != null && period.days > 0
+            ? calculateMaxDailyLimitMinor(
+                payout: payout,
+                period: period,
+                today: DateTime.now(),
+              )
+            : null;
 
     return Column(
       mainAxisSize: MainAxisSize.min,
