@@ -5,13 +5,13 @@ import '../../data/models/category.dart';
 import '../../state/app_providers.dart';
 import '../../state/db_refresh.dart';
 
-Future<void> showCategoryEditForm(
+Future<Category?> showCategoryEditForm(
   BuildContext context, {
   required CategoryType type,
   required bool isGroup,
   Category? initial,
 }) {
-  return showModalBottomSheet<void>(
+  return showModalBottomSheet<Category?>(
     context: context,
     isScrollControlled: true,
     useSafeArea: true,
@@ -178,6 +178,7 @@ class _CategoryEditFormSheetState
                   final trimmed = _name.trim();
                   final repo = ref.read(categoriesRepositoryProvider);
                   try {
+                    Category? resultCategory;
                     if (widget.initial == null) {
                       if (widget.isGroup) {
                         await repo.create(
@@ -188,27 +189,31 @@ class _CategoryEditFormSheetState
                           ),
                         );
                       } else {
-                        await repo.create(
-                          Category(
-                            type: widget.type,
-                            name: trimmed,
-                            parentId: _parentId,
-                          ),
+                        final newCategory = Category(
+                          type: widget.type,
+                          name: trimmed,
+                          parentId: _parentId,
                         );
+                        final id = await repo.create(newCategory);
+                        resultCategory = await repo.getById(id) ??
+                            newCategory.copyWith(id: id);
                       }
                     } else {
-                      await repo.update(
-                        widget.initial!.copyWith(
-                          name: trimmed,
-                          parentId: widget.isGroup ? null : _parentId,
-                        ),
+                      final updated = widget.initial!.copyWith(
+                        name: trimmed,
+                        parentId: widget.isGroup ? null : _parentId,
                       );
+                      await repo.update(updated);
+                      if (!widget.isGroup) {
+                        resultCategory = updated;
+                      }
                     }
                     bumpDbTick(ref);
                     if (!mounted) {
                       return;
                     }
-                    Navigator.of(context).pop();
+                    Navigator.of(context)
+                        .pop(widget.isGroup ? null : resultCategory);
                   } catch (error) {
                     if (!mounted) {
                       return;

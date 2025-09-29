@@ -27,6 +27,9 @@ class CategoryScreen extends ConsumerWidget {
       if (option == null) {
         return;
       }
+      if (!context.mounted) {
+        return;
+      }
       if (option == AddCategoryOption.group) {
         await showCategoryEditForm(
           context,
@@ -34,11 +37,18 @@ class CategoryScreen extends ConsumerWidget {
           isGroup: true,
         );
       } else {
-        await showCategoryEditForm(
+        final createdCategory = await showCategoryEditForm(
           context,
           type: type,
           isGroup: false,
         );
+        if (createdCategory != null) {
+          controller.setCategory(createdCategory);
+          if (!context.mounted) {
+            return;
+          }
+          context.pushNamed(RouteNames.entryReview);
+        }
       }
     }
 
