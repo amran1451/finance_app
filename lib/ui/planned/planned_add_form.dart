@@ -37,6 +37,7 @@ Future<void> showPlannedAddForm(
   BuildContext context, {
   required PlannedType type,
   TransactionRecord? initialRecord,
+  String? initialTitle,
 }) async {
   final result = await showModalBottomSheet<_PlannedFormResult>(
     context: context,
@@ -55,6 +56,7 @@ Future<void> showPlannedAddForm(
           child: _PlannedAddForm(
             type: type,
             initialRecord: initialRecord,
+            initialTitle: initialTitle,
           ),
         ),
       );
@@ -79,10 +81,12 @@ class _PlannedAddForm extends ConsumerStatefulWidget {
   const _PlannedAddForm({
     required this.type,
     this.initialRecord,
+    this.initialTitle,
   });
 
   final PlannedType type;
   final TransactionRecord? initialRecord;
+  final String? initialTitle;
 
   @override
   ConsumerState<_PlannedAddForm> createState() => _PlannedAddFormState();
@@ -106,8 +110,11 @@ class _PlannedAddFormState extends ConsumerState<_PlannedAddForm> {
   void initState() {
     super.initState();
     final initial = widget.initialRecord;
+    final fallbackTitle = widget.initialTitle?.trim();
     if (initial != null) {
-      _nameController.text = initial.note ?? '';
+      final note = initial.note?.trim();
+      _nameController.text =
+          note != null && note.isNotEmpty ? note : (fallbackTitle ?? '');
       final initialAmount = initial.amountMinor / 100;
       _amountController.text = initialAmount == initialAmount.roundToDouble()
           ? initialAmount.toStringAsFixed(0)
@@ -119,6 +126,7 @@ class _PlannedAddFormState extends ConsumerState<_PlannedAddForm> {
           _selectedNecessityId != null || _legacyNecessityLabel == null;
       _defaultLabelApplied = _selectedNecessityId != null;
     } else {
+      _nameController.text = fallbackTitle ?? '';
       _legacyLabelResolved = true;
     }
 
