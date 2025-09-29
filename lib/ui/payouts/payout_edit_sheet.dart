@@ -389,7 +389,6 @@ class _PayoutEditSheetState extends ConsumerState<_PayoutEditSheet> {
     try {
       final payoutsRepo = ref.read(payoutsRepoProvider);
       await payoutsRepo.delete(id);
-      bumpDbTick(ref);
       if (!mounted) {
         return;
       }

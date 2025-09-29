@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../data/bootstrap/app_bootstrapper.dart';
 import '../data/db/app_database.dart';
 import '../data/models/account.dart' as account_models;
+import '../data/models/payout.dart' as payout_models;
 import '../data/mock/mock_models.dart' as mock;
 import '../data/mock/mock_repositories.dart' as mock_repo;
 import '../data/models/category.dart' as category_models;
@@ -97,7 +98,9 @@ final transactionsRepoProvider =
 
 final payoutsRepoProvider = Provider<payouts_repo.PayoutsRepository>((ref) {
   final database = ref.watch(appDatabaseProvider);
-  return payouts_repo.SqlitePayoutsRepository(database: database);
+  final repository =
+      payouts_repo.SqlitePayoutsRepository(database: database);
+  return _PayoutsRepositoryWithDbTick(ref, repository);
 });
 
 final periodsRepoProvider = Provider<periods_repo.PeriodsRepository>((ref) {
@@ -350,6 +353,97 @@ class _TransactionsRepositoryWithDbTick
       includedInPeriod: includedInPeriod,
     );
     bumpDbTick(_ref);
+  }
+}
+
+class _PayoutsRepositoryWithDbTick implements payouts_repo.PayoutsRepository {
+  _PayoutsRepositoryWithDbTick(this._ref, this._delegate);
+
+  final Ref _ref;
+  final payouts_repo.PayoutsRepository _delegate;
+
+  @override
+  Future<int> add(
+    payout_models.PayoutType type,
+    DateTime date,
+    int amountMinor, {
+    int? accountId,
+  }) {
+    return _delegate.add(
+      type,
+      date,
+      amountMinor,
+      accountId: accountId,
+    );
+  }
+
+  @override
+  Future<void> delete(int id) async {
+    await _delegate.delete(id);
+    bumpDbTick(_ref);
+  }
+
+  @override
+  Future<payout_models.Payout?> findInRange(
+    DateTime start,
+    DateTime endExclusive,
+  ) {
+    return _delegate.findInRange(start, endExclusive);
+  }
+
+  @override
+  Future<List<payout_models.Payout>> getHistory(int limit) {
+    return _delegate.getHistory(limit);
+  }
+
+  @override
+  Future<payout_models.Payout?> getLast() {
+    return _delegate.getLast();
+  }
+
+  @override
+  Future<List<payout_models.Payout>> listInRange(
+    DateTime start,
+    DateTime endExclusive,
+  ) {
+    return _delegate.listInRange(start, endExclusive);
+  }
+
+  @override
+  Future<void> update({
+    required int id,
+    required payout_models.PayoutType type,
+    required DateTime date,
+    required int amountMinor,
+    int? accountId,
+  }) {
+    return _delegate.update(
+      id: id,
+      type: type,
+      date: date,
+      amountMinor: amountMinor,
+      accountId: accountId,
+    );
+  }
+
+  @override
+  Future<({payout_models.Payout payout, PeriodRef period})>
+      upsertWithClampToSelectedPeriod({
+    payout_models.Payout? existing,
+    required PeriodRef selectedPeriod,
+    required DateTime pickedDate,
+    required payout_models.PayoutType type,
+    required int amountMinor,
+    int? accountId,
+  }) {
+    return _delegate.upsertWithClampToSelectedPeriod(
+      existing: existing,
+      selectedPeriod: selectedPeriod,
+      pickedDate: pickedDate,
+      type: type,
+      amountMinor: amountMinor,
+      accountId: accountId,
+    );
   }
 }
 
