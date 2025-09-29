@@ -10,6 +10,7 @@ import '../../state/db_refresh.dart';
 import '../../utils/formatting.dart';
 import '../../routing/app_router.dart';
 import '../../state/planned_master_providers.dart';
+import '../widgets/single_line_tooltip_text.dart';
 import 'planned_add_form.dart';
 
 Future<void> showPlannedSheet(
@@ -375,11 +376,13 @@ class _PlannedItemTile extends StatelessWidget {
                   Checkbox(
                     value: isIncluded,
                     onChanged: onToggle,
+                    materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                    visualDensity: VisualDensity.compact,
                   ),
                   const SizedBox(width: 8),
                   Expanded(
-                    child: Text(
-                      item.title,
+                    child: SingleLineTooltipText(
+                      text: item.title,
                       style: theme.textTheme.bodyLarge,
                     ),
                   ),
@@ -387,6 +390,8 @@ class _PlannedItemTile extends StatelessWidget {
                   Text(
                     formatCurrency(item.amount),
                     style: theme.textTheme.bodyMedium,
+                    softWrap: false,
+                    overflow: TextOverflow.ellipsis,
                   ),
                 ],
               ),

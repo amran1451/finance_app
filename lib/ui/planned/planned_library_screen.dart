@@ -13,6 +13,7 @@ import '../../state/planned_master_providers.dart';
 import '../../utils/color_hex.dart';
 import '../../utils/formatting.dart';
 import '../../utils/plan_formatting.dart';
+import '../widgets/single_line_tooltip_text.dart';
 import 'planned_assign_to_period_sheet.dart';
 import 'planned_master_edit_sheet.dart';
 
@@ -582,19 +583,16 @@ class PlannedMasterTile extends StatelessWidget {
       contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
       dense: true,
       visualDensity: VisualDensity.compact,
-      title: Text(
-        oneLinePlan(
+      title: SingleLineTooltipText(
+        text: oneLinePlan(
           view.title,
           view.defaultAmountMinor,
           view.necessityName,
         ),
-        maxLines: 1,
-        overflow: TextOverflow.ellipsis,
+        style: theme.textTheme.titleMedium,
       ),
-      subtitle: Text(
-        subtitle,
-        maxLines: 1,
-        overflow: TextOverflow.ellipsis,
+      subtitle: SingleLineTooltipText(
+        text: subtitle,
         style: theme.textTheme.bodySmall,
       ),
       trailing: PopupMenuButton<_MasterMenuAction>(
