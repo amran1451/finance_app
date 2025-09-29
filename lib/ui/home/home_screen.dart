@@ -577,6 +577,8 @@ class _PlannedOverview extends ConsumerStatefulWidget {
 class _PlannedOverviewState extends ConsumerState<_PlannedOverview> {
   Future<void> _openQuickAdd(BuildContext context) async {
     final sheetNotifier = ref.read(isSheetOpenProvider.notifier);
+    final expansionNotifier = ref.read(plannedOverviewExpandedProvider.notifier);
+    final wasExpanded = expansionNotifier.isExpanded;
     sheetNotifier.state = true;
     try {
       final period = ref.read(selectedPeriodRefProvider);
@@ -600,6 +602,7 @@ class _PlannedOverviewState extends ConsumerState<_PlannedOverview> {
       }
     } finally {
       sheetNotifier.state = false;
+      expansionNotifier.setExpanded(wasExpanded);
     }
   }
 
@@ -693,7 +696,7 @@ class _PlannedOverviewState extends ConsumerState<_PlannedOverview> {
                   onPressed: () {
                     final notifier =
                         ref.read(plannedOverviewExpandedProvider.notifier);
-                    notifier.state = !expanded;
+                    notifier.toggle();
                   },
                 ),
               ],

@@ -402,7 +402,24 @@ final accountsRepositoryProvider =
 
 final isSheetOpenProvider = StateProvider<bool>((_) => false);
 
-final plannedOverviewExpandedProvider = StateProvider<bool>((_) => false);
+class PlannedOverviewExpansionController extends StateNotifier<bool> {
+  PlannedOverviewExpansionController() : super(false);
+
+  bool get isExpanded => state;
+
+  void setExpanded(bool value) => state = value;
+
+  void expand() => setExpanded(true);
+
+  void collapse() => setExpanded(false);
+
+  void toggle() => setExpanded(!state);
+}
+
+final plannedOverviewExpandedProvider =
+    StateNotifierProvider<PlannedOverviewExpansionController, bool>(
+  (_) => PlannedOverviewExpansionController(),
+);
 
 final necessityLabelsFutureProvider =
     FutureProvider<List<necessity_repo.NecessityLabel>>((ref) {
