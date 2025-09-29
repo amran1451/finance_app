@@ -244,6 +244,7 @@ class _ReasonsSettingsScreenState extends ConsumerState<ReasonsSettingsScreen> {
               onReorder: _handleReorder,
               buildDefaultDragHandles: false,
               proxyDecorator: (child, index, animation) => child,
+              itemExtent: _itemHeight,
               itemBuilder: (context, index) {
                 final label = labels[index];
                 final hasColor = label.color?.trim().isNotEmpty == true;

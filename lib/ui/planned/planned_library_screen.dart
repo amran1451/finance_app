@@ -219,6 +219,7 @@ class _PlannedLibraryScreenState
                   final hasInstances = (counts[view.id] ?? 0) > 0;
                   final master = view.toMaster();
                   return PlannedMasterTile(
+                    key: ValueKey(view.id),
                     view: view,
                     categoryName: categoryName,
                     onAssign: () {
