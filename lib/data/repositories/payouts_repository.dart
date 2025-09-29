@@ -416,7 +416,7 @@ class SqlitePayoutsRepository implements PayoutsRepository {
     final start = bounds.start;
     final endEx = bounds.endExclusive;
     final allowBefore = start.subtract(const Duration(days: 3));
-    final allowAfter = endEx.add(const Duration(days: 5));
+    final allowAfterExclusive = endEx.add(const Duration(days: 5));
 
     if (picked.isBefore(allowBefore)) {
       final prev = selected.prevHalf();
@@ -430,13 +430,17 @@ class SqlitePayoutsRepository implements PayoutsRepository {
       return (date, selected);
     }
 
-    if (!picked.isAfter(allowAfter)) {
-      final clamped = endEx.subtract(const Duration(days: 1));
-      return (clamped, selected);
+    if (picked.isBefore(allowAfterExclusive)) {
+      return (picked, selected);
     }
 
-    final next = selected.nextHalf();
-    final nextBounds = periodBoundsFor(next, anchor1, anchor2);
-    return (nextBounds.start, next);
+    var target = selected.nextHalf();
+    var targetBounds = periodBoundsFor(target, anchor1, anchor2);
+    while (!picked.isBefore(targetBounds.endExclusive)) {
+      target = target.nextHalf();
+      targetBounds = periodBoundsFor(target, anchor1, anchor2);
+    }
+
+    return (picked, target);
   }
 }
