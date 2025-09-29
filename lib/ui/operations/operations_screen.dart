@@ -17,6 +17,7 @@ import '../../utils/formatting.dart';
 import '../../routing/app_router.dart';
 import '../../data/repositories/transactions_repository.dart'
     show TransactionListItem;
+import '../widgets/single_line_tooltip_text.dart';
 
 final _categoriesMapProvider = FutureProvider<Map<int, Category>>((ref) async {
   ref.watch(dbTickProvider);
@@ -238,6 +239,8 @@ class _OperationsSection extends ConsumerWidget {
             return Card(
               margin: const EdgeInsets.only(bottom: 12),
               child: ListTile(
+                dense: true,
+                visualDensity: VisualDensity.compact,
                 leading: CircleAvatar(
                   backgroundColor: _colorForType(record.type).withOpacity(0.15),
                   child: Icon(
@@ -245,13 +248,17 @@ class _OperationsSection extends ConsumerWidget {
                     color: _colorForType(record.type),
                   ),
                 ),
-                title: Text(category?.name ?? 'Категория #${record.categoryId}'),
-                subtitle: Text(
-                  _subtitleForRecord(
+                title: SingleLineTooltipText(
+                  text: category?.name ?? 'Категория #${record.categoryId}',
+                  style: Theme.of(context).textTheme.titleMedium,
+                ),
+                subtitle: SingleLineTooltipText(
+                  text: _subtitleForRecord(
                     record,
                     necessityMap,
                     reasonMap,
                   ),
+                  style: Theme.of(context).textTheme.bodyMedium,
                 ),
                 trailing: Column(
                   mainAxisAlignment: MainAxisAlignment.center,
@@ -263,8 +270,14 @@ class _OperationsSection extends ConsumerWidget {
                         color: _colorForType(record.type),
                         fontWeight: FontWeight.bold,
                       ),
+                      softWrap: false,
+                      overflow: TextOverflow.ellipsis,
                     ),
-                    Text(_labelForType(record.type)),
+                    Text(
+                      _labelForType(record.type),
+                      softWrap: false,
+                      overflow: TextOverflow.ellipsis,
+                    ),
                   ],
                 ),
                 onLongPress: () async {
