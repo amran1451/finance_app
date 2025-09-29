@@ -4,7 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 final dbTickProvider = StateProvider<int>((_) => 0);
 
 /// Удобный хелпер
-void bumpDbTick(Ref ref) {
+void bumpDbTick(dynamic ref) {
   final n = ref.read(dbTickProvider.notifier);
   n.state = n.state + 1;
 }

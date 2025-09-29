@@ -8,6 +8,7 @@ import '../data/models/payout.dart' as payout_models;
 import '../data/mock/mock_models.dart' as mock;
 import '../data/mock/mock_repositories.dart' as mock_repo;
 import '../data/models/category.dart' as category_models;
+import '../data/models/transaction_record.dart' as transaction_models;
 import '../data/repositories/accounts_repository.dart' as accounts_repo;
 import '../data/repositories/categories_repository.dart' as categories_repo;
 import '../data/repositories/payouts_repository.dart' as payouts_repo;
@@ -132,7 +133,7 @@ class _TransactionsRepositoryWithDbTick
 
   @override
   Future<int> add(
-    transactions_repo.TransactionRecord record, {
+    transaction_models.TransactionRecord record, {
     bool asSavingPair = false,
     bool? includedInPeriod,
   }) async {
@@ -183,22 +184,22 @@ class _TransactionsRepositoryWithDbTick
   }
 
   @override
-  Future<List<transactions_repo.TransactionRecord>> getAll() {
+  Future<List<transaction_models.TransactionRecord>> getAll() {
     return _delegate.getAll();
   }
 
   @override
-  Future<transactions_repo.TransactionRecord?> getById(int id) {
+  Future<transaction_models.TransactionRecord?> getById(int id) {
     return _delegate.getById(id);
   }
 
   @override
-  Future<List<transactions_repo.TransactionRecord>> getByPeriod(
+  Future<List<transaction_models.TransactionRecord>> getByPeriod(
     DateTime from,
     DateTime to, {
     int? accountId,
     int? categoryId,
-    transactions_repo.TransactionType? type,
+    transaction_models.TransactionType? type,
     bool? isPlanned,
     bool? includedInPeriod,
   }) {
@@ -214,12 +215,13 @@ class _TransactionsRepositoryWithDbTick
   }
 
   @override
-  Future<List<transactions_repo.TransactionItem>> getOperationItemsByPeriod(
+  Future<List<transactions_repo.TransactionListItem>>
+      getOperationItemsByPeriod(
     DateTime from,
     DateTime to, {
     int? accountId,
     int? categoryId,
-    transactions_repo.TransactionType? type,
+    transaction_models.TransactionType? type,
     bool? isPlanned,
     bool? includedInPeriod,
     bool aggregateSavingPairs = false,
@@ -237,8 +239,8 @@ class _TransactionsRepositoryWithDbTick
   }
 
   @override
-  Future<List<transactions_repo.TransactionRecord>> listPlanned({
-    transactions_repo.TransactionType? type,
+  Future<List<transaction_models.TransactionRecord>> listPlanned({
+    transaction_models.TransactionType? type,
     bool onlyIncluded = false,
   }) {
     return _delegate.listPlanned(
@@ -345,7 +347,7 @@ class _TransactionsRepositoryWithDbTick
 
   @override
   Future<void> update(
-    transactions_repo.TransactionRecord record, {
+    transaction_models.TransactionRecord record, {
     bool? includedInPeriod,
   }) async {
     await _delegate.update(
