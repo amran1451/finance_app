@@ -58,6 +58,31 @@ DateTime normalizeDate(DateTime date) {
   return DateTime(date.year, date.month, date.day);
 }
 
+DateTime clampDateToPeriod(
+  DateTime value,
+  DateTime start,
+  DateTime endExclusive,
+) {
+  final normalizedStart = normalizeDate(start);
+  final normalizedEndExclusive = normalizeDate(endExclusive);
+  final normalizedValue = normalizeDate(value);
+
+  if (!normalizedEndExclusive.isAfter(normalizedStart)) {
+    return normalizedStart;
+  }
+
+  if (normalizedValue.isBefore(normalizedStart)) {
+    return normalizedStart;
+  }
+
+  if (!normalizedValue.isBefore(normalizedEndExclusive)) {
+    final lastDay = normalizedEndExclusive.subtract(const Duration(days: 1));
+    return lastDay.isBefore(normalizedStart) ? normalizedStart : lastDay;
+  }
+
+  return normalizedValue;
+}
+
 ({DateTime start, DateTime endExclusive}) periodBoundsFor(
   PeriodRef period,
   int anchor1,
