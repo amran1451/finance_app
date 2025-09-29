@@ -402,6 +402,8 @@ final accountsRepositoryProvider =
 
 final isSheetOpenProvider = StateProvider<bool>((_) => false);
 
+final plannedOverviewExpandedProvider = StateProvider<bool>((_) => false);
+
 final necessityLabelsFutureProvider =
     FutureProvider<List<necessity_repo.NecessityLabel>>((ref) {
   ref.watch(dbTickProvider);

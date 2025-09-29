@@ -575,8 +575,6 @@ class _PlannedOverview extends ConsumerStatefulWidget {
 }
 
 class _PlannedOverviewState extends ConsumerState<_PlannedOverview> {
-  bool _expanded = false;
-
   Future<void> _openQuickAdd(BuildContext context) async {
     final sheetNotifier = ref.read(isSheetOpenProvider.notifier);
     sheetNotifier.state = true;
@@ -605,12 +603,6 @@ class _PlannedOverviewState extends ConsumerState<_PlannedOverview> {
     }
   }
 
-  void _toggleExpanded() {
-    setState(() {
-      _expanded = !_expanded;
-    });
-  }
-
   @override
   Widget build(BuildContext context) {
     final payoutAsync = ref.watch(payoutForSelectedPeriodProvider);
@@ -618,6 +610,7 @@ class _PlannedOverviewState extends ConsumerState<_PlannedOverview> {
     final baseAsync = ref.watch(plannedPoolBaseProvider);
     final remainingAsync = ref.watch(plannedPoolRemainingProvider(period));
     final usedAsync = ref.watch(sumIncludedPlannedExpensesProvider(period));
+    final expanded = ref.watch(plannedOverviewExpandedProvider);
 
     return payoutAsync.when(
       data: (payout) {
@@ -695,13 +688,17 @@ class _PlannedOverviewState extends ConsumerState<_PlannedOverview> {
                   onPressed: () => _openQuickAdd(context),
                 ),
                 IconButton(
-                  icon: Icon(_expanded ? Icons.expand_less : Icons.expand_more),
-                  tooltip: _expanded ? 'Скрыть планы' : 'Показать планы',
-                  onPressed: _toggleExpanded,
+                  icon: Icon(expanded ? Icons.expand_less : Icons.expand_more),
+                  tooltip: expanded ? 'Скрыть планы' : 'Показать планы',
+                  onPressed: () {
+                    final notifier =
+                        ref.read(plannedOverviewExpandedProvider.notifier);
+                    notifier.state = !expanded;
+                  },
                 ),
               ],
             ),
-            if (_expanded) ...[
+            if (expanded) ...[
               const SizedBox(height: 12),
               _PlannedExpensesList(period: period),
             ],
