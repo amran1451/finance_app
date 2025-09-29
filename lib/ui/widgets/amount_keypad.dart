@@ -39,8 +39,8 @@ class AmountKeypad extends StatelessWidget {
         final scale = normalized.clamp(0.88, 0.92);
 
         final buttonStyle = ElevatedButton.styleFrom(
-          minimumSize: const Size(64, 56),
-          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 12),
+          minimumSize: const Size(64, 52),
+          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
           textStyle: theme.textTheme.titleMedium,
         );
