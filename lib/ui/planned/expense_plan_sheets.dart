@@ -14,8 +14,10 @@ import '../../state/budget_providers.dart';
 import '../../state/db_refresh.dart';
 import '../../state/planned_master_providers.dart';
 import '../../state/planned_providers.dart';
+import '../../utils/color_hex.dart';
 import '../../utils/plan_formatting.dart';
 import '../../utils/period_utils.dart';
+import '../settings/necessity_settings_screen.dart';
 
 enum ExpensePlanResult { none, created, assigned }
 
@@ -135,6 +137,9 @@ class _QuickAddExpensePlanFormState
   int? _necessityId;
   bool _include = true;
   bool _isSaving = false;
+  bool _restoredFromStorage = false;
+
+  static const _storageIdentifier = '_quickAddExpensePlanForm';
 
   @override
   void initState() {
@@ -145,7 +150,17 @@ class _QuickAddExpensePlanFormState
   }
 
   @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (!_restoredFromStorage) {
+      _restoredFromStorage = true;
+      _restoreFormStateFromPageStorage();
+    }
+  }
+
+  @override
   void dispose() {
+    _clearStoredFormState();
     _titleController.dispose();
     _amountController.dispose();
     _noteController.dispose();
@@ -304,29 +319,51 @@ class _QuickAddExpensePlanFormState
                     if (labels.isEmpty) {
                       return Padding(
                         padding: const EdgeInsets.symmetric(vertical: 8),
-                        child: Text(
-                          'Создайте ярлык критичности в настройках.',
-                          style: theme.textTheme.bodyMedium,
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              'Создайте ярлык критичности в настройках.',
+                              style: theme.textTheme.bodyMedium,
+                            ),
+                            const SizedBox(height: 12),
+                            FilledButton.icon(
+                              onPressed:
+                                  _isSaving ? null : _openNecessitySettings,
+                              icon: const Icon(Icons.add),
+                              label: const Text('Создать критичность'),
+                            ),
+                          ],
                         ),
                       );
                     }
+                    final sorted = [...labels]
+                      ..sort((a, b) => a.sortOrder.compareTo(b.sortOrder));
                     if (_necessityId == null) {
                       WidgetsBinding.instance.addPostFrameCallback((_) {
                         if (!mounted) {
                           return;
                         }
                         setState(() {
-                          _necessityId = labels.first.id;
+                          _necessityId = sorted.first.id;
                         });
                       });
                     }
                     return DropdownButtonFormField<int>(
                       value: _necessityId,
                       items: [
-                        for (final label in labels)
+                        for (final label in sorted)
                           DropdownMenuItem<int>(
                             value: label.id,
-                            child: Text(label.name),
+                            child: Row(
+                              children: [
+                                _NecessityColorBadge(
+                                  color: hexToColor(label.color),
+                                ),
+                                const SizedBox(width: 8),
+                                Expanded(child: Text(label.name)),
+                              ],
+                            ),
                           ),
                       ],
                       onChanged: _isSaving
@@ -417,6 +454,71 @@ class _QuickAddExpensePlanFormState
     );
   }
 
+  Future<void> _openNecessitySettings() async {
+    _saveFormStateToPageStorage();
+    await Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => const NecessitySettingsScreen(),
+      ),
+    );
+    if (!mounted) {
+      return;
+    }
+    bumpDbTick(ref);
+  }
+
+  void _saveFormStateToPageStorage() {
+    final bucket = PageStorage.maybeOf(context);
+    if (bucket == null) {
+      return;
+    }
+    bucket.writeState(
+      context,
+      {
+        'title': _titleController.text,
+        'amount': _amountController.text,
+        'note': _noteController.text,
+        'categoryId': _categoryId,
+        'necessityId': _necessityId,
+        'include': _include,
+      },
+      identifier: _storageIdentifier,
+    );
+  }
+
+  void _restoreFormStateFromPageStorage() {
+    final bucket = PageStorage.maybeOf(context);
+    if (bucket == null) {
+      return;
+    }
+    final stored = bucket.readState(
+      context,
+      identifier: _storageIdentifier,
+    );
+    if (stored is! Map) {
+      return;
+    }
+    final restored = Map<String, Object?>.from(stored as Map);
+    _titleController.text = (restored['title'] as String?) ?? '';
+    _amountController.text = (restored['amount'] as String?) ?? '';
+    _noteController.text = (restored['note'] as String?) ?? '';
+    _categoryId = restored['categoryId'] as int?;
+    _necessityId = restored['necessityId'] as int?;
+    _include = restored['include'] as bool? ?? true;
+  }
+
+  void _clearStoredFormState() {
+    final bucket = PageStorage.maybeOf(context);
+    if (bucket == null) {
+      return;
+    }
+    bucket.writeState(
+      context,
+      null,
+      identifier: _storageIdentifier,
+    );
+  }
+
   Future<void> _handleSubmit() async {
     if (!_formKey.currentState!.validate()) {
       return;
@@ -466,6 +568,36 @@ class _QuickAddExpensePlanFormState
         setState(() => _isSaving = false);
       }
     }
+  }
+}
+
+class _NecessityColorBadge extends StatelessWidget {
+  const _NecessityColorBadge({this.color});
+
+  final Color? color;
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    final resolved = color ?? cs.surfaceVariant;
+    return Container(
+      width: 16,
+      height: 16,
+      decoration: BoxDecoration(
+        color: resolved,
+        shape: BoxShape.circle,
+        border: Border.all(
+          color: color == null ? cs.outlineVariant : Colors.transparent,
+        ),
+      ),
+      child: color == null
+          ? Icon(
+              Icons.block,
+              size: 12,
+              color: cs.onSurfaceVariant,
+            )
+          : null,
+    );
   }
 }
 
