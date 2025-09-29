@@ -392,6 +392,14 @@ class _ReviewScreenState extends ConsumerState<ReviewScreen> {
           DateTime(operationDate.year, operationDate.month, operationDate.day);
       final inCurrent = ref.read(isInCurrentPeriodProvider(normalizedDate));
 
+      final normalizedOriginalDate = isEditingOperation
+          ? DateTime(
+              editingRecord!.date.year,
+              editingRecord.date.month,
+              editingRecord.date.day,
+            )
+          : null;
+
       final record = isEditingOperation
           ? editingRecord!.copyWith(
               accountId: accountId,
@@ -423,6 +431,37 @@ class _ReviewScreenState extends ConsumerState<ReviewScreen> {
               reasonId: reasonId,
               reasonLabel: reasonLabel,
             );
+
+      final shouldConfirmUpdate = isEditingOperation &&
+          (editingRecord!.accountId != accountId ||
+              editingRecord.categoryId != categoryId ||
+              editingRecord.amountMinor != currentAmountMinor ||
+              (normalizedOriginalDate != null &&
+                  !_isSameDay(normalizedOriginalDate, normalizedDate)));
+
+      if (shouldConfirmUpdate) {
+        final confirmed = await showDialog<bool>(
+          context: context,
+          builder: (context) {
+            return AlertDialog(
+              content: const Text('Итоги периода будут пересчитаны'),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.of(context).pop(false),
+                  child: const Text('Отмена'),
+                ),
+                FilledButton(
+                  onPressed: () => Navigator.of(context).pop(true),
+                  child: const Text('ОК'),
+                ),
+              ],
+            );
+          },
+        );
+        if (confirmed != true) {
+          return;
+        }
+      }
 
       final transactionsRepository = ref.read(transactionsRepoProvider);
       if (isEditingOperation) {
