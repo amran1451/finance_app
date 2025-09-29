@@ -742,35 +742,53 @@ class _PlannedExpensesList extends ConsumerWidget {
         for (var i = 0; i < items.length; i++) {
           final item = items[i];
           children.add(
-            ListTile(
-              dense: true,
-              visualDensity: VisualDensity.compact,
-              title: Text(
-                oneLinePlan(
-                  item.title,
-                  item.record.amountMinor,
-                  item.necessityLabel,
+            Material(
+              color: Colors.transparent,
+              child: InkWell(
+                onTap: () => showPlannedAddForm(
+                  context,
+                  type: PlannedType.expense,
+                  initialRecord: item.record,
                 ),
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-              ),
-              trailing: Checkbox(
-                value: item.record.includedInPeriod,
-                onChanged: (value) async {
-                  final transactionId = item.record.id;
-                  if (transactionId == null) {
-                    return;
-                  }
-                  await ref
-                      .read(transactionsRepoProvider)
-                      .setPlannedIncluded(transactionId, value ?? false);
-                  bumpDbTick(ref);
-                },
-              ),
-              onTap: () => showPlannedAddForm(
-                context,
-                type: PlannedType.expense,
-                initialRecord: item.record,
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                  child: SizedBox(
+                    width: double.infinity,
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.end,
+                      children: [
+                        Expanded(
+                          child: Text(
+                            oneLinePlan(
+                              item.title,
+                              item.record.amountMinor,
+                              item.necessityLabel,
+                            ),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: theme.textTheme.bodyMedium,
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        Checkbox(
+                          value: item.record.includedInPeriod,
+                          visualDensity: VisualDensity.compact,
+                          materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                          onChanged: (value) async {
+                            final transactionId = item.record.id;
+                            if (transactionId == null) {
+                              return;
+                            }
+                            await ref
+                                .read(transactionsRepoProvider)
+                                .setPlannedIncluded(transactionId, value ?? false);
+                            bumpDbTick(ref);
+                          },
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
               ),
             ),
           );
