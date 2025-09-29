@@ -51,7 +51,9 @@ class _AddAnotherContentState extends State<_AddAnotherContent>
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
-    final indicatorColor = colorScheme.onSurface.withOpacity(0.65);
+    final indicatorColor = colorScheme.primary;
+    final indicatorBackgroundColor =
+        colorScheme.onSurfaceVariant.withOpacity(0.3);
     return InkWell(
       onTap: () {
         ScaffoldMessenger.maybeOf(context)?.hideCurrentSnackBar();
@@ -75,7 +77,7 @@ class _AddAnotherContentState extends State<_AddAnotherContent>
                       value: 1 - _c.value,
                       strokeWidth: 3,
                       valueColor: AlwaysStoppedAnimation(indicatorColor),
-                      backgroundColor: colorScheme.onSurface.withOpacity(0.15),
+                      backgroundColor: indicatorBackgroundColor,
                     ),
                     Text(
                       '$left',
