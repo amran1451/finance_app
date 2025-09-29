@@ -152,13 +152,23 @@ String _ruMonthShort(int month) {
   return m[(month - 1).clamp(0, 11)];
 }
 
-/// "сен 1–15" / "сен 15–30/31"
+/// "сен 1–15" / "сен 15–30(31)" для выбранного месяца и половины периода.
 final periodLabelProvider = Provider<String>((ref) {
-  final (start, endEx) = ref.watch(periodBoundsProvider);
-  final monthShort = _ruMonthShort(start.month);
-  final startDay = start.day;
-  final endDayInclusive = endEx.subtract(const Duration(days: 1)).day;
-  return '$monthShort $startDay–$endDayInclusive';
+  final (anchor1, anchor2) = ref.watch(anchorDaysProvider);
+  final period = ref.watch(selectedPeriodRefProvider);
+  final monthShort = _ruMonthShort(period.month);
+  final lastDayOfMonth = DateTime(period.year, period.month + 1, 0).day;
+
+  int clampDay(int value) => math.max(1, math.min(value, lastDayOfMonth));
+
+  final startAnchor =
+      period.half == HalfPeriod.first ? anchor1 : anchor2;
+  final endAnchor = period.half == HalfPeriod.first ? anchor2 : lastDayOfMonth;
+
+  final startDay = clampDay(startAnchor);
+  final endDay = math.max(startDay, clampDay(endAnchor));
+
+  return '$monthShort $startDay–$endDay';
 });
 
 extension PeriodNav on StateController<PeriodRef> {
@@ -201,6 +211,27 @@ final currentPeriodProvider = FutureProvider<BudgetPeriodInfo>((ref) async {
     days = 1;
   }
   return (start: bounds.$1, end: bounds.$2, days: days);
+});
+
+/// Является ли переданный период активным относительно указанной даты.
+final isActivePeriodProvider =
+    Provider.family<bool, (DateTime today, PeriodRef period)>((ref, args) {
+  final (today, period) = args;
+  final (anchor1, anchor2) = ref.watch(anchorDaysProvider);
+  final bounds = period.bounds(anchor1, anchor2);
+
+  final normalizedToday = DateTime(today.year, today.month, today.day);
+  final start0 =
+      DateTime(bounds.start.year, bounds.start.month, bounds.start.day);
+  final endExclusive = bounds.endExclusive;
+  final end0 = DateTime(
+    endExclusive.year,
+    endExclusive.month,
+    endExclusive.day,
+  );
+
+  return !normalizedToday.isBefore(start0) &&
+      normalizedToday.isBefore(end0);
 });
 
 /// Принадлежит ли произвольная дата активному периоду (currentPeriodProvider)

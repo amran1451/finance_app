@@ -37,7 +37,6 @@ class HomeScreen extends ConsumerWidget {
     final period = ref.watch(selectedPeriodRefProvider);
     final (periodStart, periodEndExclusive) = ref.watch(periodBoundsProvider);
     final label = ref.watch(periodLabelProvider);
-    final daysLeft = ref.watch(daysFromPayoutToPeriodEndProvider);
     final payoutAsync = ref.watch(payoutForSelectedPeriodProvider);
     final suggestedType = ref.watch(payoutSuggestedTypeProvider);
     final canClosePeriod = ref.watch(canCloseCurrentPeriodProvider);
@@ -46,6 +45,13 @@ class HomeScreen extends ConsumerWidget {
       data: (status) => status.closed,
       orElse: () => false,
     );
+    final today = DateTime.now();
+    final normalizedToday = DateTime(today.year, today.month, today.day);
+    final isActivePeriod =
+        ref.watch(isActivePeriodProvider((normalizedToday, period)));
+    final daysLeft =
+        isActivePeriod ? ref.watch(daysToPeriodEndProvider) : null;
+    final showClosedBadge = isActivePeriod && periodClosed;
     final generalPayoutLabel =
         'Добавить выплату (по периоду: ${payoutTypeLabel(suggestedType)})';
 
@@ -55,8 +61,6 @@ class HomeScreen extends ConsumerWidget {
         ? (transactionsAsync as AsyncError).error
         : null;
     final hasOperations = transactions.isNotEmpty;
-    final today = DateTime.now();
-    final normalizedToday = DateTime(today.year, today.month, today.day);
     final todaySpentMinor = transactions
         .where((record) =>
             record.type == TransactionType.expense &&
@@ -164,7 +168,7 @@ class HomeScreen extends ConsumerWidget {
                   crossAxisAlignment: CrossAxisAlignment.center,
                   children: [
                     PeriodSelector(dense: true, label: label),
-                    if (periodClosed || daysLeft != null) ...[
+                    if (showClosedBadge || daysLeft != null) ...[
                       const SizedBox(height: 12),
                       Wrap(
                         spacing: 12,
@@ -172,7 +176,7 @@ class HomeScreen extends ConsumerWidget {
                         crossAxisAlignment: WrapCrossAlignment.center,
                         alignment: WrapAlignment.center,
                         children: [
-                          if (periodClosed) const _ClosedPeriodBadge(),
+                          if (showClosedBadge) const _ClosedPeriodBadge(),
                           AnimatedSwitcher(
                             duration: const Duration(milliseconds: 180),
                             switchInCurve: Curves.easeOut,
