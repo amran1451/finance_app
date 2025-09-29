@@ -39,6 +39,9 @@ class _PlannedLibraryScreenState
   late final TextEditingController _searchController;
   late final FocusNode _searchFocusNode;
   ProviderSubscription<PlannedLibraryFilters>? _filtersSubscription;
+  ProviderSubscription<
+      AsyncValue<Map<int, necessity_repo.NecessityLabel>>>?
+      _necessityLabelsSubscription;
 
   @override
   void initState() {
@@ -60,12 +63,34 @@ class _PlannedLibraryScreenState
           }
         },
       );
+      _necessityLabelsSubscription = ref.listenManual(
+        necessityLabelsProvider,
+        (previous, next) {
+          next.whenData((labels) {
+            final filters = ref.read(plannedLibraryFiltersProvider);
+            if (filters.necessityIds.any((id) => !labels.containsKey(id))) {
+              final updatedNecessityIds = filters.necessityIds
+                  .where(labels.containsKey)
+                  .toSet();
+              ref
+                  .read(plannedLibraryFiltersProvider.notifier)
+                  .update(
+                    (state) => state.copyWith(
+                      necessityIds: updatedNecessityIds,
+                    ),
+                  );
+            }
+          });
+        },
+        fireImmediately: true,
+      );
     }
   }
 
   @override
   void dispose() {
     _filtersSubscription?.close();
+    _necessityLabelsSubscription?.close();
     _searchDebounce?.cancel();
     _searchController.dispose();
     _searchFocusNode.dispose();
