@@ -274,9 +274,9 @@ class _ReasonsSettingsScreenState extends ConsumerState<ReasonsSettingsScreen> {
                             icon: const Icon(Icons.edit),
                           ),
                           IconButton(
-                            tooltip: 'Скрыть',
-                            onPressed: () => _archiveLabel(label),
-                            icon: const Icon(Icons.archive),
+                            tooltip: 'Удалить',
+                            onPressed: () => _deleteLabel(label),
+                            icon: const Icon(Icons.delete_outline),
                           ),
                         ],
                       ),
@@ -323,13 +323,13 @@ class _ReasonsSettingsScreenState extends ConsumerState<ReasonsSettingsScreen> {
     ref.invalidate(reasonLabelsProvider);
   }
 
-  Future<void> _archiveLabel(ReasonLabel label) async {
+  Future<void> _deleteLabel(ReasonLabel label) async {
     final confirmed = await showDialog<bool>(
           context: context,
           builder: (context) => AlertDialog(
-            title: const Text('Скрыть причину?'),
+            title: const Text('Удалить причину?'),
             content: Text(
-              '"${label.name}" больше не будет отображаться при выборе причин расходов.',
+              '"${label.name}" будет удалена и больше не появится при выборе причин расходов.',
             ),
             actions: [
               TextButton(
@@ -338,7 +338,7 @@ class _ReasonsSettingsScreenState extends ConsumerState<ReasonsSettingsScreen> {
               ),
               FilledButton(
                 onPressed: () => Navigator.of(context).pop(true),
-                child: const Text('Скрыть'),
+                child: const Text('Удалить'),
               ),
             ],
           ),
@@ -355,7 +355,7 @@ class _ReasonsSettingsScreenState extends ConsumerState<ReasonsSettingsScreen> {
       return;
     }
     ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text('Причина "${label.name}" скрыта')),
+      SnackBar(content: Text('Причина "${label.name}" удалена')),
     );
   }
 }
