@@ -1168,7 +1168,7 @@ class _AmountCalculatorSheetState extends State<_AmountCalculatorSheet> {
       child: Padding(
         padding: EdgeInsets.only(bottom: bottomInset),
         child: SingleChildScrollView(
-          padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 24),
+          padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -1179,7 +1179,7 @@ class _AmountCalculatorSheetState extends State<_AmountCalculatorSheet> {
               ),
               const SizedBox(height: 12),
               Container(
-                padding: const EdgeInsets.all(20),
+                padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
                 decoration: BoxDecoration(
                   borderRadius: BorderRadius.circular(20),
                   color: theme.colorScheme.surface,
