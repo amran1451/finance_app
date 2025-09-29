@@ -15,6 +15,7 @@ import '../data/repositories/necessity_repository.dart' as necessity_repo;
 import '../data/repositories/reason_repository.dart' as reason_repo;
 import '../data/repositories/settings_repository.dart' as settings_repo;
 import '../data/repositories/transactions_repository.dart' as transactions_repo;
+import '../utils/period_utils.dart';
 import 'db_refresh.dart';
 
 final appDatabaseProvider = Provider<AppDatabase>((ref) => AppDatabase.instance);
@@ -89,7 +90,9 @@ final categoryTreeProvider = FutureProvider.family<
 final transactionsRepoProvider =
     Provider<transactions_repo.TransactionsRepository>((ref) {
   final database = ref.watch(appDatabaseProvider);
-  return transactions_repo.SqliteTransactionsRepository(database: database);
+  final repository =
+      transactions_repo.SqliteTransactionsRepository(database: database);
+  return _TransactionsRepositoryWithDbTick(ref, repository);
 });
 
 final payoutsRepoProvider = Provider<payouts_repo.PayoutsRepository>((ref) {
@@ -116,6 +119,239 @@ final reasonRepoProvider = Provider<reason_repo.ReasonRepository>((ref) {
   final database = ref.watch(appDatabaseProvider);
   return reason_repo.ReasonRepositorySqlite(database: database);
 });
+
+class _TransactionsRepositoryWithDbTick
+    implements transactions_repo.TransactionsRepository {
+  _TransactionsRepositoryWithDbTick(this._ref, this._delegate);
+
+  final Ref _ref;
+  final transactions_repo.TransactionsRepository _delegate;
+
+  @override
+  Future<int> add(
+    transactions_repo.TransactionRecord record, {
+    bool asSavingPair = false,
+    bool? includedInPeriod,
+  }) async {
+    final result = await _delegate.add(
+      record,
+      asSavingPair: asSavingPair,
+      includedInPeriod: includedInPeriod,
+    );
+    bumpDbTick(_ref);
+    return result;
+  }
+
+  @override
+  Future<void> assignMasterToPeriod({
+    required int masterId,
+    required DateTime start,
+    required DateTime endExclusive,
+    required int categoryId,
+    required int amountMinor,
+    required bool included,
+    int? necessityId,
+    String? note,
+  }) async {
+    await _delegate.assignMasterToPeriod(
+      masterId: masterId,
+      start: start,
+      endExclusive: endExclusive,
+      categoryId: categoryId,
+      amountMinor: amountMinor,
+      included: included,
+      necessityId: necessityId,
+      note: note,
+    );
+    bumpDbTick(_ref);
+  }
+
+  @override
+  Future<void> delete(int id) async {
+    await _delegate.delete(id);
+    bumpDbTick(_ref);
+  }
+
+  @override
+  Future<int> deleteInstancesByPlannedId(int plannedId) async {
+    final result = await _delegate.deleteInstancesByPlannedId(plannedId);
+    bumpDbTick(_ref);
+    return result;
+  }
+
+  @override
+  Future<List<transactions_repo.TransactionRecord>> getAll() {
+    return _delegate.getAll();
+  }
+
+  @override
+  Future<transactions_repo.TransactionRecord?> getById(int id) {
+    return _delegate.getById(id);
+  }
+
+  @override
+  Future<List<transactions_repo.TransactionRecord>> getByPeriod(
+    DateTime from,
+    DateTime to, {
+    int? accountId,
+    int? categoryId,
+    transactions_repo.TransactionType? type,
+    bool? isPlanned,
+    bool? includedInPeriod,
+  }) {
+    return _delegate.getByPeriod(
+      from,
+      to,
+      accountId: accountId,
+      categoryId: categoryId,
+      type: type,
+      isPlanned: isPlanned,
+      includedInPeriod: includedInPeriod,
+    );
+  }
+
+  @override
+  Future<List<transactions_repo.TransactionItem>> getOperationItemsByPeriod(
+    DateTime from,
+    DateTime to, {
+    int? accountId,
+    int? categoryId,
+    transactions_repo.TransactionType? type,
+    bool? isPlanned,
+    bool? includedInPeriod,
+    bool aggregateSavingPairs = false,
+  }) {
+    return _delegate.getOperationItemsByPeriod(
+      from,
+      to,
+      accountId: accountId,
+      categoryId: categoryId,
+      type: type,
+      isPlanned: isPlanned,
+      includedInPeriod: includedInPeriod,
+      aggregateSavingPairs: aggregateSavingPairs,
+    );
+  }
+
+  @override
+  Future<List<transactions_repo.TransactionRecord>> listPlanned({
+    transactions_repo.TransactionType? type,
+    bool onlyIncluded = false,
+  }) {
+    return _delegate.listPlanned(
+      type: type,
+      onlyIncluded: onlyIncluded,
+    );
+  }
+
+  @override
+  Future<List<transactions_repo.TransactionItem>> listPlannedByPeriod({
+    required DateTime start,
+    required DateTime endExclusive,
+    String? type,
+    bool? onlyIncluded,
+  }) {
+    return _delegate.listPlannedByPeriod(
+      start: start,
+      endExclusive: endExclusive,
+      type: type,
+      onlyIncluded: onlyIncluded,
+    );
+  }
+
+  @override
+  Future<int> createPlannedInstance({
+    required int plannedId,
+    required String type,
+    required int accountId,
+    required int amountMinor,
+    required DateTime date,
+    required int categoryId,
+    String? note,
+    int? necessityId,
+    String? necessityLabel,
+    bool includedInPeriod = false,
+    int criticality = 0,
+  }) async {
+    final result = await _delegate.createPlannedInstance(
+      plannedId: plannedId,
+      type: type,
+      accountId: accountId,
+      amountMinor: amountMinor,
+      date: date,
+      categoryId: categoryId,
+      note: note,
+      necessityId: necessityId,
+      necessityLabel: necessityLabel,
+      includedInPeriod: includedInPeriod,
+      criticality: criticality,
+    );
+    bumpDbTick(_ref);
+    return result;
+  }
+
+  @override
+  Future<int> sumIncludedPlannedExpenses({
+    required PeriodRef period,
+    required DateTime start,
+    required DateTime endExclusive,
+  }) {
+    return _delegate.sumIncludedPlannedExpenses(
+      period: period,
+      start: start,
+      endExclusive: endExclusive,
+    );
+  }
+
+  @override
+  Future<void> setIncludedInPeriod({
+    required int transactionId,
+    required bool value,
+  }) async {
+    await _delegate.setIncludedInPeriod(
+      transactionId: transactionId,
+      value: value,
+    );
+    bumpDbTick(_ref);
+  }
+
+  @override
+  Future<void> setPlannedCompletion(int id, bool isCompleted) async {
+    await _delegate.setPlannedCompletion(id, isCompleted);
+    bumpDbTick(_ref);
+  }
+
+  @override
+  Future<void> setPlannedIncluded(int plannedId, bool included) async {
+    await _delegate.setPlannedIncluded(plannedId, included);
+    bumpDbTick(_ref);
+  }
+
+  @override
+  Future<int> sumUnplannedExpensesInRange(
+    DateTime from,
+    DateTime toExclusive,
+  ) {
+    return _delegate.sumUnplannedExpensesInRange(from, toExclusive);
+  }
+
+  @override
+  Future<int> sumUnplannedExpensesOnDate(DateTime date) {
+    return _delegate.sumUnplannedExpensesOnDate(date);
+  }
+
+  @override
+  Future<void> update(
+    transactions_repo.TransactionRecord record, {
+    bool? includedInPeriod,
+  }) async {
+    await _delegate.update(
+      record,
+      includedInPeriod: includedInPeriod,
+    );
+    bumpDbTick(_ref);
+  }
+}
 
 final computedBalanceProvider =
     FutureProvider.family<int, int>((ref, accountId) async {
