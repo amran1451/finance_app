@@ -11,6 +11,7 @@ import '../../utils/formatting.dart';
 import '../../routing/app_router.dart';
 import '../../state/planned_master_providers.dart';
 import 'planned_add_form.dart';
+import 'planned_assign_to_period_sheet.dart';
 
 Future<void> showPlannedSheet(
   BuildContext context, {
@@ -114,6 +115,18 @@ class _PlannedSheetContentState extends ConsumerState<_PlannedSheetContent> {
                             Navigator.of(actionContext).pop(_PlannedItemAction.delete),
                       ),
                       ListTile(
+                        leading: const Icon(Icons.visibility_off_outlined),
+                        title: const Text('Скрыть'),
+                        onTap: () =>
+                            Navigator.of(actionContext).pop(_PlannedItemAction.hide),
+                      ),
+                      ListTile(
+                        leading: const Icon(Icons.drive_file_move_outline),
+                        title: const Text('Перенести'),
+                        onTap: () =>
+                            Navigator.of(actionContext).pop(_PlannedItemAction.move),
+                      ),
+                      ListTile(
                         leading: const Icon(Icons.close),
                         title: const Text('Отмена'),
                         onTap: () => Navigator.of(actionContext).pop(),
@@ -155,7 +168,36 @@ class _PlannedSheetContentState extends ConsumerState<_PlannedSheetContent> {
               ctx,
               type: widget.type,
               initialRecord: item.record,
+              initialTitle: item.title,
             );
+          } else if (action == _PlannedItemAction.hide) {
+            final id = item.record.id;
+            if (id != null) {
+              await actions.toggle(id, false);
+              bumpDbTick(ref);
+            }
+          } else if (action == _PlannedItemAction.move) {
+            final master = item.master;
+            if (master != null) {
+              final saved = await showPlannedAssignToPeriodSheet(
+                ctx,
+                master: master,
+                initialPeriod: period,
+                initialRecord: item.record,
+              );
+              if (saved == true) {
+                bumpDbTick(ref);
+              }
+            } else {
+              if (!mounted) {
+                return;
+              }
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(
+                  content: Text('Нельзя перенести запись без привязки к плану.'),
+                ),
+              );
+            }
           }
         }
 
@@ -402,4 +444,4 @@ class _PlannedItemTile extends StatelessWidget {
   }
 }
 
-enum _PlannedItemAction { edit, delete }
+enum _PlannedItemAction { edit, delete, hide, move }
