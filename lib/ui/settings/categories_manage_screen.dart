@@ -74,8 +74,8 @@ class _CategoriesManageScreenState
     _editCategory(category);
   }
 
-  Future<void> _editCategory(Category category) {
-    return showCategoryEditForm(
+  Future<void> _editCategory(Category category) async {
+    await showCategoryEditForm(
       context,
       type: category.type,
       isGroup: category.isGroup,
