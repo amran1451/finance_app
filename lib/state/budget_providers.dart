@@ -348,21 +348,21 @@ final leftTodayMinorProvider = FutureProvider<int>((ref) async {
 /// Остаток в бюджете на оставшуюся часть периода
 final leftInPeriodMinorProvider = FutureProvider<int>((ref) async {
   ref.watch(dbTickProvider);
-  ref.watch(selectedPeriodRefProvider);
-  ref.watch(payoutForSelectedPeriodProvider);
-  return ref.watch(periodBudgetMinorProvider.future);
+  final period = ref.watch(selectedPeriodRefProvider);
+  return ref.watch(periodBudgetRemainingProvider(period).future);
 });
 
-final periodBudgetMinorProvider = FutureProvider<int>((ref) async {
+final periodBudgetBaseProvider =
+    FutureProvider.family<int, PeriodRef>((ref, period) async {
   ref.watch(dbTickProvider);
-  ref.watch(selectedPeriodRefProvider);
+  final selectedPeriod = ref.watch(selectedPeriodRefProvider);
   ref.watch(payoutForSelectedPeriodProvider);
   final dailyLimit = await ref.watch(dailyLimitProvider.future) ?? 0;
   if (dailyLimit <= 0) {
     return 0;
   }
   final useFromToday = await ref.watch(dailyLimitFromTodayFlagProvider.future);
-  final days = useFromToday
+  final days = useFromToday && period == selectedPeriod
       ? await ref.watch(remainingDaysFromTodayProvider.future)
       : await ref.watch(periodDaysFromPayoutProvider.future);
   if (days <= 0) {
@@ -371,13 +371,37 @@ final periodBudgetMinorProvider = FutureProvider<int>((ref) async {
   return dailyLimit * days;
 });
 
+final sumActualExpensesProvider =
+    FutureProvider.family<int, PeriodRef>((ref, period) async {
+  ref.watch(dbTickProvider);
+  ref.watch(selectedPeriodRefProvider);
+  final (anchor1, anchor2) = ref.watch(anchorDaysProvider);
+  final bounds = period.bounds(anchor1, anchor2);
+  final repo = ref.watch(transactionsRepoProvider);
+  return repo.sumActualExpenses(
+    period: period,
+    start: bounds.start,
+    endExclusive: bounds.endExclusive,
+  );
+});
+
+final periodBudgetRemainingProvider =
+    FutureProvider.family<int, PeriodRef>((ref, period) async {
+  ref.watch(dbTickProvider);
+  ref.watch(selectedPeriodRefProvider);
+  final base = await ref.watch(periodBudgetBaseProvider(period).future);
+  final spent = await ref.watch(sumActualExpensesProvider(period).future);
+  return math.max(0, base - spent);
+});
+
 final plannedPoolBaseProvider = FutureProvider<int>((ref) async {
   ref.watch(dbTickProvider);
   final payout = await ref.watch(payoutForSelectedPeriodProvider.future);
   if (payout == null) {
     return 0;
   }
-  final periodBudget = await ref.watch(periodBudgetMinorProvider.future);
+  final period = ref.watch(selectedPeriodRefProvider);
+  final periodBudget = await ref.watch(periodBudgetBaseProvider(period).future);
   final pool = payout.amountMinor - periodBudget;
   return math.max(pool, 0);
 });
