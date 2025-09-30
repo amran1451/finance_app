@@ -8,6 +8,7 @@ import '../../utils/formatting.dart';
 
 Future<bool> showEditDailyLimitSheet(BuildContext context, WidgetRef ref) async {
   final currentValue = await ref.read(dailyLimitProvider.future);
+  final fromToday = await ref.read(dailyLimitFromTodayFlagProvider.future);
   final saved = await showModalBottomSheet<bool>(
     context: context,
     isScrollControlled: true,
@@ -21,6 +22,7 @@ Future<bool> showEditDailyLimitSheet(BuildContext context, WidgetRef ref) async 
         ),
         child: _DailyLimitSheet(
           initialMinorValue: currentValue,
+          initialFromToday: fromToday,
         ),
       );
     },
@@ -30,9 +32,13 @@ Future<bool> showEditDailyLimitSheet(BuildContext context, WidgetRef ref) async 
 }
 
 class _DailyLimitSheet extends ConsumerStatefulWidget {
-  const _DailyLimitSheet({required this.initialMinorValue});
+  const _DailyLimitSheet({
+    required this.initialMinorValue,
+    required this.initialFromToday,
+  });
 
   final int? initialMinorValue;
+  final bool initialFromToday;
 
   @override
   ConsumerState<_DailyLimitSheet> createState() => _DailyLimitSheetState();
@@ -42,6 +48,7 @@ class _DailyLimitSheetState extends ConsumerState<_DailyLimitSheet> {
   late final TextEditingController _controller;
   String? _errorText;
   var _isSaving = false;
+  late bool _fromToday;
 
   @override
   void initState() {
@@ -50,6 +57,7 @@ class _DailyLimitSheetState extends ConsumerState<_DailyLimitSheet> {
     _controller = TextEditingController(
       text: value != null ? formatCurrencyMinorPlain(value) : '',
     );
+    _fromToday = widget.initialFromToday;
   }
 
   @override
@@ -117,6 +125,7 @@ class _DailyLimitSheetState extends ConsumerState<_DailyLimitSheet> {
     try {
       final repository = ref.read(settingsRepoProvider);
       await repository.setDailyLimitMinor(minorValue);
+      await repository.setDailyLimitFromToday(_fromToday);
       bumpDbTick(ref);
       if (!mounted) {
         return;
@@ -145,7 +154,6 @@ class _DailyLimitSheetState extends ConsumerState<_DailyLimitSheet> {
     return calculateMaxDailyLimitMinor(
       payout: payout,
       period: period,
-      today: DateTime.now(),
     );
   }
 
@@ -158,7 +166,6 @@ class _DailyLimitSheetState extends ConsumerState<_DailyLimitSheet> {
             ? calculateMaxDailyLimitMinor(
                 payout: payout,
                 period: period,
-                today: DateTime.now(),
               )
             : null;
 
@@ -192,6 +199,21 @@ class _DailyLimitSheetState extends ConsumerState<_DailyLimitSheet> {
           },
         ),
         const SizedBox(height: 16),
+        CheckboxListTile(
+          contentPadding: EdgeInsets.zero,
+          dense: true,
+          title: const Text('Пересчитывать от сегодня'),
+          subtitle: const Text(
+            'Если включено, бюджет периода = лимит × оставшиеся дни от сегодня',
+          ),
+          value: _fromToday,
+          onChanged: (value) {
+            setState(() {
+              _fromToday = value ?? false;
+            });
+          },
+        ),
+        const SizedBox(height: 8),
         Row(
           children: [
             TextButton(

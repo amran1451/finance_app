@@ -16,6 +16,10 @@ abstract class SettingsRepository {
 
   Future<void> setDailyLimitMinor(int? value);
 
+  Future<bool> getDailyLimitFromToday();
+
+  Future<void> setDailyLimitFromToday(bool value);
+
   Future<bool> getSavingPairEnabled();
 
   Future<void> setSavingPairEnabled(bool value);
@@ -32,6 +36,7 @@ class SqliteSettingsRepository implements SettingsRepository {
   static const String _anchorDay1Key = 'anchor_day_1';
   static const String _anchorDay2Key = 'anchor_day_2';
   static const String _dailyLimitKey = 'daily_limit_minor';
+  static const String _dailyLimitFromTodayKey = 'daily_limit_from_today';
   static const String _savingPairKey = 'saving_pair_enabled';
   static const String _manualBackupHistoryKey = 'manual_backup_history';
 
@@ -67,6 +72,14 @@ class SqliteSettingsRepository implements SettingsRepository {
 
   @override
   Future<void> setDailyLimitMinor(int? value) => _setNullableInt(_dailyLimitKey, value);
+
+  @override
+  Future<bool> getDailyLimitFromToday() =>
+      _getBool(_dailyLimitFromTodayKey, defaultValue: false);
+
+  @override
+  Future<void> setDailyLimitFromToday(bool value) =>
+      _setBool(_dailyLimitFromTodayKey, value);
 
   @override
   Future<void> setSavingPairEnabled(bool value) => _setBool(_savingPairKey, value);

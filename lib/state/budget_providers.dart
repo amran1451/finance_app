@@ -16,26 +16,10 @@ typedef BudgetPeriodInfo = ({DateTime start, DateTime end, int days});
 int? calculateMaxDailyLimitMinor({
   required Payout payout,
   required BudgetPeriodInfo period,
-  DateTime? today,
 }) {
-  var periodDays = period.days;
+  final periodDays = period.days;
   if (periodDays <= 0) {
     return null;
-  }
-
-  final normalizedToday = normalizeDate(today ?? DateTime.now());
-  final periodStart = normalizeDate(period.start);
-  final periodEndExclusive = normalizeDate(period.end);
-
-  final isWithinPeriod = !normalizedToday.isBefore(periodStart) &&
-      normalizedToday.isBefore(periodEndExclusive);
-  if (isWithinPeriod) {
-    final remainingDays = periodEndExclusive.difference(normalizedToday).inDays;
-    if (remainingDays > 0 && remainingDays < periodDays) {
-      periodDays = remainingDays;
-    } else if (remainingDays <= 0) {
-      periodDays = 1;
-    }
   }
 
   return payout.amountMinor ~/ periodDays;
@@ -241,25 +225,20 @@ final currentPeriodProvider = FutureProvider<BudgetPeriodInfo>((ref) async {
   return (start: bounds.$1, end: bounds.$2, days: days);
 });
 
-/// Является ли переданный период активным относительно указанной даты.
-final isActivePeriodProvider =
-    Provider.family<bool, (DateTime today, PeriodRef period)>((ref, args) {
-  final (today, period) = args;
-  final (anchor1, anchor2) = ref.watch(anchorDaysProvider);
-  final bounds = period.bounds(anchor1, anchor2);
-
-  final normalizedToday = DateTime(today.year, today.month, today.day);
-  final start0 =
-      DateTime(bounds.start.year, bounds.start.month, bounds.start.day);
-  final endExclusive = bounds.endExclusive;
-  final end0 = DateTime(
-    endExclusive.year,
-    endExclusive.month,
-    endExclusive.day,
+/// Является ли текущий выбранный период активным относительно сегодняшнего дня.
+final isActivePeriodProvider = Provider<bool>((ref) {
+  ref.watch(dbTickProvider);
+  ref.watch(selectedPeriodRefProvider);
+  final periodAsync = ref.watch(currentPeriodProvider);
+  return periodAsync.maybeWhen(
+    data: (period) {
+      final today = normalizeDate(DateTime.now());
+      final start = normalizeDate(period.start);
+      final endExclusive = normalizeDate(period.end);
+      return !today.isBefore(start) && today.isBefore(endExclusive);
+    },
+    orElse: () => false,
   );
-
-  return !normalizedToday.isBefore(start0) &&
-      normalizedToday.isBefore(end0);
 });
 
 /// Принадлежит ли произвольная дата активному периоду (currentPeriodProvider)
@@ -268,45 +247,63 @@ final isInCurrentPeriodProvider = Provider.family<bool, DateTime>((ref, date) {
   if (period == null) {
     return false;
   }
-  final d0 = DateTime(date.year, date.month, date.day);
-  final start0 = DateTime(period.start.year, period.start.month, period.start.day);
-  final end0 = DateTime(period.end.year, period.end.month, period.end.day);
-  return !d0.isBefore(start0) && d0.isBefore(end0);
+  final normalized = normalizeDate(date);
+  final start = normalizeDate(period.start);
+  final end = normalizeDate(period.end);
+  return !normalized.isBefore(start) && normalized.isBefore(end);
 });
 
-/// Количество дней до конца активного периода (>=0).
-/// Период берём из currentPeriodProvider: [start; endExclusive).
-final daysToPeriodEndProvider = Provider<int?>((ref) {
-  final period = ref.watch(currentPeriodProvider).value;
-  if (period == null) {
-    return null;
+/// Количество дней до следующей выплаты от сегодняшней даты.
+final daysUntilNextPayoutFromTodayProvider = Provider<int>((ref) {
+  ref.watch(dbTickProvider);
+  ref.watch(selectedPeriodRefProvider);
+  if (!ref.watch(isActivePeriodProvider)) {
+    return 0;
   }
-
-  final now = DateTime.now();
-  final today0 = DateTime(now.year, now.month, now.day);
-  final end0 = DateTime(period.end.year, period.end.month, period.end.day);
-  final diff = end0.difference(today0).inDays;
-  return diff < 0 ? 0 : diff;
+  final periodAsync = ref.watch(currentPeriodProvider);
+  return periodAsync.maybeWhen(
+    data: (period) {
+      final today = normalizeDate(DateTime.now());
+      final endExclusive = normalizeDate(period.end);
+      final diff = endExclusive.difference(today).inDays;
+      return math.max(diff, 0);
+    },
+    orElse: () => 0,
+  );
 });
 
-final daysFromPayoutToPeriodEndProvider = Provider<int?>((ref) {
-  final payoutAsync = ref.watch(payoutForSelectedPeriodProvider);
-  final (anchor1, anchor2) = ref.watch(anchorDaysProvider);
+final dailyLimitFromTodayFlagProvider = FutureProvider<bool>((ref) {
+  ref.watch(dbTickProvider);
+  ref.watch(selectedPeriodRefProvider);
+  final repository = ref.watch(settingsRepoProvider);
+  return repository.getDailyLimitFromToday();
+});
 
-  return payoutAsync.maybeWhen(
-    data: (payout) {
-      if (payout == null) {
-        return null;
-      }
+final periodDaysFromPayoutProvider = FutureProvider<int>((ref) async {
+  ref.watch(dbTickProvider);
+  ref.watch(selectedPeriodRefProvider);
+  final period = await ref.watch(currentPeriodProvider.future);
+  final diff = period.end.difference(period.start).inDays;
+  return math.max(diff, 0);
+});
 
-      final payoutDate = normalizeDate(payout.date);
-      final targetPeriod = periodRefForDate(payoutDate, anchor1, anchor2);
-      final bounds = periodBoundsFor(targetPeriod, anchor1, anchor2);
-      final diff = bounds.endExclusive.difference(payoutDate).inDays;
-      return diff < 0 ? 0 : diff;
-    },
-    orElse: () => null,
-  );
+final remainingDaysFromTodayProvider = FutureProvider<int>((ref) async {
+  ref.watch(dbTickProvider);
+  ref.watch(selectedPeriodRefProvider);
+  if (!ref.watch(isActivePeriodProvider)) {
+    return 0;
+  }
+  final period = await ref.watch(currentPeriodProvider.future);
+  final today = normalizeDate(DateTime.now());
+  final start = normalizeDate(period.start);
+  final endExclusive = normalizeDate(period.end);
+  final effectiveStart = today.isBefore(start) ? start : today;
+  final totalDays = math.max(endExclusive.difference(start).inDays, 0);
+  final remaining = endExclusive.difference(effectiveStart).inDays;
+  if (remaining <= 0) {
+    return 0;
+  }
+  return math.min(remaining, totalDays);
 });
 
 final dailyLimitProvider = FutureProvider<int?>((ref) async {
@@ -351,25 +348,27 @@ final leftTodayMinorProvider = FutureProvider<int>((ref) async {
 /// Остаток в бюджете на оставшуюся часть периода
 final leftInPeriodMinorProvider = FutureProvider<int>((ref) async {
   ref.watch(dbTickProvider);
+  ref.watch(selectedPeriodRefProvider);
   ref.watch(payoutForSelectedPeriodProvider);
   return ref.watch(periodBudgetMinorProvider.future);
 });
 
 final periodBudgetMinorProvider = FutureProvider<int>((ref) async {
   ref.watch(dbTickProvider);
+  ref.watch(selectedPeriodRefProvider);
   ref.watch(payoutForSelectedPeriodProvider);
   final dailyLimit = await ref.watch(dailyLimitProvider.future) ?? 0;
   if (dailyLimit <= 0) {
     return 0;
   }
-  final period = await ref.watch(currentPeriodProvider.future);
-  final today = normalizeDate(DateTime.now());
-  final rawRemaining = period.end.difference(today).inDays;
-  final remainingDays = _clampRemainingDays(rawRemaining, period.days);
-  if (remainingDays <= 0) {
+  final useFromToday = await ref.watch(dailyLimitFromTodayFlagProvider.future);
+  final days = useFromToday
+      ? await ref.watch(remainingDaysFromTodayProvider.future)
+      : await ref.watch(periodDaysFromPayoutProvider.future);
+  if (days <= 0) {
     return 0;
   }
-  return dailyLimit * remainingDays;
+  return dailyLimit * days;
 });
 
 final plannedPoolBaseProvider = FutureProvider<int>((ref) async {
@@ -467,7 +466,6 @@ class BudgetLimitManager {
     final maxDaily = calculateMaxDailyLimitMinor(
       payout: payout,
       period: periodInfo,
-      today: DateTime.now(),
     );
     if (maxDaily == null || currentDailyLimit <= maxDaily) {
       return null;
@@ -488,16 +486,6 @@ int _normalizeAnchorDay(int value) {
     return 31;
   }
   return value;
-}
-
-int _clampRemainingDays(int difference, int periodDays) {
-  if (difference <= 0) {
-    return 0;
-  }
-  if (difference >= periodDays) {
-    return periodDays;
-  }
-  return difference;
 }
 
 bool _isMissingRepoMethod(Object error) {
