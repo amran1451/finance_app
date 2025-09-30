@@ -156,12 +156,23 @@ final plannedExpensesForPeriodProvider = FutureProvider.family
     <List<PlannedItemView>, PeriodRef>((ref, period) async {
   ref.watch(dbTickProvider);
   ref.watch(selectedPeriodRefProvider);
-  return _loadPlannedItemsForPeriod(
+  final items = await _loadPlannedItemsForPeriod(
     ref,
     PlannedType.expense,
     period,
     onlyIncluded: false,
   );
+  final sorted = [...items]
+    ..sort((a, b) {
+      final titleCompare = a.title.toLowerCase().compareTo(b.title.toLowerCase());
+      if (titleCompare != 0) {
+        return titleCompare;
+      }
+      final aId = a.record.id ?? 0;
+      final bId = b.record.id ?? 0;
+      return aId.compareTo(bId);
+    });
+  return sorted;
 });
 
 final plannedIncludedByTypeProvider = FutureProvider.family

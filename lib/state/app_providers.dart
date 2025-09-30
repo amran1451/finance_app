@@ -177,6 +177,12 @@ class _TransactionsRepositoryWithDbTick
   }
 
   @override
+  Future<void> deletePlannedInstance(int plannedId) async {
+    await _delegate.deletePlannedInstance(plannedId);
+    bumpDbTick(_ref);
+  }
+
+  @override
   Future<int> deleteInstancesByPlannedId(int plannedId) async {
     final result = await _delegate.deleteInstancesByPlannedId(plannedId);
     bumpDbTick(_ref);
@@ -543,24 +549,7 @@ final accountsRepositoryProvider =
 
 final isSheetOpenProvider = StateProvider<bool>((_) => false);
 
-class PlannedOverviewExpansionController extends StateNotifier<bool> {
-  PlannedOverviewExpansionController() : super(false);
-
-  bool get isExpanded => state;
-
-  void setExpanded(bool value) => state = value;
-
-  void expand() => setExpanded(true);
-
-  void collapse() => setExpanded(false);
-
-  void toggle() => setExpanded(!state);
-}
-
-final plannedOverviewExpandedProvider =
-    StateNotifierProvider<PlannedOverviewExpansionController, bool>(
-  (_) => PlannedOverviewExpansionController(),
-);
+final plansExpandedProvider = StateProvider<bool>((_) => false);
 
 final necessityLabelsFutureProvider =
     FutureProvider<List<necessity_repo.NecessityLabel>>((ref) {

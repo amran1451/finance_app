@@ -61,6 +61,8 @@ abstract class TransactionsRepository {
 
   Future<void> delete(int id);
 
+  Future<void> deletePlannedInstance(int plannedId);
+
   Future<List<TransactionRecord>> listPlanned({
     TransactionType? type,
     bool onlyIncluded = false,
@@ -210,6 +212,16 @@ class SqliteTransactionsRepository implements TransactionsRepository {
   Future<void> delete(int id) async {
     final db = await _db;
     await db.delete('transactions', where: 'id = ?', whereArgs: [id]);
+  }
+
+  @override
+  Future<void> deletePlannedInstance(int plannedId) async {
+    final db = await _db;
+    await db.delete(
+      'transactions',
+      where: 'id = ? AND is_planned = 1',
+      whereArgs: [plannedId],
+    );
   }
 
   @override
