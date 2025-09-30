@@ -1,6 +1,7 @@
 import 'dart:math' as math;
 
 import 'package:flutter/foundation.dart';
+import 'package:flutter/material.dart' show DateUtils;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../data/models/payout.dart';
@@ -241,6 +242,10 @@ final isActivePeriodProvider = Provider<bool>((ref) {
   );
 });
 
+final todayDateProvider = Provider<DateTime>((ref) {
+  return DateUtils.dateOnly(DateTime.now());
+});
+
 /// Принадлежит ли произвольная дата активному периоду (currentPeriodProvider)
 final isInCurrentPeriodProvider = Provider.family<bool, DateTime>((ref, date) {
   final period = ref.watch(currentPeriodProvider).value;
@@ -310,6 +315,67 @@ final dailyLimitProvider = FutureProvider<int?>((ref) async {
   ref.watch(dbTickProvider);
   final repository = ref.watch(settingsRepoProvider);
   return repository.getDailyLimitMinor();
+});
+
+final spentTodayProvider = FutureProvider.family<int, PeriodRef>((ref, period) async {
+  ref.watch(dbTickProvider);
+  final today = ref.watch(todayDateProvider);
+  final (anchor1, anchor2) = ref.watch(anchorDaysProvider);
+  final bounds = period.bounds(anchor1, anchor2);
+  final repository = ref.watch(transactionsRepoProvider);
+  return repository.sumExpensesOnDateWithinPeriod(
+    date: today,
+    periodStart: DateUtils.dateOnly(bounds.start),
+    periodEndExclusive: DateUtils.dateOnly(bounds.endExclusive),
+  );
+});
+
+class TodayProgress {
+  const TodayProgress._({
+    required this.show,
+    required this.spent,
+    required this.limit,
+  });
+
+  final bool show;
+  final int spent;
+  final int limit;
+
+  factory TodayProgress.hidden() => const TodayProgress._(
+        show: false,
+        spent: 0,
+        limit: 0,
+      );
+
+  factory TodayProgress.visible({required int spent, required int limit}) {
+    return TodayProgress._(
+      show: true,
+      spent: spent,
+      limit: limit,
+    );
+  }
+}
+
+final todayProgressProvider = Provider.family<TodayProgress, PeriodRef>((ref, period) {
+  final active = ref.watch(isActivePeriodProvider);
+  if (!active) {
+    return TodayProgress.hidden();
+  }
+
+  final spent = ref.watch(spentTodayProvider(period)).maybeWhen(
+        data: (value) => value,
+        orElse: () => 0,
+      );
+  final limit = ref.watch(dailyLimitProvider).maybeWhen<int?>(
+        data: (value) => value,
+        orElse: () => null,
+      );
+
+  if (limit == null) {
+    return TodayProgress.hidden();
+  }
+
+  return TodayProgress.visible(spent: spent, limit: limit);
 });
 
 /// Сколько внеплановых расходов сегодня (в пределах активного периода)
