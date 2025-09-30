@@ -12,7 +12,6 @@ import '../../state/entry_flow_providers.dart';
 import '../../state/planned_providers.dart';
 import '../../state/db_refresh.dart';
 import '../../utils/formatting.dart';
-import '../../utils/plan_formatting.dart';
 import '../../utils/period_utils.dart';
 import '../../utils/ru_plural.dart';
 import '../planned/planned_add_form.dart';
@@ -589,8 +588,8 @@ class _PlannedOverview extends ConsumerStatefulWidget {
 class _PlannedOverviewState extends ConsumerState<_PlannedOverview> {
   Future<void> _openQuickAdd(BuildContext context) async {
     final sheetNotifier = ref.read(isSheetOpenProvider.notifier);
-    final expansionNotifier = ref.read(plannedOverviewExpandedProvider.notifier);
-    final wasExpanded = expansionNotifier.isExpanded;
+    final expandedState = ref.read(plansExpandedProvider);
+    final expansionNotifier = ref.read(plansExpandedProvider.notifier);
     sheetNotifier.state = true;
     try {
       final period = ref.read(selectedPeriodRefProvider);
@@ -614,7 +613,7 @@ class _PlannedOverviewState extends ConsumerState<_PlannedOverview> {
       }
     } finally {
       sheetNotifier.state = false;
-      expansionNotifier.setExpanded(wasExpanded);
+      expansionNotifier.state = expandedState;
     }
   }
 
@@ -625,8 +624,6 @@ class _PlannedOverviewState extends ConsumerState<_PlannedOverview> {
     final baseAsync = ref.watch(plannedPoolBaseProvider);
     final remainingAsync = ref.watch(plannedPoolRemainingProvider(period));
     final usedAsync = ref.watch(sumIncludedPlannedExpensesProvider(period));
-    final expanded = ref.watch(plannedOverviewExpandedProvider);
-
     return payoutAsync.when(
       data: (payout) {
         if (payout == null) {
@@ -702,21 +699,10 @@ class _PlannedOverviewState extends ConsumerState<_PlannedOverview> {
                   label: const Text('Добавить'),
                   onPressed: () => _openQuickAdd(context),
                 ),
-                IconButton(
-                  icon: Icon(expanded ? Icons.expand_less : Icons.expand_more),
-                  tooltip: expanded ? 'Скрыть планы' : 'Показать планы',
-                  onPressed: () {
-                    final notifier =
-                        ref.read(plannedOverviewExpandedProvider.notifier);
-                    notifier.toggle();
-                  },
-                ),
               ],
             ),
-            if (expanded) ...[
-              const SizedBox(height: 12),
-              _PlannedExpensesList(period: period),
-            ],
+            const SizedBox(height: 12),
+            _PlannedExpensesList(period: period),
           ],
         );
       },
@@ -739,81 +725,141 @@ class _PlannedExpensesList extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final expanded = ref.watch(plansExpandedProvider);
     final itemsAsync = ref.watch(plannedExpensesForPeriodProvider(period));
     final theme = Theme.of(context);
+    final plansCount = itemsAsync.maybeWhen(
+      data: (items) => items.length,
+      orElse: () => null,
+    );
 
-    return itemsAsync.when(
-      data: (items) {
-        if (items.isEmpty) {
-          return Text(
-            'Пока нет планов расходов в этом периоде.',
-            style: theme.textTheme.bodyMedium,
-          );
-        }
-        final children = <Widget>[];
-        for (var i = 0; i < items.length; i++) {
-          final item = items[i];
-          children.add(
-            Material(
-              color: Colors.transparent,
-              child: InkWell(
-                onTap: () => showPlannedAddForm(
-                  context,
-                  type: PlannedType.expense,
-                  initialRecord: item.record,
+    return ExpansionTile(
+      key: const PageStorageKey('home_plans_expansion'),
+      initiallyExpanded: expanded,
+      maintainState: true,
+      onExpansionChanged: (value) =>
+          ref.read(plansExpandedProvider.notifier).state = value,
+      title: Text(
+        'Планы расходов (${plansCount?.toString() ?? '…'})',
+        style: theme.textTheme.titleMedium,
+      ),
+      children: [
+        itemsAsync.when(
+          data: (items) {
+            if (items.isEmpty) {
+              return Padding(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                child: Text(
+                  'Пока нет планов расходов в этом периоде.',
+                  style: theme.textTheme.bodyMedium,
                 ),
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                  child: SizedBox(
-                    width: double.infinity,
-                    child: Row(
-                      mainAxisAlignment: MainAxisAlignment.end,
-                      children: [
-                        Expanded(
-                          child: Text(
-                            oneLinePlan(
-                              item.title,
-                              item.record.amountMinor,
-                              item.necessityLabel,
-                            ),
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: theme.textTheme.bodyMedium,
-                          ),
-                        ),
-                        const SizedBox(width: 12),
-                        Checkbox(
-                          value: item.record.includedInPeriod,
-                          visualDensity: VisualDensity.compact,
-                          materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                          onChanged: (value) async {
-                            final transactionId = item.record.id;
-                            if (transactionId == null) {
-                              return;
-                            }
-                            await ref
-                                .read(transactionsRepoProvider)
-                                .setPlannedIncluded(transactionId, value ?? false);
-                            bumpDbTick(ref);
-                          },
-                        ),
-                      ],
+              );
+            }
+            return ListView.builder(
+              key: const PageStorageKey('home_plans_list'),
+              shrinkWrap: true,
+              physics: const NeverScrollableScrollPhysics(),
+              itemCount: items.length,
+              itemBuilder: (context, index) {
+                final item = items[index];
+                final recordId = item.record.id;
+                final necessity = item.necessityLabel;
+                final necessityLabel =
+                    necessity != null && necessity.trim().isNotEmpty
+                        ? necessity
+                        : '—';
+                return Column(
+                  key: ValueKey(recordId ?? -index - 1),
+                  children: [
+                    ListTile(
+                      dense: true,
+                      visualDensity: VisualDensity.compact,
+                      contentPadding: const EdgeInsets.symmetric(
+                        horizontal: 16,
+                        vertical: 4,
+                      ),
+                      leading: Checkbox(
+                        value: item.record.includedInPeriod,
+                        visualDensity: VisualDensity.compact,
+                        materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                        onChanged: recordId == null
+                            ? null
+                            : (value) async {
+                                await ref
+                                    .read(transactionsRepoProvider)
+                                    .setPlannedIncluded(
+                                        recordId, value ?? false);
+                                bumpDbTick(ref);
+                              },
+                      ),
+                      title: Text(
+                        '${item.title} — ${formatCurrencyMinor(item.record.amountMinor)} — $necessityLabel',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: theme.textTheme.bodyMedium,
+                      ),
+                      trailing: IconButton(
+                        icon: const Icon(Icons.delete_outline),
+                        tooltip: 'Удалить из периода',
+                        onPressed: recordId == null
+                            ? null
+                            : () async {
+                                final confirmed = await _confirmDeletePlan(
+                                  context,
+                                  'Удалить план из периода?',
+                                );
+                                if (confirmed == true) {
+                                  await ref
+                                      .read(transactionsRepoProvider)
+                                      .deletePlannedInstance(recordId);
+                                  bumpDbTick(ref);
+                                }
+                              },
+                      ),
+                      onTap: () => showPlannedAddForm(
+                        context,
+                        type: PlannedType.expense,
+                        initialRecord: item.record,
+                      ),
                     ),
-                  ),
-                ),
-              ),
-            ),
-          );
-          if (i != items.length - 1) {
-            children.add(const Divider(height: 0));
-          }
-        }
-        return Column(children: children);
-      },
-      loading: () => const LinearProgressIndicator(minHeight: 2),
-      error: (error, _) => Text('Ошибка: $error'),
+                    if (index != items.length - 1) const Divider(height: 0),
+                  ],
+                );
+              },
+            );
+          },
+          loading: () => const Padding(
+            padding: EdgeInsets.all(12),
+            child: CircularProgressIndicator(strokeWidth: 2),
+          ),
+          error: (error, _) => Padding(
+            padding: const EdgeInsets.all(12),
+            child: Text('Ошибка: $error'),
+          ),
+        ),
+      ],
     );
   }
+}
+
+Future<bool?> _confirmDeletePlan(BuildContext context, String message) {
+  return showDialog<bool>(
+    context: context,
+    builder: (dialogContext) => AlertDialog(
+      title: Text(message),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(dialogContext).pop(false),
+          child: const Text('Отмена'),
+        ),
+        TextButton(
+          onPressed: () => Navigator.of(dialogContext).pop(true),
+          child: const Text('Удалить'),
+        ),
+      ],
+    ),
+  );
 }
 
 class _HomeAccountTile extends ConsumerWidget {
