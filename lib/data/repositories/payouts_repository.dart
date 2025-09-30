@@ -30,6 +30,14 @@ abstract class PayoutsRepository {
   /// Список выплат в диапазоне (для будущих экранов истории)
   Future<List<Payout>> listInRange(DateTime start, DateTime endExclusive);
 
+  Future<void> setDailyLimit({
+    required int payoutId,
+    required int dailyLimitMinor,
+    required bool fromToday,
+  });
+
+  Future<({int dailyLimitMinor, bool fromToday})> getDailyLimit(int payoutId);
+
   Future<List<Payout>> getHistory(int limit);
 
   Future<({Payout payout, PeriodRef period})> upsertWithClampToSelectedPeriod({
@@ -66,6 +74,7 @@ class SqlitePayoutsRepository implements PayoutsRepository {
       final selected = periodRefForDate(normalizedDate, anchors[0], anchors[1]);
       final result = await _upsertWithTransaction(
         txn,
+        existing: null,
         existingId: null,
         selectedPeriod: selected,
         pickedDate: normalizedDate,
@@ -96,6 +105,7 @@ class SqlitePayoutsRepository implements PayoutsRepository {
       final selected = periodRefForDate(normalizedDate, anchors[0], anchors[1]);
       await _upsertWithTransaction(
         txn,
+        existing: null,
         existingId: id,
         selectedPeriod: selected,
         pickedDate: normalizedDate,
@@ -185,6 +195,43 @@ class SqlitePayoutsRepository implements PayoutsRepository {
   }
 
   @override
+  Future<void> setDailyLimit({
+    required int payoutId,
+    required int dailyLimitMinor,
+    required bool fromToday,
+  }) async {
+    final db = await _db;
+    await db.update(
+      'payouts',
+      {
+        'daily_limit_minor': dailyLimitMinor,
+        'daily_limit_from_today': fromToday ? 1 : 0,
+      },
+      where: 'id = ?',
+      whereArgs: [payoutId],
+    );
+  }
+
+  @override
+  Future<({int dailyLimitMinor, bool fromToday})> getDailyLimit(int payoutId) async {
+    final db = await _db;
+    final rows = await db.query(
+      'payouts',
+      columns: ['daily_limit_minor', 'daily_limit_from_today'],
+      where: 'id = ?',
+      whereArgs: [payoutId],
+      limit: 1,
+    );
+    if (rows.isEmpty) {
+      throw StateError('Payout $payoutId not found');
+    }
+    final row = rows.first;
+    final limit = (row['daily_limit_minor'] as int?) ?? 0;
+    final fromToday = ((row['daily_limit_from_today'] as int?) ?? 0) == 1;
+    return (dailyLimitMinor: limit, fromToday: fromToday);
+  }
+
+  @override
   Future<({Payout payout, PeriodRef period})> upsertWithClampToSelectedPeriod({
     Payout? existing,
     required PeriodRef selectedPeriod,
@@ -201,6 +248,7 @@ class SqlitePayoutsRepository implements PayoutsRepository {
       final anchors = [anchor1Raw, anchor2Raw]..sort();
       return _upsertWithTransaction(
         txn,
+        existing: existing,
         existingId: existing?.id,
         selectedPeriod: selectedPeriod,
         pickedDate: normalized,
@@ -352,8 +400,22 @@ class SqlitePayoutsRepository implements PayoutsRepository {
     return '${date.year.toString().padLeft(4, '0')}-$month-$day';
   }
 
+  Future<Payout?> _loadPayoutById(DatabaseExecutor executor, int id) async {
+    final rows = await executor.query(
+      'payouts',
+      where: 'id = ?',
+      whereArgs: [id],
+      limit: 1,
+    );
+    if (rows.isEmpty) {
+      return null;
+    }
+    return Payout.fromMap(rows.first);
+  }
+
   Future<({Payout payout, PeriodRef period})> _upsertWithTransaction(
     Transaction txn, {
+    required Payout? existing,
     required int? existingId,
     required PeriodRef selectedPeriod,
     required DateTime pickedDate,
@@ -370,7 +432,18 @@ class SqlitePayoutsRepository implements PayoutsRepository {
       anchor2,
     );
 
-    final payout = Payout(
+    final resolvedExisting = existing ??
+        (existingId != null ? await _loadPayoutById(txn, existingId) : null);
+
+    final payout = (resolvedExisting ??
+            Payout(
+              id: existingId,
+              type: type,
+              date: clampedDate,
+              amountMinor: amountMinor,
+              accountId: accountId,
+            ))
+        .copyWith(
       id: existingId,
       type: type,
       date: clampedDate,

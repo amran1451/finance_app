@@ -29,14 +29,13 @@ class HomeScreen extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     ref.watch(dbTickProvider);
-    final dailyLimitAsync = ref.watch(dailyLimitProvider);
     final accountsAsync = ref.watch(accountsDbProvider);
     final hideFab = ref.watch(isSheetOpenProvider);
     final entryController = ref.read(entryFlowControllerProvider.notifier);
     final transactionsAsync = ref.watch(halfPeriodTransactionsProvider);
     final period = ref.watch(selectedPeriodRefProvider);
     final spentTodayAsync = ref.watch(spentTodayProvider(period));
-    final todayProgressState = ref.watch(todayProgressProvider(period));
+    final todayProgressState = ref.watch(todayProgressProvider);
     final (periodStart, periodEndExclusive) = ref.watch(periodBoundsProvider);
     final label = ref.watch(periodLabelProvider);
     final payoutAsync = ref.watch(payoutForSelectedPeriodProvider);
@@ -67,9 +66,8 @@ class HomeScreen extends ConsumerWidget {
         .where((record) => record.type == TransactionType.income)
         .fold<int>(0, (sum, record) => sum + record.amountMinor);
 
-    final todayHasError = spentTodayAsync.hasError || dailyLimitAsync.hasError;
-    final isTodayLoading =
-        spentTodayAsync.isLoading || dailyLimitAsync.isLoading;
+    final todayHasError = spentTodayAsync.hasError;
+    final isTodayLoading = spentTodayAsync.isLoading;
     final todaySubtitle = todayHasError
         ? 'Ошибка загрузки'
         : isTodayLoading
@@ -148,7 +146,7 @@ class HomeScreen extends ConsumerWidget {
                         );
                         final payout = await read(payoutForSelectedPeriodProvider.future);
                         final dailyLimitMinor =
-                            await read(dailyLimitProvider.future) ?? 0;
+                            read(periodDailyLimitProvider);
                         await read(periodsRepoProvider).closePeriod(
                           periodRef,
                           payoutId: payout?.id,
@@ -250,8 +248,9 @@ class HomeScreen extends ConsumerWidget {
                     );
                   }
                   final period = ref.watch(selectedPeriodRefProvider);
+                  final dailyLimitMinor = ref.watch(periodDailyLimitProvider);
                   return _LimitCards(
-                    leftToday: ref.watch(leftTodayMinorProvider),
+                    dailyLimit: dailyLimitMinor,
                     leftPeriod: ref.watch(periodBudgetRemainingProvider(period)),
                     onEditLimit: () async {
                       final saved = await showEditDailyLimitSheet(context, ref);
@@ -259,7 +258,7 @@ class HomeScreen extends ConsumerWidget {
                         return;
                       }
                       ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(content: Text('Лимит обновлён')),
+                        const SnackBar(content: Text('Лимит для периода обновлён')),
                       );
                     },
                   );
@@ -449,18 +448,25 @@ class _AddPayoutCTA extends StatelessWidget {
 
 class _LimitCards extends StatelessWidget {
   const _LimitCards({
-    required this.leftToday,
+    required this.dailyLimit,
     required this.leftPeriod,
     required this.onEditLimit,
   });
 
-  final AsyncValue<int> leftToday;
+  final int dailyLimit;
   final AsyncValue<int> leftPeriod;
   final VoidCallback onEditLimit;
 
   @override
   Widget build(BuildContext context) {
-    String buildLabel(AsyncValue<int> value) {
+    String buildDailyLimitLabel() {
+      if (dailyLimit <= 0) {
+        return '—';
+      }
+      return formatCurrencyMinorToRubles(dailyLimit);
+    }
+
+    String buildPeriodLabel(AsyncValue<int> value) {
       return value.when(
         data: (v) => formatCurrencyMinorToRubles(v),
         loading: () => '…',
@@ -473,7 +479,7 @@ class _LimitCards extends StatelessWidget {
         Expanded(
           child: _RemainingInfoCard(
             label: 'Осталось на день',
-            value: buildLabel(leftToday),
+            value: buildDailyLimitLabel(),
             alignment: TextAlign.left,
             onEdit: onEditLimit,
           ),
@@ -482,7 +488,7 @@ class _LimitCards extends StatelessWidget {
         Expanded(
           child: _RemainingInfoCard(
             label: 'Осталось в этом бюджете',
-            value: buildLabel(leftPeriod),
+            value: buildPeriodLabel(leftPeriod),
             alignment: TextAlign.right,
           ),
         ),

@@ -194,12 +194,8 @@ final plannedRemainderForPeriodProvider =
     return null;
   }
 
-  final dailyLimitMinor = await ref.watch(dailyLimitProvider.future) ?? 0;
-  final (periodStart, periodEndExclusive) = ref.watch(periodBoundsProvider);
-  var periodDays = periodEndExclusive.difference(periodStart).inDays;
-  if (periodDays < 0) {
-    periodDays = 0;
-  }
+  final dailyLimitMinor = ref.watch(periodDailyLimitProvider);
+  final periodDays = ref.watch(periodDaysFromPayoutProvider);
 
   final plannedSpentIncludedMinor =
       await ref.watch(plannedIncludedTotalProvider(PlannedType.expense).future);

@@ -5,7 +5,7 @@ class AppMigrations {
   AppMigrations._();
 
   /// Latest schema version supported by the application.
-  static const int latestVersion = 10;
+  static const int latestVersion = 11;
 
   static final Map<int, List<String>> _migrationScripts = {
     1: [
@@ -47,8 +47,11 @@ class AppMigrations {
           "type TEXT CHECK(type IN ('advance','salary')), "
           'date TEXT NOT NULL, '
           'amount_minor INTEGER NOT NULL, '
-          'account_id INTEGER NOT NULL'
+          'account_id INTEGER NOT NULL, '
+          'daily_limit_minor INTEGER NOT NULL DEFAULT 0, '
+          'daily_limit_from_today INTEGER NOT NULL DEFAULT 0'
           ')',
+      'CREATE INDEX IF NOT EXISTS idx_payouts_date ON payouts(date)',
       'CREATE TABLE settings ('
           'key TEXT PRIMARY KEY, '
           'value TEXT NOT NULL'
@@ -123,6 +126,11 @@ class AppMigrations {
       'CREATE INDEX IF NOT EXISTS idx_planned_master_necessity_id ON planned_master(necessity_id)',
     ],
     10: [],
+    11: [
+      'ALTER TABLE payouts ADD COLUMN daily_limit_minor INTEGER NOT NULL DEFAULT 0',
+      'ALTER TABLE payouts ADD COLUMN daily_limit_from_today INTEGER NOT NULL DEFAULT 0',
+      'CREATE INDEX IF NOT EXISTS idx_payouts_date ON payouts(date)',
+    ],
   };
 
   /// Applies migrations from [oldVersion] (exclusive) up to [newVersion] (inclusive).

@@ -7,6 +7,8 @@ class Payout {
     required this.date,
     required this.amountMinor,
     this.accountId,
+    this.dailyLimitMinor = 0,
+    this.dailyLimitFromToday = false,
   });
 
   final int? id;
@@ -14,6 +16,8 @@ class Payout {
   final DateTime date;
   final int amountMinor;
   final int? accountId;
+  final int dailyLimitMinor;
+  final bool dailyLimitFromToday;
 
   Payout copyWith({
     int? id,
@@ -21,6 +25,8 @@ class Payout {
     DateTime? date,
     int? amountMinor,
     int? accountId,
+    int? dailyLimitMinor,
+    bool? dailyLimitFromToday,
   }) {
     return Payout(
       id: id ?? this.id,
@@ -28,6 +34,9 @@ class Payout {
       date: date ?? this.date,
       amountMinor: amountMinor ?? this.amountMinor,
       accountId: accountId ?? this.accountId,
+      dailyLimitMinor: dailyLimitMinor ?? this.dailyLimitMinor,
+      dailyLimitFromToday:
+          dailyLimitFromToday ?? this.dailyLimitFromToday,
     );
   }
 
@@ -38,6 +47,9 @@ class Payout {
       date: _parseDate(map['date'] as String?),
       amountMinor: map['amount_minor'] as int? ?? 0,
       accountId: map['account_id'] as int?,
+      dailyLimitMinor: map['daily_limit_minor'] as int? ?? 0,
+      dailyLimitFromToday:
+          (map['daily_limit_from_today'] as int? ?? 0) == 1,
     );
   }
 
@@ -48,6 +60,8 @@ class Payout {
       'date': _formatDate(date),
       'amount_minor': amountMinor,
       'account_id': accountId,
+      'daily_limit_minor': dailyLimitMinor,
+      'daily_limit_from_today': dailyLimitFromToday ? 1 : 0,
     };
   }
 

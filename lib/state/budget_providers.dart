@@ -210,10 +210,8 @@ final periodNavProvider = Provider((ref) {
   );
 });
 
-final currentPayoutProvider = FutureProvider<Payout?>((ref) {
-  ref.watch(dbTickProvider);
-  final repository = ref.watch(payoutsRepoProvider);
-  return repository.getLast();
+final currentPayoutProvider = Provider<AsyncValue<Payout?>>((ref) {
+  return ref.watch(payoutForSelectedPeriodProvider);
 });
 
 final currentPeriodProvider = FutureProvider<BudgetPeriodInfo>((ref) async {
@@ -277,44 +275,42 @@ final daysUntilNextPayoutFromTodayProvider = Provider<int>((ref) {
   );
 });
 
-final dailyLimitFromTodayFlagProvider = FutureProvider<bool>((ref) {
+final periodDailyLimitProvider = Provider<int>((ref) {
   ref.watch(dbTickProvider);
-  ref.watch(selectedPeriodRefProvider);
-  final repository = ref.watch(settingsRepoProvider);
-  return repository.getDailyLimitFromToday();
+  final payout = ref.watch(currentPayoutProvider).valueOrNull;
+  return payout?.dailyLimitMinor ?? 0;
 });
 
-final periodDaysFromPayoutProvider = FutureProvider<int>((ref) async {
+final periodDailyLimitFromTodayFlagProvider = Provider<bool>((ref) {
   ref.watch(dbTickProvider);
-  ref.watch(selectedPeriodRefProvider);
-  final period = await ref.watch(currentPeriodProvider.future);
-  final diff = period.end.difference(period.start).inDays;
-  return math.max(diff, 0);
+  final payout = ref.watch(currentPayoutProvider).valueOrNull;
+  return payout?.dailyLimitFromToday ?? false;
 });
 
-final remainingDaysFromTodayProvider = FutureProvider<int>((ref) async {
+final periodDaysFromPayoutProvider = Provider<int>((ref) {
+  final period = ref.watch(currentPeriodProvider).valueOrNull;
+  if (period == null) {
+    return 0;
+  }
+  return math.max(period.days, 0);
+});
+
+final remainingDaysFromTodayProvider = Provider<int>((ref) {
   ref.watch(dbTickProvider);
-  ref.watch(selectedPeriodRefProvider);
   if (!ref.watch(isActivePeriodProvider)) {
     return 0;
   }
-  final period = await ref.watch(currentPeriodProvider.future);
-  final today = normalizeDate(DateTime.now());
-  final start = normalizeDate(period.start);
-  final endExclusive = normalizeDate(period.end);
-  final effectiveStart = today.isBefore(start) ? start : today;
-  final totalDays = math.max(endExclusive.difference(start).inDays, 0);
-  final remaining = endExclusive.difference(effectiveStart).inDays;
+  final period = ref.watch(currentPeriodProvider).valueOrNull;
+  if (period == null) {
+    return 0;
+  }
+  final today = DateUtils.dateOnly(DateTime.now());
+  final endExclusive = DateUtils.dateOnly(period.end);
+  final remaining = endExclusive.difference(today).inDays;
   if (remaining <= 0) {
     return 0;
   }
-  return math.min(remaining, totalDays);
-});
-
-final dailyLimitProvider = FutureProvider<int?>((ref) async {
-  ref.watch(dbTickProvider);
-  final repository = ref.watch(settingsRepoProvider);
-  return repository.getDailyLimitMinor();
+  return remaining > 9999 ? 9999 : remaining;
 });
 
 final spentTodayProvider = FutureProvider.family<int, PeriodRef>((ref, period) async {
@@ -356,7 +352,8 @@ class TodayProgress {
   }
 }
 
-final todayProgressProvider = Provider.family<TodayProgress, PeriodRef>((ref, period) {
+final todayProgressProvider = Provider<TodayProgress>((ref) {
+  final period = ref.watch(selectedPeriodRefProvider);
   final active = ref.watch(isActivePeriodProvider);
   if (!active) {
     return TodayProgress.hidden();
@@ -366,81 +363,32 @@ final todayProgressProvider = Provider.family<TodayProgress, PeriodRef>((ref, pe
         data: (value) => value,
         orElse: () => 0,
       );
-  final limit = ref.watch(dailyLimitProvider).maybeWhen<int?>(
-        data: (value) => value,
-        orElse: () => null,
-      );
-
-  if (limit == null) {
+  final limit = ref.watch(periodDailyLimitProvider);
+  if (limit <= 0) {
     return TodayProgress.hidden();
   }
 
   return TodayProgress.visible(spent: spent, limit: limit);
 });
 
-/// Сколько внеплановых расходов сегодня (в пределах активного периода)
-final todayUnplannedExpensesMinorProvider = FutureProvider<int>((ref) async {
-  ref.watch(dbTickProvider);
-  ref.watch(payoutForSelectedPeriodProvider);
-  final repo = ref.watch(transactionsRepoProvider);
-  final period = await ref.watch(currentPeriodProvider.future);
-
-  final today = DateTime.now();
-  final dayStart = DateTime(today.year, today.month, today.day);
-  final periodStart =
-      DateTime(period.start.year, period.start.month, period.start.day);
-  final periodEnd = DateTime(period.end.year, period.end.month, period.end.day);
-  final within = !dayStart.isBefore(periodStart) && dayStart.isBefore(periodEnd);
-  if (!within) {
+final periodBudgetBaseProvider = Provider<int>((ref) {
+  final limit = ref.watch(periodDailyLimitProvider);
+  if (limit <= 0) {
     return 0;
   }
-
-  return repo.sumUnplannedExpensesOnDate(dayStart);
-});
-
-/// Остаток на день = дневной лимит - расходы сегодня
-final leftTodayMinorProvider = FutureProvider<int>((ref) async {
-  ref.watch(dbTickProvider);
-  ref.watch(payoutForSelectedPeriodProvider);
-  final dailyLimit = await ref.watch(dailyLimitProvider.future) ?? 0;
-  if (dailyLimit <= 0) {
-    return 0;
-  }
-  final spentToday = await ref.watch(todayUnplannedExpensesMinorProvider.future);
-  final left = dailyLimit - spentToday;
-  return left > 0 ? left : 0;
-});
-
-/// Остаток в бюджете на оставшуюся часть периода
-final leftInPeriodMinorProvider = FutureProvider<int>((ref) async {
-  ref.watch(dbTickProvider);
-  final period = ref.watch(selectedPeriodRefProvider);
-  return ref.watch(periodBudgetRemainingProvider(period).future);
-});
-
-final periodBudgetBaseProvider =
-    FutureProvider.family<int, PeriodRef>((ref, period) async {
-  ref.watch(dbTickProvider);
-  final selectedPeriod = ref.watch(selectedPeriodRefProvider);
-  ref.watch(payoutForSelectedPeriodProvider);
-  final dailyLimit = await ref.watch(dailyLimitProvider.future) ?? 0;
-  if (dailyLimit <= 0) {
-    return 0;
-  }
-  final useFromToday = await ref.watch(dailyLimitFromTodayFlagProvider.future);
-  final days = useFromToday && period == selectedPeriod
-      ? await ref.watch(remainingDaysFromTodayProvider.future)
-      : await ref.watch(periodDaysFromPayoutProvider.future);
+  final fromToday = ref.watch(periodDailyLimitFromTodayFlagProvider);
+  final baseDays = ref.watch(periodDaysFromPayoutProvider);
+  final remDays = ref.watch(remainingDaysFromTodayProvider);
+  final days = fromToday ? remDays : baseDays;
   if (days <= 0) {
     return 0;
   }
-  return dailyLimit * days;
+  return limit * days;
 });
 
 final sumActualExpensesProvider =
     FutureProvider.family<int, PeriodRef>((ref, period) async {
   ref.watch(dbTickProvider);
-  ref.watch(selectedPeriodRefProvider);
   final (anchor1, anchor2) = ref.watch(anchorDaysProvider);
   final bounds = period.bounds(anchor1, anchor2);
   final repo = ref.watch(transactionsRepoProvider);
@@ -454,10 +402,14 @@ final sumActualExpensesProvider =
 final periodBudgetRemainingProvider =
     FutureProvider.family<int, PeriodRef>((ref, period) async {
   ref.watch(dbTickProvider);
-  ref.watch(selectedPeriodRefProvider);
-  final base = await ref.watch(periodBudgetBaseProvider(period).future);
+  final base = ref.watch(periodBudgetBaseProvider);
   final spent = await ref.watch(sumActualExpensesProvider(period).future);
-  return math.max(0, base - spent);
+  final value = base - spent;
+  if (value <= 0) {
+    return 0;
+  }
+  final maxCap = 1 << 31;
+  return value > maxCap ? maxCap : value;
 });
 
 final plannedPoolBaseProvider = FutureProvider<int>((ref) async {
@@ -466,8 +418,7 @@ final plannedPoolBaseProvider = FutureProvider<int>((ref) async {
   if (payout == null) {
     return 0;
   }
-  final period = ref.watch(selectedPeriodRefProvider);
-  final periodBudget = await ref.watch(periodBudgetBaseProvider(period).future);
+  final periodBudget = ref.watch(periodBudgetBaseProvider);
   final pool = payout.amountMinor - periodBudget;
   return math.max(pool, 0);
 });
@@ -535,9 +486,13 @@ class BudgetLimitManager {
     required Payout payout,
     required PeriodRef period,
   }) async {
-    final settingsRepo = _ref.read(settingsRepoProvider);
-    final currentDailyLimit = await settingsRepo.getDailyLimitMinor();
-    if (currentDailyLimit == null) {
+    final payoutId = payout.id;
+    if (payoutId == null) {
+      return null;
+    }
+
+    final currentDailyLimit = payout.dailyLimitMinor;
+    if (currentDailyLimit <= 0) {
       return null;
     }
 
@@ -561,9 +516,11 @@ class BudgetLimitManager {
       return null;
     }
 
-    await settingsRepo.setDailyLimitMinor(maxDaily);
-    final notifier = _ref.read(dbTickProvider.notifier);
-    notifier.state = notifier.state + 1;
+    await _ref.read(payoutsRepoProvider).setDailyLimit(
+          payoutId: payoutId,
+          dailyLimitMinor: maxDaily,
+          fromToday: payout.dailyLimitFromToday,
+        );
     return maxDaily;
   }
 }
