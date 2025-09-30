@@ -569,12 +569,13 @@ class _ReviewScreenState extends ConsumerState<ReviewScreen> {
         child: LayoutBuilder(
           builder: (context, constraints) {
             return SingleChildScrollView(
-              padding: const EdgeInsets.all(24),
               child: ConstrainedBox(
                 constraints: BoxConstraints(minHeight: constraints.maxHeight),
-                child: IntrinsicHeight(
+                child: Padding(
+                  padding: const EdgeInsets.all(24),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.stretch,
+                    mainAxisSize: MainAxisSize.min,
                     children: [
                       Card(
                         child: Padding(
@@ -919,21 +920,27 @@ class _ReviewScreenState extends ConsumerState<ReviewScreen> {
                           hintText: 'Например: покупки к ужину',
                         ),
                       ),
-                      const Spacer(),
-                      ValueListenableBuilder<int>(
-                        valueListenable: selectedAccountId,
-                        builder: (context, accountIdValue, _) {
-                          final canSave = entryState.canSave &&
-                              accountIdValue != _kUnselectedAccountId;
-                          return FilledButton(
-                            onPressed: canSave ? saveOperation : null,
-                            child: const Text('Сохранить'),
-                          );
-                        },
-                      ),
+                      const SizedBox(height: 12),
                     ],
                   ),
                 ),
+              ),
+            );
+          },
+        ),
+      ),
+      bottomNavigationBar: SafeArea(
+        minimum: const EdgeInsets.all(16),
+        child: ValueListenableBuilder<int>(
+          valueListenable: selectedAccountId,
+          builder: (context, accountIdValue, _) {
+            final canSave = entryState.canSave &&
+                accountIdValue != _kUnselectedAccountId;
+            return SizedBox(
+              width: double.infinity,
+              child: FilledButton(
+                onPressed: canSave ? saveOperation : null,
+                child: const Text('Сохранить'),
               ),
             );
           },
