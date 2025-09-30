@@ -333,16 +333,29 @@ class _TransactionsRepositoryWithDbTick
   }
 
   @override
+  Future<int> sumUnplannedExpensesOnDate(DateTime date) {
+    return _delegate.sumUnplannedExpensesOnDate(date);
+  }
+
+  @override
+  Future<int> sumExpensesOnDateWithinPeriod({
+    required DateTime date,
+    required DateTime periodStart,
+    required DateTime periodEndExclusive,
+  }) {
+    return _delegate.sumExpensesOnDateWithinPeriod(
+      date: date,
+      periodStart: periodStart,
+      periodEndExclusive: periodEndExclusive,
+    );
+  }
+
+  @override
   Future<int> sumUnplannedExpensesInRange(
     DateTime from,
     DateTime toExclusive,
   ) {
     return _delegate.sumUnplannedExpensesInRange(from, toExclusive);
-  }
-
-  @override
-  Future<int> sumUnplannedExpensesOnDate(DateTime date) {
-    return _delegate.sumUnplannedExpensesOnDate(date);
   }
 
   @override

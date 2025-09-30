@@ -35,6 +35,8 @@ class HomeScreen extends ConsumerWidget {
     final entryController = ref.read(entryFlowControllerProvider.notifier);
     final transactionsAsync = ref.watch(halfPeriodTransactionsProvider);
     final period = ref.watch(selectedPeriodRefProvider);
+    final spentTodayAsync = ref.watch(spentTodayProvider(period));
+    final todayProgressState = ref.watch(todayProgressProvider(period));
     final (periodStart, periodEndExclusive) = ref.watch(periodBoundsProvider);
     final label = ref.watch(periodLabelProvider);
     final payoutAsync = ref.watch(payoutForSelectedPeriodProvider);
@@ -45,8 +47,6 @@ class HomeScreen extends ConsumerWidget {
       data: (status) => status.closed,
       orElse: () => false,
     );
-    final today = DateTime.now();
-    final normalizedToday = DateTime(today.year, today.month, today.day);
     final isActivePeriod = ref.watch(isActivePeriodProvider);
     final daysLeft =
         isActivePeriod ? ref.watch(daysUntilNextPayoutFromTodayProvider) : null;
@@ -60,11 +60,6 @@ class HomeScreen extends ConsumerWidget {
         ? (transactionsAsync as AsyncError).error
         : null;
     final hasOperations = transactions.isNotEmpty;
-    final todaySpentMinor = transactions
-        .where((record) =>
-            record.type == TransactionType.expense &&
-            _isSameDay(record.date, normalizedToday))
-        .fold<int>(0, (sum, record) => sum + record.amountMinor);
     final periodExpenseMinor = transactions
         .where((record) => record.type == TransactionType.expense)
         .fold<int>(0, (sum, record) => sum + record.amountMinor);
@@ -72,20 +67,36 @@ class HomeScreen extends ConsumerWidget {
         .where((record) => record.type == TransactionType.income)
         .fold<int>(0, (sum, record) => sum + record.amountMinor);
 
-    final dailyLimitValue = dailyLimitAsync.asData?.value;
-    final dailyLimitLabel = dailyLimitAsync.when(
-      data: (value) => formatCurrencyMinorNullable(value),
-      loading: () => '…',
-      error: (e, _) => '—',
-    );
-    final todaySubtitle = isTransactionsLoading
-        ? 'Загрузка…'
-        : transactionsError != null
-            ? 'Ошибка загрузки'
-            : '${formatCurrencyMinor(todaySpentMinor)} из $dailyLimitLabel';
-    final todayProgress = (dailyLimitValue ?? 0) <= 0
+    final todayHasError = spentTodayAsync.hasError || dailyLimitAsync.hasError;
+    final isTodayLoading =
+        spentTodayAsync.isLoading || dailyLimitAsync.isLoading;
+    final todaySubtitle = todayHasError
+        ? 'Ошибка загрузки'
+        : isTodayLoading
+            ? 'Загрузка…'
+            : todayProgressState.show
+                ? '${formatCurrencyMinor(todayProgressState.spent)} из '
+                    '${formatCurrencyMinor(todayProgressState.limit)}'
+                : '—';
+    final todayProgressValue = !todayProgressState.show
         ? 0.0
-        : (todaySpentMinor / (dailyLimitValue ?? 1)).clamp(0.0, 1.0);
+        : todayProgressState.limit == 0
+            ? 0.0
+            : (todayProgressState.spent / todayProgressState.limit)
+                .clamp(0.0, 1.0);
+    final Widget todayChild;
+    if (todayHasError) {
+      todayChild = const SizedBox.shrink();
+    } else if (isTodayLoading) {
+      todayChild = const LinearProgressIndicator();
+    } else if (!todayProgressState.show) {
+      todayChild = const SizedBox.shrink();
+    } else {
+      todayChild = ProgressLine(
+        value: todayProgressValue,
+        label: 'Прогресс дня',
+      );
+    }
 
     final periodExpenseLabel = isTransactionsLoading
         ? 'Загрузка…'
@@ -260,12 +271,7 @@ class HomeScreen extends ConsumerWidget {
                 subtitle: todaySubtitle,
                 trailing: const Icon(Icons.chevron_right),
                 onTap: () => context.pushNamed(RouteNames.operations),
-                child: isTransactionsLoading
-                    ? const LinearProgressIndicator()
-                    : ProgressLine(
-                        value: todayProgress,
-                        label: 'Прогресс дня',
-                      ),
+                child: todayChild,
               ),
               const SizedBox(height: 16),
               CalloutCard(

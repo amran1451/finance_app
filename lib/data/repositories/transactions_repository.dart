@@ -122,6 +122,14 @@ abstract class TransactionsRepository {
   Future<int> sumUnplannedExpensesInRange(DateTime from, DateTime toExclusive);
 
   /// Сумма фактических расходов (type = 'expense', is_planned = 0)
+  /// на конкретную дату с защитой от выхода за границы периода.
+  Future<int> sumExpensesOnDateWithinPeriod({
+    required DateTime date,
+    required DateTime periodStart,
+    required DateTime periodEndExclusive,
+  });
+
+  /// Сумма фактических расходов (type = 'expense', is_planned = 0)
   /// в пределах периода [start, endExclusive).
   Future<int> sumActualExpenses({
     required PeriodRef period,
@@ -557,6 +565,56 @@ class SqliteTransactionsRepository implements TransactionsRepository {
     final dayStart = DateTime(date.year, date.month, date.day);
     final dayEnd = dayStart.add(const Duration(days: 1));
     return sumUnplannedExpensesInRange(dayStart, dayEnd);
+  }
+
+  @override
+  Future<int> sumExpensesOnDateWithinPeriod({
+    required DateTime date,
+    required DateTime periodStart,
+    required DateTime periodEndExclusive,
+  }) async {
+    final normalizedDate = DateTime(date.year, date.month, date.day);
+    final normalizedStart = DateTime(
+      periodStart.year,
+      periodStart.month,
+      periodStart.day,
+    );
+    final normalizedEndExclusive = DateTime(
+      periodEndExclusive.year,
+      periodEndExclusive.month,
+      periodEndExclusive.day,
+    );
+
+    if (normalizedDate.isBefore(normalizedStart) ||
+        !normalizedDate.isBefore(normalizedEndExclusive)) {
+      return 0;
+    }
+
+    final db = await _db;
+    final rows = await db.rawQuery(
+      'SELECT COALESCE(SUM(amount_minor), 0) AS total '
+      'FROM transactions '
+      "WHERE type = 'expense' AND is_planned = 0 "
+      'AND date = ? AND date >= ? AND date < ?',
+      [
+        _formatDate(normalizedDate),
+        _formatDate(normalizedStart),
+        _formatDate(normalizedEndExclusive),
+      ],
+    );
+
+    if (rows.isEmpty) {
+      return 0;
+    }
+
+    final value = rows.first['total'];
+    if (value is int) {
+      return value;
+    }
+    if (value is num) {
+      return value.toInt();
+    }
+    return 0;
   }
 
   @override
