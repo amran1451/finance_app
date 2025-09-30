@@ -1,14 +1,19 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../data/models/payout.dart';
 import '../../state/app_providers.dart';
 import '../../state/budget_providers.dart';
 import '../../state/db_refresh.dart';
 import '../../utils/formatting.dart';
 
 Future<bool> showEditDailyLimitSheet(BuildContext context, WidgetRef ref) async {
-  final currentValue = await ref.read(dailyLimitProvider.future);
-  final fromToday = await ref.read(dailyLimitFromTodayFlagProvider.future);
+  final payout = await ref.read(payoutForSelectedPeriodProvider.future);
+  if (payout == null) {
+    return false;
+  }
+  final currentValue = payout.dailyLimitMinor;
+  final fromToday = payout.dailyLimitFromToday;
   final saved = await showModalBottomSheet<bool>(
     context: context,
     isScrollControlled: true,
@@ -21,7 +26,8 @@ Future<bool> showEditDailyLimitSheet(BuildContext context, WidgetRef ref) async 
           bottom: MediaQuery.of(sheetContext).viewInsets.bottom + 24,
         ),
         child: _DailyLimitSheet(
-          initialMinorValue: currentValue,
+          payout: payout,
+          initialMinorValue: currentValue > 0 ? currentValue : null,
           initialFromToday: fromToday,
         ),
       );
@@ -33,10 +39,12 @@ Future<bool> showEditDailyLimitSheet(BuildContext context, WidgetRef ref) async 
 
 class _DailyLimitSheet extends ConsumerStatefulWidget {
   const _DailyLimitSheet({
+    required this.payout,
     required this.initialMinorValue,
     required this.initialFromToday,
   });
 
+  final Payout payout;
   final int? initialMinorValue;
   final bool initialFromToday;
 
@@ -80,52 +88,63 @@ class _DailyLimitSheetState extends ConsumerState<_DailyLimitSheet> {
         .replaceAll(RegExp(r'[\s\u00A0]'), '')
         .replaceAll(',', '.')
         .replaceAll('₽', '');
-    int? minorValue;
     if (normalized.isEmpty) {
-      minorValue = null;
-    } else {
-      final parsed = double.tryParse(normalized);
-      if (parsed == null) {
-        setState(() {
-          _errorText = 'Введите число';
-          _isSaving = false;
-        });
-        return;
-      }
-      minorValue = (parsed * 100).round();
-      if (minorValue < 0) {
-        minorValue = 0;
-      }
+      setState(() {
+        _errorText = 'Введите сумму';
+        _isSaving = false;
+      });
+      return;
     }
 
-    if (minorValue != null) {
-      final maxDaily = await _computeMaxDailyMinor();
-      if (!mounted) {
-        return;
-      }
-      if (maxDaily != null && minorValue > maxDaily) {
-        final messenger = ScaffoldMessenger.of(context);
-        final replacementText = formatCurrencyMinorPlain(maxDaily);
-        _controller.value = TextEditingValue(
-          text: replacementText,
-          selection: TextSelection.collapsed(offset: replacementText.length),
-        );
-        messenger
-          ..clearSnackBars()
-          ..showSnackBar(
-            SnackBar(
-              content:
-                  Text('Максимум для этого периода — ${formatCurrencyMinorToRubles(maxDaily)}'),
+    final parsed = double.tryParse(normalized);
+    if (parsed == null) {
+      setState(() {
+        _errorText = 'Введите число';
+        _isSaving = false;
+      });
+      return;
+    }
+
+    var minorValue = (parsed * 100).round();
+    if (minorValue <= 0) {
+      setState(() {
+        _errorText = 'Введите положительную сумму';
+        _isSaving = false;
+      });
+      return;
+    }
+
+    final maxDaily = _computeMaxDailyMinor();
+    if (maxDaily != null && minorValue > maxDaily) {
+      final messenger = ScaffoldMessenger.of(context);
+      final replacementText = formatCurrencyMinorPlain(maxDaily);
+      _controller.value = TextEditingValue(
+        text: replacementText,
+        selection: TextSelection.collapsed(offset: replacementText.length),
+      );
+      messenger
+        ..clearSnackBars()
+        ..showSnackBar(
+          SnackBar(
+            content: Text(
+              'Максимум для этого периода — ${formatCurrencyMinorToRubles(maxDaily)}',
             ),
-          );
-        minorValue = maxDaily;
-      }
+          ),
+        );
+      minorValue = maxDaily;
     }
 
     try {
-      final repository = ref.read(settingsRepoProvider);
-      await repository.setDailyLimitMinor(minorValue);
-      await repository.setDailyLimitFromToday(_fromToday);
+      final payout = widget.payout;
+      final payoutId = payout.id;
+      if (payoutId == null) {
+        throw StateError('Не найдена текущая выплата');
+      }
+      await ref.read(payoutsRepoProvider).setDailyLimit(
+            payoutId: payoutId,
+            dailyLimitMinor: minorValue,
+            fromToday: _fromToday,
+          );
       bumpDbTick(ref);
       if (!mounted) {
         return;
@@ -143,31 +162,18 @@ class _DailyLimitSheetState extends ConsumerState<_DailyLimitSheet> {
     }
   }
 
-  Future<int?> _computeMaxDailyMinor() async {
-    final payout = await ref.read(payoutForSelectedPeriodProvider.future);
-    if (payout == null) {
+  int? _computeMaxDailyMinor() {
+    final baseDays = ref.read(periodDaysFromPayoutProvider);
+    if (baseDays <= 0) {
       return null;
     }
-
-    final period = await ref.read(currentPeriodProvider.future);
-
-    return calculateMaxDailyLimitMinor(
-      payout: payout,
-      period: period,
-    );
+    return widget.payout.amountMinor ~/ baseDays;
   }
 
   @override
   Widget build(BuildContext context) {
-    final payout = ref.watch(payoutForSelectedPeriodProvider).asData?.value;
-    final period = ref.watch(currentPeriodProvider).asData?.value;
-    final maxDaily =
-        payout != null && period != null && period.days > 0
-            ? calculateMaxDailyLimitMinor(
-                payout: payout,
-                period: period,
-              )
-            : null;
+    final baseDays = ref.watch(periodDaysFromPayoutProvider);
+    final maxDaily = baseDays > 0 ? widget.payout.amountMinor ~/ baseDays : null;
 
     return Column(
       mainAxisSize: MainAxisSize.min,

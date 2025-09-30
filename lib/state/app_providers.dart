@@ -438,6 +438,25 @@ class _PayoutsRepositoryWithDbTick implements payouts_repo.PayoutsRepository {
   }
 
   @override
+  Future<void> setDailyLimit({
+    required int payoutId,
+    required int dailyLimitMinor,
+    required bool fromToday,
+  }) async {
+    await _delegate.setDailyLimit(
+      payoutId: payoutId,
+      dailyLimitMinor: dailyLimitMinor,
+      fromToday: fromToday,
+    );
+    bumpDbTick(_ref);
+  }
+
+  @override
+  Future<({int dailyLimitMinor, bool fromToday})> getDailyLimit(int payoutId) {
+    return _delegate.getDailyLimit(payoutId);
+  }
+
+  @override
   Future<void> update({
     required int id,
     required payout_models.PayoutType type,
