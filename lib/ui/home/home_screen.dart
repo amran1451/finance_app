@@ -47,10 +47,9 @@ class HomeScreen extends ConsumerWidget {
     );
     final today = DateTime.now();
     final normalizedToday = DateTime(today.year, today.month, today.day);
-    final isActivePeriod =
-        ref.watch(isActivePeriodProvider((normalizedToday, period)));
+    final isActivePeriod = ref.watch(isActivePeriodProvider);
     final daysLeft =
-        isActivePeriod ? ref.watch(daysToPeriodEndProvider) : null;
+        isActivePeriod ? ref.watch(daysUntilNextPayoutFromTodayProvider) : null;
     final showClosedBadge = isActivePeriod && periodClosed;
     final generalPayoutLabel =
         'Добавить выплату (по периоду: ${payoutTypeLabel(suggestedType)})';
@@ -248,7 +247,7 @@ class HomeScreen extends ConsumerWidget {
                         return;
                       }
                       ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(content: Text('Лимит сохранён')),
+                        const SnackBar(content: Text('Лимит обновлён')),
                       );
                     },
                   );
