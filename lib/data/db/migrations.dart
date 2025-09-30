@@ -127,8 +127,6 @@ class AppMigrations {
     ],
     10: [],
     11: [
-      'ALTER TABLE payouts ADD COLUMN daily_limit_minor INTEGER NOT NULL DEFAULT 0',
-      'ALTER TABLE payouts ADD COLUMN daily_limit_from_today INTEGER NOT NULL DEFAULT 0',
       'CREATE INDEX IF NOT EXISTS idx_payouts_date ON payouts(date)',
     ],
   };
@@ -159,6 +157,22 @@ class AppMigrations {
             columnName: 'updated_at',
             alterStatement:
                 "ALTER TABLE transactions ADD COLUMN updated_at TEXT NOT NULL DEFAULT (datetime('now'))",
+          );
+          break;
+        case 11:
+          await _ensureColumnExists(
+            db,
+            tableName: 'payouts',
+            columnName: 'daily_limit_minor',
+            alterStatement:
+                'ALTER TABLE payouts ADD COLUMN daily_limit_minor INTEGER NOT NULL DEFAULT 0',
+          );
+          await _ensureColumnExists(
+            db,
+            tableName: 'payouts',
+            columnName: 'daily_limit_from_today',
+            alterStatement:
+                'ALTER TABLE payouts ADD COLUMN daily_limit_from_today INTEGER NOT NULL DEFAULT 0',
           );
           break;
         default:
