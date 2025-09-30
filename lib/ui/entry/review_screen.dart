@@ -967,6 +967,9 @@ class _QuickDatePickerState extends State<_QuickDatePicker> {
   late final ScrollController _controller;
   late List<DateTime> _dates;
   bool _didInitialScroll = false;
+  double? _viewportWidth;
+  DateTime? _pendingCenteredDate;
+  bool _pendingAnimate = false;
 
   @override
   void initState() {
@@ -1003,32 +1006,55 @@ class _QuickDatePickerState extends State<_QuickDatePicker> {
 
   @override
   Widget build(BuildContext context) {
-    _scheduleInitialScroll();
-    return SizedBox(
-      height: 48,
-      child: ListView.separated(
-        controller: _controller,
-        scrollDirection: Axis.horizontal,
-        padding: const EdgeInsets.symmetric(horizontal: 4),
-        physics: const BouncingScrollPhysics(),
-        itemBuilder: (context, index) {
-          final date = _dates[index];
-          final isSelected = widget.selectedDate != null &&
-              _isSameDay(widget.selectedDate!, date);
-          return SizedBox(
-            width: _dateItemWidth,
-            child: Center(
-              child: _DateChoiceChip(
-                date: date,
-                isSelected: isSelected,
-                onSelected: widget.onSelected,
-              ),
-            ),
-          );
-        },
-        separatorBuilder: (_, __) => const SizedBox(width: _dateItemSpacing),
-        itemCount: _dates.length,
-      ),
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final maxWidth = constraints.maxWidth;
+        final mediaQueryWidth = MediaQuery.of(context).size.width;
+        final resolvedWidth =
+            maxWidth.isFinite ? maxWidth : mediaQueryWidth;
+        if (_viewportWidth != resolvedWidth) {
+          _viewportWidth = resolvedWidth;
+          if (_pendingCenteredDate != null) {
+            WidgetsBinding.instance.addPostFrameCallback((_) {
+              if (!mounted) {
+                return;
+              }
+              final pending = _pendingCenteredDate;
+              final animate = _pendingAnimate;
+              if (pending != null) {
+                _centerOnDate(pending, animate: animate);
+              }
+            });
+          }
+        }
+        _scheduleInitialScroll();
+        return SizedBox(
+          height: 48,
+          child: ListView.separated(
+            controller: _controller,
+            scrollDirection: Axis.horizontal,
+            padding: const EdgeInsets.symmetric(horizontal: 4),
+            physics: const BouncingScrollPhysics(),
+            itemBuilder: (context, index) {
+              final date = _dates[index];
+              final isSelected = widget.selectedDate != null &&
+                  _isSameDay(widget.selectedDate!, date);
+              return SizedBox(
+                width: _dateItemWidth,
+                child: Center(
+                  child: _DateChoiceChip(
+                    date: date,
+                    isSelected: isSelected,
+                    onSelected: widget.onSelected,
+                  ),
+                ),
+              );
+            },
+            separatorBuilder: (_, __) => const SizedBox(width: _dateItemSpacing),
+            itemCount: _dates.length,
+          ),
+        );
+      },
     );
   }
 
@@ -1059,6 +1085,8 @@ class _QuickDatePickerState extends State<_QuickDatePicker> {
 
   void _centerOnDate(DateTime target, {bool animate = false}) {
     if (_dates.isEmpty) {
+      _pendingCenteredDate = null;
+      _pendingAnimate = false;
       return;
     }
     final normalized = DateTime(target.year, target.month, target.day);
@@ -1072,21 +1100,31 @@ class _QuickDatePickerState extends State<_QuickDatePicker> {
         index = 0;
       }
     }
-    if (!_controller.hasClients) {
+
+    if (!_controller.hasClients || _viewportWidth == null) {
+      _pendingCenteredDate = normalized;
+      if (animate) {
+        _pendingAnimate = true;
+      }
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (!mounted) {
           return;
         }
-        _centerOnDate(normalized, animate: animate);
+        final pendingDate = _pendingCenteredDate;
+        if (pendingDate != null) {
+          _centerOnDate(pendingDate, animate: _pendingAnimate);
+        }
       });
       return;
     }
-    final viewWidth = context.size?.width ?? MediaQuery.of(context).size.width;
+
+    _pendingCenteredDate = null;
+    final viewWidth = _viewportWidth!;
     final itemExtent = _dateItemWidth + _dateItemSpacing;
     final targetOffset = index * itemExtent - (viewWidth - _dateItemWidth) / 2;
     final maxOffset = math.max(0.0, _controller.position.maxScrollExtent);
     final offset = targetOffset.clamp(0.0, maxOffset);
-    if (animate) {
+    if (animate || _pendingAnimate) {
       _controller.animateTo(
         offset,
         duration: const Duration(milliseconds: 250),
@@ -1095,6 +1133,7 @@ class _QuickDatePickerState extends State<_QuickDatePicker> {
     } else {
       _controller.jumpTo(offset);
     }
+    _pendingAnimate = false;
   }
 }
 
