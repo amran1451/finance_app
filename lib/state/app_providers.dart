@@ -346,6 +346,19 @@ class _TransactionsRepositoryWithDbTick
   }
 
   @override
+  Future<int> sumActualExpenses({
+    required PeriodRef period,
+    required DateTime start,
+    required DateTime endExclusive,
+  }) {
+    return _delegate.sumActualExpenses(
+      period: period,
+      start: start,
+      endExclusive: endExclusive,
+    );
+  }
+
+  @override
   Future<void> update(
     transaction_models.TransactionRecord record, {
     bool? includedInPeriod,

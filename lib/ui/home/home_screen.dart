@@ -238,9 +238,10 @@ class HomeScreen extends ConsumerWidget {
                       },
                     );
                   }
+                  final period = ref.watch(selectedPeriodRefProvider);
                   return _LimitCards(
                     leftToday: ref.watch(leftTodayMinorProvider),
-                    leftPeriod: ref.watch(periodBudgetMinorProvider),
+                    leftPeriod: ref.watch(periodBudgetRemainingProvider(period)),
                     onEditLimit: () async {
                       final saved = await showEditDailyLimitSheet(context, ref);
                       if (!context.mounted || !saved) {

@@ -120,6 +120,14 @@ abstract class TransactionsRepository {
 
   /// Сумма внеплановых расходов в интервале [from, toExclusive)
   Future<int> sumUnplannedExpensesInRange(DateTime from, DateTime toExclusive);
+
+  /// Сумма фактических расходов (type = 'expense', is_planned = 0)
+  /// в пределах периода [start, endExclusive).
+  Future<int> sumActualExpenses({
+    required PeriodRef period,
+    required DateTime start,
+    required DateTime endExclusive,
+  });
 }
 
 class SqliteTransactionsRepository implements TransactionsRepository {
@@ -574,6 +582,37 @@ class SqliteTransactionsRepository implements TransactionsRepository {
       "WHERE type = 'expense' AND is_planned = 0 "
       "AND included_in_period = 1 AND date BETWEEN ? AND ?",
       [_formatDate(normalizedFrom), _formatDate(endInclusive)],
+    );
+
+    if (rows.isEmpty) {
+      return 0;
+    }
+
+    final value = rows.first['total'];
+    if (value is int) {
+      return value;
+    }
+    if (value is num) {
+      return value.toInt();
+    }
+    return 0;
+  }
+
+  @override
+  Future<int> sumActualExpenses({
+    required PeriodRef period,
+    required DateTime start,
+    required DateTime endExclusive,
+  }) async {
+    assert(start.isBefore(endExclusive), 'Empty period bounds for $period');
+
+    final db = await _db;
+    final rows = await db.rawQuery(
+      'SELECT COALESCE(SUM(amount_minor), 0) AS total '
+      'FROM transactions '
+      "WHERE type = 'expense' AND is_planned = 0 "
+      'AND date >= ? AND date < ?',
+      [_formatDate(start), _formatDate(endExclusive)],
     );
 
     if (rows.isEmpty) {
