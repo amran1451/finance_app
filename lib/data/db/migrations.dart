@@ -5,7 +5,7 @@ class AppMigrations {
   AppMigrations._();
 
   /// Latest schema version supported by the application.
-  static const int latestVersion = 13;
+  static const int latestVersion = 14;
 
   static final Map<int, List<String>> _migrationScripts = {
     1: [
@@ -132,6 +132,12 @@ class AppMigrations {
     ],
     12: [],
     13: [],
+    14: [
+      'CREATE INDEX IF NOT EXISTS idx_transactions_is_planned_date '
+          'ON transactions(is_planned, date)',
+      'CREATE INDEX IF NOT EXISTS idx_transactions_type_planned_included_date '
+          'ON transactions(type, is_planned, included_in_period, date)',
+    ],
   };
 
   /// Applies migrations from [oldVersion] (exclusive) up to [newVersion] (inclusive).

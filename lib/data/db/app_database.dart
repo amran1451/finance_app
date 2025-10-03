@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:path/path.dart' as p;
 import 'package:sqflite/sqflite.dart';
 
@@ -10,6 +12,7 @@ class AppDatabase {
   static final AppDatabase instance = AppDatabase._();
 
   Database? _database;
+  Completer<Database>? _openingCompleter;
 
   /// Lazily opens the database and returns an instance of [Database].
   Future<Database> get database async {
@@ -18,12 +21,37 @@ class AppDatabase {
       return existingDatabase;
     }
 
-    _database = await _openDatabase();
-    return _database!;
+    final pending = _openingCompleter;
+    if (pending != null) {
+      return pending.future;
+    }
+
+    final completer = Completer<Database>();
+    _openingCompleter = completer;
+    try {
+      final db = await _openDatabase();
+      _database = db;
+      completer.complete(db);
+      return db;
+    } catch (error, stackTrace) {
+      completer.completeError(error, stackTrace);
+      rethrow;
+    } finally {
+      _openingCompleter = null;
+    }
   }
 
   /// Closes the database if it has been opened previously.
   Future<void> close() async {
+    final pending = _openingCompleter;
+    if (pending != null) {
+      try {
+        await pending.future;
+      } catch (_) {
+        // Ignore failures from the pending open operation. The next open
+        // attempt will surface the error again.
+      }
+    }
     final db = _database;
     if (db != null && db.isOpen) {
       await db.close();

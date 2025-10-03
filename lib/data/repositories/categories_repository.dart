@@ -129,6 +129,28 @@ class SqliteCategoriesRepository implements CategoriesRepository {
   Future<void> restoreDefaults() async {
     final db = await _db;
     await db.transaction((txn) async {
+      final existingRows = await txn.query(
+        'categories',
+        columns: ['id', 'type', 'name', 'is_group', 'parent_id'],
+      );
+      final cache = <_CategoryKey, int>{};
+      for (final row in existingRows) {
+        final id = row['id'] as int?;
+        final type = row['type'] as String?;
+        final name = row['name'] as String?;
+        if (id == null || type == null || name == null) {
+          continue;
+        }
+        final isGroup = ((row['is_group'] as int?) ?? 0) != 0;
+        final parentId = row['parent_id'] as int?;
+        cache[_CategoryKey(
+          type: type,
+          name: name,
+          parentId: parentId,
+          isGroup: isGroup,
+        )] = id;
+      }
+
       final defaultGroups = _defaultGroups();
       for (final group in defaultGroups) {
         final groupId = await _ensureCategory(
@@ -136,6 +158,7 @@ class SqliteCategoriesRepository implements CategoriesRepository {
           type: group.type,
           name: group.name,
           isGroup: true,
+          cache: cache,
         );
         for (final child in group.children) {
           await _ensureCategory(
@@ -143,6 +166,7 @@ class SqliteCategoriesRepository implements CategoriesRepository {
             type: group.type,
             name: child,
             parentId: groupId,
+            cache: cache,
           );
         }
       }
@@ -152,6 +176,7 @@ class SqliteCategoriesRepository implements CategoriesRepository {
           txn,
           type: entry.type,
           name: entry.name,
+          cache: cache,
         );
       }
     });
@@ -178,37 +203,57 @@ class SqliteCategoriesRepository implements CategoriesRepository {
     required String name,
     bool isGroup = false,
     int? parentId,
+    Map<_CategoryKey, int>? cache,
   }) async {
-    final whereBuffer = StringBuffer('type = ? AND name = ?');
-    final args = <Object?>[_typeToString(type), name];
-    if (parentId == null) {
-      whereBuffer.write(' AND parent_id IS NULL');
-    } else {
-      whereBuffer.write(' AND parent_id = ?');
-      args.add(parentId);
-    }
-    whereBuffer.write(' AND is_group = ?');
-    args.add(isGroup ? 1 : 0);
-
-    final existing = await executor.query(
-      'categories',
-      columns: ['id'],
-      where: whereBuffer.toString(),
-      whereArgs: args,
-      limit: 1,
+    final typeValue = _typeToString(type);
+    final key = _CategoryKey(
+      type: typeValue,
+      name: name,
+      parentId: parentId,
+      isGroup: isGroup,
     );
-    if (existing.isNotEmpty) {
-      return existing.first['id'] as int;
+
+    if (cache != null) {
+      final cachedId = cache[key];
+      if (cachedId != null) {
+        return cachedId;
+      }
+    } else {
+      final whereBuffer = StringBuffer('type = ? AND name = ?');
+      final args = <Object?>[typeValue, name];
+      if (parentId == null) {
+        whereBuffer.write(' AND parent_id IS NULL');
+      } else {
+        whereBuffer.write(' AND parent_id = ?');
+        args.add(parentId);
+      }
+      whereBuffer.write(' AND is_group = ?');
+      args.add(isGroup ? 1 : 0);
+
+      final existing = await executor.query(
+        'categories',
+        columns: ['id'],
+        where: whereBuffer.toString(),
+        whereArgs: args,
+        limit: 1,
+      );
+      if (existing.isNotEmpty) {
+        final id = existing.first['id'] as int;
+        cache?[key] = id;
+        return id;
+      }
     }
 
     final values = <String, Object?>{
-      'type': _typeToString(type),
+      'type': typeValue,
       'name': name,
       'is_group': isGroup ? 1 : 0,
       'parent_id': parentId,
       'archived': 0,
     };
-    return executor.insert('categories', values);
+    final id = await executor.insert('categories', values);
+    cache?[key] = id;
+    return id;
   }
 
   String _typeToString(CategoryType type) {
@@ -221,6 +266,35 @@ class SqliteCategoriesRepository implements CategoriesRepository {
         return 'saving';
     }
   }
+}
+
+class _CategoryKey {
+  const _CategoryKey({
+    required this.type,
+    required this.name,
+    required this.parentId,
+    required this.isGroup,
+  });
+
+  final String type;
+  final String name;
+  final int? parentId;
+  final bool isGroup;
+
+  @override
+  bool operator ==(Object other) {
+    if (identical(this, other)) {
+      return true;
+    }
+    return other is _CategoryKey &&
+        other.type == type &&
+        other.name == name &&
+        other.parentId == parentId &&
+        other.isGroup == isGroup;
+  }
+
+  @override
+  int get hashCode => Object.hash(type, name, parentId, isGroup);
 }
 
 class _DefaultCategoryGroup {
