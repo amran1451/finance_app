@@ -131,9 +131,7 @@ class AppMigrations {
       'CREATE INDEX IF NOT EXISTS idx_payouts_date ON payouts(date)',
     ],
     12: [],
-    13: [
-      'ALTER TABLE periods ADD COLUMN start_anchor_payout_id INTEGER NULL',
-    ],
+    13: [],
   };
 
   /// Applies migrations from [oldVersion] (exclusive) up to [newVersion] (inclusive).
@@ -202,6 +200,15 @@ class AppMigrations {
             'CREATE UNIQUE INDEX IF NOT EXISTS idx_transactions_plan_instance_account '
             'ON transactions(plan_instance_id, account_id) '
             'WHERE plan_instance_id IS NOT NULL',
+          );
+          break;
+        case 13:
+          await _ensureColumnExists(
+            db,
+            tableName: 'periods',
+            columnName: 'start_anchor_payout_id',
+            alterStatement:
+                'ALTER TABLE periods ADD COLUMN start_anchor_payout_id INTEGER NULL',
           );
           break;
         default:
