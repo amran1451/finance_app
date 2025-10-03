@@ -19,29 +19,44 @@ typedef BudgetPeriodInfo = ({
   int days,
 });
 
-const _earlyPayoutGraceDays = 5;
+const _earlyPayoutGraceDays = 1;
 
 int calculateMaxDailyLimitMinor({
   required int remainingBudgetMinor,
+  required DateTime periodStart,
   required DateTime periodEndExclusive,
   required DateTime today,
+  required DateTime payoutDate,
+  required bool fromToday,
 }) {
   if (remainingBudgetMinor <= 0) {
     return 0;
   }
 
+  final normalizedStart = DateUtils.dateOnly(periodStart);
   final normalizedToday = DateUtils.dateOnly(today);
+  final normalizedPayout = DateUtils.dateOnly(payoutDate);
   final normalizedEndExclusive = DateUtils.dateOnly(periodEndExclusive);
   final periodEndDate = normalizedEndExclusive.subtract(const Duration(days: 1));
-  final rawDaysLeft = periodEndDate.difference(normalizedToday).inDays + 1;
+  var baseDate = fromToday ? normalizedToday : normalizedPayout;
+
+  final earliestAllowed = normalizedStart.subtract(const Duration(days: _earlyPayoutGraceDays));
+  if (baseDate.isBefore(earliestAllowed)) {
+    baseDate = earliestAllowed;
+  }
+
+  if (baseDate.isAfter(periodEndDate)) {
+    baseDate = periodEndDate;
+  }
+
+  final rawDaysLeft = periodEndDate.difference(baseDate).inDays + 1;
   final daysLeft = math.max(rawDaysLeft, 1);
 
-  if (normalizedToday.isAtSameMomentAs(periodEndDate)) {
+  if (daysLeft == 1) {
     return remainingBudgetMinor;
   }
 
-  final value = remainingBudgetMinor ~/ daysLeft;
-  return value;
+  return remainingBudgetMinor ~/ daysLeft;
 }
 
 // TODO: Persist selected period in Settings (ui.selected_period_ref).
@@ -463,14 +478,12 @@ final periodBudgetRemainingProvider =
   return value > maxCap ? maxCap : value;
 });
 
-typedef RemainingBudgetInfo = ({int fromPeriodStart, int fromToday});
-
 final remainingBudgetForPeriodProvider =
-    FutureProvider.family<RemainingBudgetInfo, PeriodRef>((ref, period) async {
+    FutureProvider.family<int, PeriodRef>((ref, period) async {
   ref.watch(dbTickProvider);
   final payout = await ref.watch(payoutForSelectedPeriodProvider.future);
   if (payout == null) {
-    return (fromPeriodStart: 0, fromToday: 0);
+    return 0;
   }
   final (anchor1, anchor2) = ref.watch(anchorDaysProvider);
   final bounds = period.bounds(anchor1, anchor2);
@@ -482,26 +495,8 @@ final remainingBudgetForPeriodProvider =
     start: periodStart,
     endExclusive: periodEndExclusive,
   );
-  final today = DateUtils.dateOnly(DateTime.now());
-  final truncatedToday = today.isBefore(periodStart)
-      ? periodStart
-      : today.isAfter(periodEndExclusive)
-          ? periodEndExclusive
-          : today;
-  var spentBeforeToday = 0;
-  if (truncatedToday.isAfter(periodStart)) {
-    spentBeforeToday = await repository.sumActualExpenses(
-      period: period,
-      start: periodStart,
-      endExclusive: truncatedToday,
-    );
-  }
-  final remainingFromStart = payout.amountMinor - spent;
-  final remainingFromToday = payout.amountMinor - spentBeforeToday;
-  return (
-    fromPeriodStart: remainingFromStart > 0 ? remainingFromStart : 0,
-    fromToday: remainingFromToday > 0 ? remainingFromToday : 0,
-  );
+  final remaining = payout.amountMinor - spent;
+  return remaining > 0 ? remaining : 0;
 });
 
 final plannedPoolBaseProvider = FutureProvider<int>((ref) async {
@@ -605,8 +600,11 @@ class BudgetLimitManager {
     final today = DateUtils.dateOnly(DateTime.now());
     final maxDaily = calculateMaxDailyLimitMinor(
       remainingBudgetMinor: remainingBudget,
+      periodStart: bounds.start,
       periodEndExclusive: bounds.endExclusive,
       today: today,
+      payoutDate: payout.date,
+      fromToday: payout.dailyLimitFromToday,
     );
     if (maxDaily <= 0 || currentDailyLimit <= maxDaily) {
       return null;

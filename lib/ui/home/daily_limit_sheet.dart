@@ -57,6 +57,8 @@ class _DailyLimitSheetState extends ConsumerState<_DailyLimitSheet> {
   String? _errorText;
   var _isSaving = false;
   late bool _fromToday;
+  String? _maxHint;
+  int? _lastMaxDailyValue;
 
   @override
   void initState() {
@@ -74,6 +76,83 @@ class _DailyLimitSheetState extends ConsumerState<_DailyLimitSheet> {
     super.dispose();
   }
 
+  int? _parseMinor(String rawValue) {
+    final normalized = rawValue
+        .replaceAll(RegExp(r'[\s\u00A0]'), '')
+        .replaceAll(',', '.')
+        .replaceAll('₽', '');
+    if (normalized.isEmpty) {
+      return null;
+    }
+    final parsed = double.tryParse(normalized);
+    if (parsed == null) {
+      return -1;
+    }
+    return (parsed * 100).round();
+  }
+
+  int? get _currentMaxDailyMinor {
+    final periodInfo = ref.read(currentPeriodProvider).valueOrNull;
+    if (periodInfo == null) {
+      return null;
+    }
+    final periodRef = ref.read(selectedPeriodRefProvider);
+    final remainingAsync = ref.read(remainingBudgetForPeriodProvider(periodRef));
+    final remainingBudget = remainingAsync.valueOrNull;
+    if (remainingBudget == null) {
+      return null;
+    }
+    if (remainingBudget <= 0) {
+      return 0;
+    }
+    final today = ref.read(todayDateProvider);
+    return calculateMaxDailyLimitMinor(
+      remainingBudgetMinor: remainingBudget,
+      periodStart: periodInfo.start,
+      periodEndExclusive: periodInfo.end,
+      today: today,
+      payoutDate: widget.payout.date,
+      fromToday: _fromToday,
+    );
+  }
+
+  void _enforceMaxIfNeeded({bool showHint = false}) {
+    final maxDaily = _currentMaxDailyMinor;
+    if (maxDaily == null) {
+      return;
+    }
+    final minorValue = _parseMinor(_controller.text.trim());
+    if (minorValue == null) {
+      if (_maxHint != null && !showHint) {
+        setState(() {
+          _maxHint = null;
+        });
+      }
+      return;
+    }
+    if (minorValue < 0) {
+      return;
+    }
+    if (minorValue > maxDaily) {
+      final replacementText = formatCurrencyMinorPlain(maxDaily);
+      _controller.value = TextEditingValue(
+        text: replacementText,
+        selection: TextSelection.collapsed(offset: replacementText.length),
+      );
+      setState(() {
+        _maxHint = 'Максимум: ${formatCurrencyMinorToRubles(maxDaily)}';
+      });
+    } else if (showHint && maxDaily >= 0) {
+      setState(() {
+        _maxHint = 'Максимум: ${formatCurrencyMinorToRubles(maxDaily)}';
+      });
+    } else if (_maxHint != null) {
+      setState(() {
+        _maxHint = null;
+      });
+    }
+  }
+
   Future<void> _save() async {
     if (_isSaving) {
       return;
@@ -84,20 +163,15 @@ class _DailyLimitSheetState extends ConsumerState<_DailyLimitSheet> {
     });
 
     final raw = _controller.text.trim();
-    final normalized = raw
-        .replaceAll(RegExp(r'[\s\u00A0]'), '')
-        .replaceAll(',', '.')
-        .replaceAll('₽', '');
-    if (normalized.isEmpty) {
+    final parsedMinor = _parseMinor(raw);
+    if (parsedMinor == null) {
       setState(() {
         _errorText = 'Введите сумму';
         _isSaving = false;
       });
       return;
     }
-
-    final parsed = double.tryParse(normalized);
-    if (parsed == null) {
+    if (parsedMinor < 0) {
       setState(() {
         _errorText = 'Введите число';
         _isSaving = false;
@@ -105,7 +179,7 @@ class _DailyLimitSheetState extends ConsumerState<_DailyLimitSheet> {
       return;
     }
 
-    var minorValue = (parsed * 100).round();
+    var minorValue = parsedMinor;
     if (minorValue <= 0) {
       setState(() {
         _errorText = 'Введите положительную сумму';
@@ -114,7 +188,7 @@ class _DailyLimitSheetState extends ConsumerState<_DailyLimitSheet> {
       return;
     }
 
-    final maxDaily = _computeMaxDailyMinor(fromToday: _fromToday);
+    final maxDaily = _currentMaxDailyMinor;
     if (maxDaily != null && minorValue > maxDaily) {
       final messenger = ScaffoldMessenger.of(context);
       final replacementText = formatCurrencyMinorPlain(maxDaily);
@@ -132,6 +206,9 @@ class _DailyLimitSheetState extends ConsumerState<_DailyLimitSheet> {
           ),
         );
       minorValue = maxDaily;
+      setState(() {
+        _maxHint = 'Максимум: ${formatCurrencyMinorToRubles(maxDaily)}';
+      });
     }
 
     try {
@@ -162,27 +239,6 @@ class _DailyLimitSheetState extends ConsumerState<_DailyLimitSheet> {
     }
   }
 
-  int? _computeMaxDailyMinor({required bool fromToday}) {
-    final periodInfo = ref.read(currentPeriodProvider).valueOrNull;
-    if (periodInfo == null) {
-      return null;
-    }
-    final periodRef = ref.read(selectedPeriodRefProvider);
-    final remainingAsync = ref.read(remainingBudgetForPeriodProvider(periodRef));
-    final remainingBudget = remainingAsync.valueOrNull;
-    if (remainingBudget == null) {
-      return null;
-    }
-    final today = ref.read(todayDateProvider);
-    final maxDaily = calculateMaxDailyLimitMinor(
-      remainingBudgetMinor:
-          fromToday ? remainingBudget.fromToday : remainingBudget.fromPeriodStart,
-      periodEndExclusive: periodInfo.end,
-      today: today,
-    );
-    return maxDaily > 0 ? maxDaily : 0;
-  }
-
   @override
   Widget build(BuildContext context) {
     final periodInfo = ref.watch(currentPeriodProvider).valueOrNull;
@@ -191,13 +247,26 @@ class _DailyLimitSheetState extends ConsumerState<_DailyLimitSheet> {
     final today = ref.watch(todayDateProvider);
     final maxDaily = periodInfo != null && remainingAsync.hasValue
         ? calculateMaxDailyLimitMinor(
-            remainingBudgetMinor: _fromToday
-                ? remainingAsync.value!.fromToday
-                : remainingAsync.value!.fromPeriodStart,
+            remainingBudgetMinor: remainingAsync.value!,
+            periodStart: periodInfo.start,
             periodEndExclusive: periodInfo.end,
             today: today,
+            payoutDate: widget.payout.date,
+            fromToday: _fromToday,
           )
         : null;
+
+    if (maxDaily != _lastMaxDailyValue) {
+      _lastMaxDailyValue = maxDaily;
+      if (maxDaily != null) {
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (!mounted) {
+            return;
+          }
+          _enforceMaxIfNeeded();
+        });
+      }
+    }
 
     return Column(
       mainAxisSize: MainAxisSize.min,
@@ -216,9 +285,7 @@ class _DailyLimitSheetState extends ConsumerState<_DailyLimitSheet> {
             prefixText: '₽ ',
             hintText: 'Например, 1500',
             errorText: _errorText,
-            helperText: maxDaily != null
-                ? 'Максимум на период: ${formatCurrencyMinorToRubles(maxDaily)}'
-                : null,
+            helperText: _maxHint,
           ),
           onChanged: (_) {
             if (_errorText != null) {
@@ -226,6 +293,7 @@ class _DailyLimitSheetState extends ConsumerState<_DailyLimitSheet> {
                 _errorText = null;
               });
             }
+            _enforceMaxIfNeeded();
           },
         ),
         const SizedBox(height: 16),
@@ -240,7 +308,10 @@ class _DailyLimitSheetState extends ConsumerState<_DailyLimitSheet> {
           onChanged: (value) {
             setState(() {
               _fromToday = value ?? false;
+              _maxHint = null;
+              _lastMaxDailyValue = null;
             });
+            _enforceMaxIfNeeded(showHint: true);
           },
         ),
         const SizedBox(height: 8),
