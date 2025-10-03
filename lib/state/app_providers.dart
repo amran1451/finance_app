@@ -20,6 +20,19 @@ import '../data/repositories/transactions_repository.dart' as transactions_repo;
 import '../utils/period_utils.dart';
 import 'db_refresh.dart';
 
+class TelemetryService {
+  const TelemetryService();
+
+  void log(String event, {Map<String, Object?>? properties}) {
+    final payload = properties == null || properties.isEmpty ? '' : ' $properties';
+    debugPrint('[telemetry] $event$payload');
+  }
+}
+
+final telemetryProvider = Provider<TelemetryService>((_) {
+  return const TelemetryService();
+});
+
 final appDatabaseProvider = Provider<AppDatabase>((ref) => AppDatabase.instance);
 
 final appBootstrapProvider = FutureProvider<void>((ref) async {

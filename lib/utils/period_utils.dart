@@ -54,6 +54,14 @@ class PeriodRef {
   }
 }
 
+extension PeriodRefIdentifier on PeriodRef {
+  String get id {
+    final monthLabel = month.toString().padLeft(2, '0');
+    final halfLabel = half == HalfPeriod.first ? 'H1' : 'H2';
+    return '${year.toString().padLeft(4, '0')}-$monthLabel-$halfLabel';
+  }
+}
+
 DateTime normalizeDate(DateTime date) {
   return DateTime(date.year, date.month, date.day);
 }

@@ -98,19 +98,49 @@ class SqlitePeriodsRepository implements PeriodsRepository {
     return db.transaction((txn) async {
       final existing = await _findPeriod(txn, year, month, half);
       if (existing != null) {
-        final updated = Map<String, Object?>.from(existing)
-          ..['start'] = _formatDate(start)
-          ..['end_exclusive'] = _formatDate(endExclusive);
-        await txn.update(
-          'periods',
-          {
-            'start': _formatDate(start),
-            'end_exclusive': _formatDate(endExclusive),
-          },
-          where: 'id = ?',
-          whereArgs: [existing['id']],
-        );
-        return _mapEntry(updated);
+        final normalizedStart = normalizeDate(start);
+        final normalizedEndExclusive = normalizeDate(endExclusive);
+        final storedStartRaw = existing['start'] as String?;
+        final storedEndRaw = existing['end_exclusive'] as String?;
+        final storedStartParsed = _parseDate(storedStartRaw);
+        final storedEndParsed = _parseDate(storedEndRaw);
+        final storedStart =
+            storedStartParsed != null ? normalizeDate(storedStartParsed) : null;
+        final storedEndExclusive =
+            storedEndParsed != null ? normalizeDate(storedEndParsed) : null;
+
+        var effectiveStart = storedStart ?? normalizedStart;
+        if (normalizedStart.isBefore(effectiveStart)) {
+          effectiveStart = normalizedStart;
+        }
+
+        var effectiveEndExclusive = storedEndExclusive ?? normalizedEndExclusive;
+        if (normalizedEndExclusive.isAfter(effectiveEndExclusive)) {
+          effectiveEndExclusive = normalizedEndExclusive;
+        }
+
+        final needsStartUpdate = storedStart == null
+            ? true
+            : !effectiveStart.isAtSameMomentAs(storedStart);
+        final needsEndUpdate = storedEndExclusive == null
+            ? true
+            : !effectiveEndExclusive.isAtSameMomentAs(storedEndExclusive);
+
+        if (needsStartUpdate || needsEndUpdate) {
+          await txn.update(
+            'periods',
+            {
+              'start': _formatDate(effectiveStart),
+              'end_exclusive': _formatDate(effectiveEndExclusive),
+            },
+            where: 'id = ?',
+            whereArgs: [existing['id']],
+          );
+          existing['start'] = _formatDate(effectiveStart);
+          existing['end_exclusive'] = _formatDate(effectiveEndExclusive);
+        }
+
+        return _mapEntry(existing);
       }
 
       final id = await txn.insert('periods', {

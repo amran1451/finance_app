@@ -9,6 +9,7 @@ import '../../state/budget_providers.dart';
 import '../../state/db_refresh.dart';
 import '../../utils/formatting.dart';
 import '../../utils/payout_rules.dart';
+import '../../utils/period_utils.dart';
 
 Future<void> showPayoutEditSheet(
   BuildContext context, {
@@ -376,6 +377,8 @@ class _PayoutEditSheetState extends ConsumerState<_PayoutEditSheet> {
     }
 
     var shiftPeriod = false;
+    final telemetry = ref.read(telemetryProvider);
+    final selectedPeriod = ref.read(selectedPeriodRefProvider);
     if (normalizedDate.isBefore(_periodStart)) {
       final pickedLabel = DateFormat('dd.MM', 'ru_RU').format(normalizedDate);
       final confirm = await showDialog<bool>(
@@ -399,6 +402,11 @@ class _PayoutEditSheetState extends ConsumerState<_PayoutEditSheet> {
         ),
       );
       if (confirm != true) {
+        telemetry.log('period_shift_cancelled', properties: {
+          'fromStart': _periodStart.toIso8601String(),
+          'payoutDate': normalizedDate.toIso8601String(),
+          'periodId': selectedPeriod.id,
+        });
         if (!mounted) {
           return;
         }
@@ -414,7 +422,7 @@ class _PayoutEditSheetState extends ConsumerState<_PayoutEditSheet> {
       final payoutsRepo = ref.read(payoutsRepoProvider);
       final initial = widget.initial;
       final type = _resolveType();
-      final selected = ref.read(selectedPeriodRefProvider);
+      final selected = selectedPeriod;
       final result = await payoutsRepo.upsertWithClampToSelectedPeriod(
         existing: initial,
         selectedPeriod: selected,
@@ -436,6 +444,12 @@ class _PayoutEditSheetState extends ConsumerState<_PayoutEditSheet> {
         return;
       }
       if (shiftPeriod) {
+        telemetry.log('period_shift_applied', properties: {
+          'fromStart': _periodStart.toIso8601String(),
+          'toStart': normalizedDate.toIso8601String(),
+          'payoutDate': normalizedDate.toIso8601String(),
+          'periodId': selected.id,
+        });
         final shiftLabel = DateFormat('dd.MM', 'ru_RU').format(normalizedDate);
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('Период сдвинут на $shiftLabel • Выплата учтена')),

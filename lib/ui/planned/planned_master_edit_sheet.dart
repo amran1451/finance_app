@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:intl/intl.dart';
 
 import '../../data/models/category.dart';
 import '../../data/models/transaction_record.dart';
@@ -13,7 +14,6 @@ import '../../state/planned_master_providers.dart';
 import '../../state/planned_providers.dart';
 import '../../utils/app_exceptions.dart';
 import '../../utils/color_hex.dart';
-import '../../utils/date_ru.dart';
 import '../../utils/formatting.dart';
 import '../../utils/period_utils.dart';
 import '../settings/necessity_settings_screen.dart';
@@ -768,9 +768,10 @@ class _PlannedMasterEditFormState
   }
 
   String _formatPeriodLabel(DateTime start, DateTime endExclusive) {
-    final month = ruMonthShort(start.month);
-    final endInclusive = endExclusive.subtract(const Duration(days: 1));
-    return '$month ${start.day}–${endInclusive.day}';
+    final startLabel = DateFormat('d MMM', 'ru').format(start);
+    final endLabel =
+        DateFormat('d MMM', 'ru').format(endExclusive.subtract(const Duration(days: 1)));
+    return '$startLabel – $endLabel';
   }
 
   void _showSnack(String message, {Color? background, Color? textColor}) {
