@@ -126,6 +126,12 @@ class SqlitePayoutsRepository implements PayoutsRepository {
   Future<void> delete(int id) async {
     final db = await _db;
     await db.transaction((txn) async {
+      final impactedPeriods = await txn.query(
+        'periods',
+        where: 'start_anchor_payout_id = ?',
+        whereArgs: [id],
+      );
+
       await txn.delete(
         'transactions',
         where: 'payout_id = ?',
@@ -135,6 +141,11 @@ class SqlitePayoutsRepository implements PayoutsRepository {
         'payouts',
         where: 'id = ?',
         whereArgs: [id],
+      );
+
+      await _restorePeriodStarts(
+        txn,
+        periodRows: impactedPeriods,
       );
     });
   }
@@ -500,6 +511,7 @@ class SqlitePayoutsRepository implements PayoutsRepository {
         newStart: normalizedPicked,
         anchor1: anchor1,
         anchor2: anchor2,
+        payoutId: payoutId,
       );
     }
 
@@ -515,6 +527,7 @@ class SqlitePayoutsRepository implements PayoutsRepository {
     required DateTime newStart,
     required int anchor1,
     required int anchor2,
+    required int payoutId,
   }) async {
     final normalizedStart = normalizeDate(newStart);
     final rows = await txn.query(
@@ -553,10 +566,86 @@ class SqlitePayoutsRepository implements PayoutsRepository {
       'periods',
       {
         'start': _formatDate(normalizedStart),
+        'start_anchor_payout_id': payoutId,
       },
       where: 'id = ?',
       whereArgs: [id],
     );
+  }
+
+  Future<void> _restorePeriodStarts(
+    Transaction txn, {
+    required List<Map<String, Object?>> periodRows,
+  }) async {
+    if (periodRows.isEmpty) {
+      return;
+    }
+
+    final (anchor1Raw, anchor2Raw) = await _loadAnchorDays(txn);
+    final anchors = [anchor1Raw, anchor2Raw]..sort();
+
+    for (final row in periodRows) {
+      final id = row['id'] as int?;
+      final year = row['year'] as int?;
+      final month = row['month'] as int?;
+      final halfRaw = row['half'] as String?;
+      if (id == null || year == null || month == null || halfRaw == null) {
+        continue;
+      }
+
+      final half = halfRaw == 'H1' ? HalfPeriod.first : HalfPeriod.second;
+      final period = PeriodRef(year: year, month: month, half: half);
+      final defaultBounds = period.bounds(anchors[0], anchors[1]);
+      final defaultStart = normalizeDate(defaultBounds.start);
+      final storedEndRaw = row['end_exclusive'] as String?;
+      final storedEndParsed = _parseDate(storedEndRaw) ?? defaultBounds.endExclusive;
+      final normalizedEndExclusive = normalizeDate(storedEndParsed);
+
+      var earliestAllowed = normalizeDate(
+        defaultStart.subtract(const Duration(days: kEarlyPayoutGraceDays)),
+      );
+      if (!normalizedEndExclusive.isAfter(earliestAllowed)) {
+        earliestAllowed = defaultStart;
+      }
+
+      final candidates = await txn.query(
+        'payouts',
+        columns: ['id', 'date'],
+        where: 'date >= ? AND date < ?',
+        whereArgs: [
+          _formatDate(earliestAllowed),
+          _formatDate(normalizedEndExclusive),
+        ],
+        orderBy: 'date ASC, id ASC',
+        limit: 1,
+      );
+
+      var nextStart = defaultStart;
+      int? anchorPayoutId;
+
+      if (candidates.isNotEmpty) {
+        final candidate = candidates.first;
+        final candidateDateRaw = candidate['date'] as String?;
+        final candidateDate = _parseDate(candidateDateRaw);
+        if (candidateDate != null) {
+          final normalizedCandidate = normalizeDate(candidateDate);
+          if (normalizedCandidate.isBefore(defaultStart)) {
+            nextStart = normalizedCandidate;
+            anchorPayoutId = candidate['id'] as int?;
+          }
+        }
+      }
+
+      await txn.update(
+        'periods',
+        {
+          'start': _formatDate(nextStart),
+          'start_anchor_payout_id': anchorPayoutId,
+        },
+        where: 'id = ?',
+        whereArgs: [id],
+      );
+    }
   }
 
   String _halfToDb(HalfPeriod half) {
