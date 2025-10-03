@@ -33,8 +33,7 @@ class HomeScreen extends ConsumerWidget {
     final entryController = ref.read(entryFlowControllerProvider.notifier);
     final transactionsAsync = ref.watch(halfPeriodTransactionsProvider);
     final period = ref.watch(selectedPeriodRefProvider);
-    final spentTodayAsync = ref.watch(spentTodayProvider(period));
-    final todayProgressState = ref.watch(todayProgressProvider);
+    final metricsAsync = ref.watch(metricsProvider);
     final (periodStart, periodEndExclusive) = ref.watch(periodBoundsProvider);
     final label = ref.watch(periodLabelProvider);
     final payoutAsync = ref.watch(payoutForSelectedPeriodProvider);
@@ -65,32 +64,27 @@ class HomeScreen extends ConsumerWidget {
         .where((record) => record.type == TransactionType.income)
         .fold<int>(0, (sum, record) => sum + record.amountMinor);
 
-    final todayHasError = spentTodayAsync.hasError;
-    final isTodayLoading = spentTodayAsync.isLoading;
-    final todaySubtitle = todayHasError
+    final metricsData = metricsAsync.asData?.value;
+    final metricsHasError = metricsAsync is AsyncError;
+    final metricsLoading = metricsAsync.isLoading;
+    final todaySubtitle = metricsHasError
         ? 'Ошибка загрузки'
-        : isTodayLoading
+        : metricsLoading || metricsData == null
             ? 'Загрузка…'
-            : todayProgressState.show
-                ? '${formatCurrencyMinor(todayProgressState.spent)} из '
-                    '${formatCurrencyMinor(todayProgressState.limit)}'
+            : metricsData.hasDailyLimit
+                ? '${formatCurrencyMinor(metricsData.todaySpent)} из '
+                    '${formatCurrencyMinor(metricsData.dailyLimit)}'
                 : '—';
-    final todayProgressValue = !todayProgressState.show
-        ? 0.0
-        : todayProgressState.limit == 0
-            ? 0.0
-            : (todayProgressState.spent / todayProgressState.limit)
-                .clamp(0.0, 1.0);
     final Widget todayChild;
-    if (todayHasError) {
+    if (metricsHasError) {
       todayChild = const SizedBox.shrink();
-    } else if (isTodayLoading) {
+    } else if (metricsLoading || metricsData == null) {
       todayChild = const LinearProgressIndicator();
-    } else if (!todayProgressState.show) {
+    } else if (!metricsData.hasDailyLimit) {
       todayChild = const SizedBox.shrink();
     } else {
       todayChild = ProgressLine(
-        value: todayProgressValue,
+        value: metricsData.todayProgress,
         label: 'Прогресс дня',
       );
     }
@@ -246,13 +240,10 @@ class HomeScreen extends ConsumerWidget {
                       },
                     );
                   }
-                  final period = ref.watch(selectedPeriodRefProvider);
                   final dailyLimitMinor = ref.watch(periodDailyLimitProvider);
-                  final dailyRemaining = ref.watch(dailyBudgetRemainingProvider(period));
                   return _LimitCards(
                     dailyLimit: dailyLimitMinor,
-                    dailyRemaining: dailyRemaining,
-                    leftPeriod: ref.watch(periodBudgetRemainingProvider(period)),
+                    metrics: metricsAsync,
                     onEditLimit: () async {
                       final saved = await showEditDailyLimitSheet(context, ref);
                       if (!context.mounted || !saved) {
@@ -450,14 +441,12 @@ class _AddPayoutCTA extends StatelessWidget {
 class _LimitCards extends StatelessWidget {
   const _LimitCards({
     required this.dailyLimit,
-    required this.dailyRemaining,
-    required this.leftPeriod,
+    required this.metrics,
     required this.onEditLimit,
   });
 
   final int dailyLimit;
-  final AsyncValue<int> dailyRemaining;
-  final AsyncValue<int> leftPeriod;
+  final AsyncValue<MetricsSnapshot> metrics;
   final VoidCallback onEditLimit;
 
   @override
@@ -466,16 +455,16 @@ class _LimitCards extends StatelessWidget {
       if (dailyLimit <= 0) {
         return '—';
       }
-      return dailyRemaining.when(
-        data: (value) => formatCurrencyMinorToRubles(value),
+      return metrics.when(
+        data: (value) => formatCurrencyMinorToRubles(value.dailyLeft),
         loading: () => '…',
         error: (_, __) => '—',
       );
     }
 
-    String buildPeriodLabel(AsyncValue<int> value) {
-      return value.when(
-        data: (v) => formatCurrencyMinorToRubles(v),
+    String buildPeriodLabel() {
+      return metrics.when(
+        data: (value) => formatCurrencyMinorToRubles(value.periodBudgetLeft),
         loading: () => '…',
         error: (_, __) => '—',
       );
@@ -495,7 +484,7 @@ class _LimitCards extends StatelessWidget {
         Expanded(
           child: _RemainingInfoCard(
             label: 'Осталось в этом бюджете',
-            value: buildPeriodLabel(leftPeriod),
+            value: buildPeriodLabel(),
             alignment: TextAlign.right,
           ),
         ),
