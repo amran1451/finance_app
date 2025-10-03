@@ -432,6 +432,30 @@ class _PayoutEditSheetState extends ConsumerState<_PayoutEditSheet> {
         accountId: accountId,
         shiftPeriodStart: shiftPeriod,
       );
+      if (shiftPeriod) {
+        try {
+          await _closePreviousPeriodIfNeeded(selected);
+          ref.invalidate(periodToCloseProvider);
+        } catch (error, stackTrace) {
+          FlutterError.reportError(
+            FlutterErrorDetails(
+              exception: error,
+              stack: stackTrace,
+              library: 'PayoutEditSheet',
+              context: ErrorDescription(
+                'while closing previous period after shifting start',
+              ),
+            ),
+          );
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text('Не удалось закрыть предыдущий период: $error'),
+              ),
+            );
+          }
+        }
+      }
       final limitManager = ref.read(budgetLimitManagerProvider);
       final adjustedLimit = await limitManager.adjustDailyLimitIfNeeded(
         payout: result.payout,
@@ -518,5 +542,33 @@ class _PayoutEditSheetState extends ConsumerState<_PayoutEditSheet> {
       return last;
     }
     return normalized;
+  }
+
+  Future<void> _closePreviousPeriodIfNeeded(PeriodRef current) async {
+    final previous = current.prevHalf();
+    final status = await ref.read(periodStatusProvider(previous).future);
+    if (status.closed) {
+      return;
+    }
+    final bounds = ref.read(periodBoundsForProvider(previous));
+    final today = DateUtils.dateOnly(DateTime.now());
+    final normalizedEndExclusive = DateUtils.dateOnly(bounds.$2);
+    if (today.isBefore(normalizedEndExclusive)) {
+      return;
+    }
+
+    final read = ref.read;
+    final spent = await read(spentForPeriodProvider(previous).future);
+    final planned = await read(plannedIncludedAmountForPeriodProvider(previous).future);
+    final payout = await read(payoutForPeriodProvider(previous).future);
+
+    await read(periodsRepoProvider).closePeriod(
+      previous,
+      payoutId: payout?.id,
+      dailyLimitMinor: payout?.dailyLimitMinor,
+      spentMinor: spent,
+      plannedIncludedMinor: planned,
+      carryoverMinor: 0,
+    );
   }
 }
