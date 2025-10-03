@@ -11,6 +11,7 @@ import '../data/repositories/transactions_repository.dart';
 import 'app_providers.dart';
 import 'db_refresh.dart';
 import '../utils/period_utils.dart';
+import '../utils/plan_formatting.dart';
 
 typedef BudgetPeriodInfo = ({
   DateTime start,
@@ -193,28 +194,18 @@ final payoutForSelectedPeriodProvider = FutureProvider<Payout?>((ref) async {
   }
 });
 
-String _ruMonthShort(int month) {
-  const m = ['янв', 'фев', 'мар', 'апр', 'май', 'июн', 'июл', 'авг', 'сен', 'окт', 'ноя', 'дек'];
-  return m[(month - 1).clamp(0, 11)];
-}
-
-/// "сен 1–15" / "сен 15–30(31)" для выбранного месяца и половины периода.
+/// Отображаемый заголовок текущего периода в формате «dd MMM – dd MMM».
 final periodLabelProvider = Provider<String>((ref) {
-  final (anchor1, anchor2) = ref.watch(anchorDaysProvider);
-  final period = ref.watch(selectedPeriodRefProvider);
-  final monthShort = _ruMonthShort(period.month);
-  final lastDayOfMonth = DateTime(period.year, period.month + 1, 0).day;
+  String formatRange(DateTime start, DateTime endExclusive) {
+    return compactPeriodLabel(start, endExclusive) ?? '';
+  }
 
-  int clampDay(int value) => math.max(1, math.min(value, lastDayOfMonth));
-
-  final startAnchor =
-      period.half == HalfPeriod.first ? anchor1 : anchor2;
-  final endAnchor = period.half == HalfPeriod.first ? anchor2 : lastDayOfMonth;
-
-  final startDay = clampDay(startAnchor);
-  final endDay = math.max(startDay, clampDay(endAnchor));
-
-  return '$monthShort $startDay–$endDay';
+  final bounds = ref.watch(periodBoundsProvider);
+  final periodInfo = ref.watch(currentPeriodProvider);
+  return periodInfo.maybeWhen(
+    data: (value) => formatRange(value.anchorStart, value.end),
+    orElse: () => formatRange(bounds.$1, bounds.$2),
+  );
 });
 
 extension PeriodNav on StateController<PeriodRef> {
@@ -271,7 +262,7 @@ final currentPeriodProvider = FutureProvider<BudgetPeriodInfo>((ref) async {
     days = 1;
   }
   return (
-    start: bounds.$1,
+    start: anchorStart,
     end: bounds.$2,
     anchorStart: anchorStart,
     days: days,

@@ -66,16 +66,27 @@ class _PayoutEditSheetState extends ConsumerState<_PayoutEditSheet> {
   bool _isProcessing = false;
   late final DateTime _periodStart;
   late final DateTime _periodEndExclusive;
+  late final DateTime _periodMinDate;
 
   @override
   void initState() {
     super.initState();
     final initial = widget.initial;
     final (start, endEx) = ref.read(periodBoundsProvider);
-    _periodStart = start;
+    final periodInfo = ref.read(currentPeriodProvider).valueOrNull;
+    final effectiveStart = DateTime(
+      (periodInfo?.anchorStart ?? start).year,
+      (periodInfo?.anchorStart ?? start).month,
+      (periodInfo?.anchorStart ?? start).day,
+    );
+    _periodStart = effectiveStart;
     _periodEndExclusive = endEx;
+    _periodMinDate = effectiveStart.subtract(const Duration(days: 1));
     _type = initial?.type ?? widget.forcedType;
-    _date = initial?.date ?? _periodStart;
+    final normalizedInitial = initial?.date == null
+        ? null
+        : DateTime(initial!.date.year, initial.date.month, initial.date.day);
+    _date = normalizedInitial ?? _periodStart;
     _accountId = initial?.accountId;
     _accountInitialized = _accountId != null;
     final amountText = initial == null ? '' : _formatAmountMinor(initial.amountMinor);
@@ -206,8 +217,8 @@ class _PayoutEditSheetState extends ConsumerState<_PayoutEditSheet> {
                 final picked = await showDatePicker(
                   context: context,
                   initialDate: _clampToPeriod(_date),
-                  firstDate: DateTime.now().subtract(const Duration(days: 365)),
-                  lastDate: DateTime.now().add(const Duration(days: 365)),
+                  firstDate: _periodMinDate,
+                  lastDate: _periodEndExclusive.subtract(const Duration(days: 1)),
                 );
                 if (picked != null) {
                   setState(() {
@@ -417,13 +428,14 @@ class _PayoutEditSheetState extends ConsumerState<_PayoutEditSheet> {
   }
 
   DateTime _clampToPeriod(DateTime date) {
-    if (date.isBefore(_periodStart)) {
-      return _periodStart;
+    final normalized = DateTime(date.year, date.month, date.day);
+    if (normalized.isBefore(_periodMinDate)) {
+      return _periodMinDate;
     }
     final last = _periodEndExclusive.subtract(const Duration(days: 1));
-    if (date.isAfter(last)) {
+    if (normalized.isAfter(last)) {
       return last;
     }
-    return date;
+    return normalized;
   }
 }
