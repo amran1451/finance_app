@@ -27,6 +27,8 @@ abstract class TransactionsRepository {
 
   Future<List<TransactionRecord>> getAll();
 
+  Future<TransactionRecord?> findByPayoutId(int payoutId);
+
   Future<List<TransactionRecord>> getByPeriod(
     DateTime from,
     DateTime to, {
@@ -147,6 +149,21 @@ class SqliteTransactionsRepository implements TransactionsRepository {
   final AppDatabase _database;
 
   Future<Database> get _db async => _database.database;
+
+  @override
+  Future<TransactionRecord?> findByPayoutId(int payoutId) async {
+    final db = await _db;
+    final rows = await db.query(
+      'transactions',
+      where: 'payout_id = ?',
+      whereArgs: [payoutId],
+      limit: 1,
+    );
+    if (rows.isEmpty) {
+      return null;
+    }
+    return TransactionRecord.fromMap(rows.first);
+  }
 
   @override
   Future<int> add(
