@@ -89,18 +89,28 @@ final selectedPeriodRefProvider = StateProvider<PeriodRef>((ref) {
   return periodRefForDate(now, a1, a2);
 });
 
-final periodStatusProvider = FutureProvider.family<PeriodStatus, PeriodRef>((ref, period) async {
+final periodEntryProvider = FutureProvider.family<PeriodEntry, PeriodRef>((ref, period) async {
   ref.watch(dbTickProvider);
   final repository = ref.watch(periodsRepoProvider);
   final (anchor1, anchor2) = ref.watch(anchorDaysProvider);
   final bounds = period.bounds(anchor1, anchor2);
-  await repository.getOrCreate(
+  return repository.getOrCreate(
     period.year,
     period.month,
     period.half,
     bounds.start,
     bounds.endExclusive,
   );
+});
+
+final selectedPeriodEntryProvider = FutureProvider<PeriodEntry>((ref) async {
+  final period = ref.watch(selectedPeriodRefProvider);
+  return ref.watch(periodEntryProvider(period).future);
+});
+
+final periodStatusProvider = FutureProvider.family<PeriodStatus, PeriodRef>((ref, period) async {
+  await ref.watch(periodEntryProvider(period).future);
+  final repository = ref.watch(periodsRepoProvider);
   return repository.getStatus(period);
 });
 
@@ -108,11 +118,10 @@ final plannedIncludedAmountForPeriodProvider =
     FutureProvider.family<int, PeriodRef>((ref, period) async {
   ref.watch(dbTickProvider);
   final repository = ref.watch(transactionsRepoProvider);
-  final (anchor1, anchor2) = ref.watch(anchorDaysProvider);
-  final bounds = period.bounds(anchor1, anchor2);
+  final entry = await ref.watch(periodEntryProvider(period).future);
   final items = await repository.listPlannedByPeriod(
-    start: bounds.start,
-    endExclusive: bounds.endExclusive,
+    start: entry.start,
+    endExclusive: entry.endExclusive,
     type: 'expense',
     onlyIncluded: true,
   );
@@ -125,11 +134,10 @@ final plannedIncludedAmountForPeriodProvider =
 final spentForPeriodProvider = FutureProvider.family<int, PeriodRef>((ref, period) async {
   ref.watch(dbTickProvider);
   final repository = ref.watch(transactionsRepoProvider);
-  final (anchor1, anchor2) = ref.watch(anchorDaysProvider);
-  final bounds = period.bounds(anchor1, anchor2);
+  final entry = await ref.watch(periodEntryProvider(period).future);
   final unplanned = await repository.sumUnplannedExpensesInRange(
-    bounds.start,
-    bounds.endExclusive,
+    entry.start,
+    entry.endExclusive,
   );
   final planned = await ref.watch(plannedIncludedAmountForPeriodProvider(period).future);
   return unplanned + planned;
@@ -168,10 +176,16 @@ final payoutsHistoryProvider = FutureProvider<List<Payout>>((ref) {
 
 /// (start, endExclusive) для выбранного периода (конкретный месяц)
 final periodBoundsProvider = Provider<(DateTime start, DateTime endExclusive)>((ref) {
-  final (a1, a2) = ref.watch(anchorDaysProvider);
-  final sel = ref.watch(selectedPeriodRefProvider);
-  final bounds = periodBoundsFor(sel, a1, a2);
-  return (bounds.start, bounds.endExclusive);
+  final entryAsync = ref.watch(selectedPeriodEntryProvider);
+  return entryAsync.maybeWhen(
+    data: (entry) => (entry.start, entry.endExclusive),
+    orElse: () {
+      final (a1, a2) = ref.watch(anchorDaysProvider);
+      final sel = ref.watch(selectedPeriodRefProvider);
+      final bounds = periodBoundsFor(sel, a1, a2);
+      return (bounds.start, bounds.endExclusive);
+    },
+  );
 });
 
 @Deprecated('Use periodBoundsProvider')
@@ -486,13 +500,12 @@ final periodBudgetBaseProvider = Provider<int>((ref) {
 final sumActualExpensesProvider =
     FutureProvider.family<int, PeriodRef>((ref, period) async {
   ref.watch(dbTickProvider);
-  final (anchor1, anchor2) = ref.watch(anchorDaysProvider);
-  final bounds = period.bounds(anchor1, anchor2);
+  final entry = await ref.watch(periodEntryProvider(period).future);
   final repo = ref.watch(transactionsRepoProvider);
   return repo.sumActualExpenses(
     period: period,
-    start: bounds.start,
-    endExclusive: bounds.endExclusive,
+    start: entry.start,
+    endExclusive: entry.endExclusive,
   );
 });
 
@@ -503,11 +516,10 @@ final remainingBudgetForPeriodProvider =
   if (payout == null) {
     return 0;
   }
-  final (anchor1, anchor2) = ref.watch(anchorDaysProvider);
-  final bounds = period.bounds(anchor1, anchor2);
+  final entry = await ref.watch(periodEntryProvider(period).future);
   final repository = ref.watch(transactionsRepoProvider);
-  final periodStart = DateUtils.dateOnly(bounds.start);
-  final periodEndExclusive = DateUtils.dateOnly(bounds.endExclusive);
+  final periodStart = DateUtils.dateOnly(entry.start);
+  final periodEndExclusive = DateUtils.dateOnly(entry.endExclusive);
   final spent = await repository.sumActualExpenses(
     period: period,
     start: periodStart,

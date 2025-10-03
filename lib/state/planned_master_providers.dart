@@ -71,15 +71,14 @@ final availableExpenseMastersProvider = FutureProvider.family<
     List<PlannedMasterView>, (PeriodRef, ExpenseMasterFilters)>((ref, args) async {
   ref.watch(dbTickProvider);
   ref.watch(selectedPeriodRefProvider);
-  final (anchor1, anchor2) = ref.watch(anchorDaysProvider);
   final period = args.$1;
   final filters = args.$2;
-  final bounds = period.bounds(anchor1, anchor2);
+  final entry = await ref.watch(periodEntryProvider(period).future);
   final repository = ref.watch(plannedMasterRepoProvider);
   final search = filters.search.trim().isEmpty ? null : filters.search.trim();
   return repository.queryAvailableForPeriod(
-    start: bounds.start,
-    endExclusive: bounds.endExclusive,
+    start: entry.start,
+    endExclusive: entry.endExclusive,
     categoryId: filters.categoryId,
     necessityId: filters.necessityId,
     search: search,

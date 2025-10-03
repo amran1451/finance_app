@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:intl/intl.dart';
 
 import '../../data/models/transaction_record.dart';
 import '../../data/repositories/planned_master_repository.dart';
@@ -8,9 +9,7 @@ import '../../state/db_refresh.dart';
 import '../../state/planned_master_providers.dart';
 import '../../state/app_providers.dart';
 import '../../state/planned_providers.dart';
-import '../../utils/date_ru.dart';
 import '../../utils/formatting.dart';
-import '../../utils/period_utils.dart';
 import 'planned_assign_to_period_sheet.dart';
 import 'planned_master_edit_sheet.dart';
 
@@ -443,7 +442,8 @@ enum _DeleteMasterChoice {
 enum _InstanceMenuAction { deleteInstance, deleteMaster }
 
 String periodBadge(DateTime start, DateTime endEx) {
-  final month = ruMonthShort(start.month);
-  final to = endEx.subtract(const Duration(days: 1)).day;
-  return '$month ${start.day}–$to';
+  final startLabel = DateFormat('d MMM', 'ru').format(start);
+  final endLabel =
+      DateFormat('d MMM', 'ru').format(endEx.subtract(const Duration(days: 1)));
+  return '$startLabel – $endLabel';
 }

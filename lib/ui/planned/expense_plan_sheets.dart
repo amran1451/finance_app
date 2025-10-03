@@ -937,12 +937,11 @@ class _SelectFromMasterSheetState
     }
     try {
       final transactionsRepo = ref.read(transactionsRepoProvider);
-      final (anchor1, anchor2) = ref.read(anchorDaysProvider);
-      final bounds = widget.period.bounds(anchor1, anchor2);
+      final entry = await ref.read(periodEntryProvider(widget.period).future);
       await transactionsRepo.assignMasterToPeriod(
         masterId: master.id,
-        start: bounds.start,
-        endExclusive: bounds.endExclusive,
+        start: entry.start,
+        endExclusive: entry.endExclusive,
         categoryId: categoryId,
         amountMinor: amountMinor,
         included: result.include,

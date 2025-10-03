@@ -85,11 +85,10 @@ Future<List<PlannedItemView>> _loadPlannedItemsForPeriod(
   final transactionsRepo = ref.watch(transactionsRepoProvider);
   final categoriesRepo = ref.watch(categoriesRepositoryProvider);
   final masterRepo = ref.watch(plannedMasterRepoProvider);
-  final (anchor1, anchor2) = ref.watch(anchorDaysProvider);
-  final bounds = period.bounds(anchor1, anchor2);
+  final entry = await ref.watch(periodEntryProvider(period).future);
   final records = await transactionsRepo.listPlannedByPeriod(
-    start: bounds.start,
-    endExclusive: bounds.endExclusive,
+    start: entry.start,
+    endExclusive: entry.endExclusive,
     type: _typeToQuery(type),
     onlyIncluded: onlyIncluded ? true : null,
   );
@@ -233,13 +232,12 @@ final sumIncludedPlannedExpensesProvider =
     FutureProvider.family<int, PeriodRef>((ref, period) async {
   ref.watch(dbTickProvider);
   ref.watch(selectedPeriodRefProvider);
-  final (anchor1, anchor2) = ref.watch(anchorDaysProvider);
-  final bounds = period.bounds(anchor1, anchor2);
+  final entry = await ref.watch(periodEntryProvider(period).future);
   final repository = ref.watch(transactionsRepoProvider);
   return repository.sumIncludedPlannedExpenses(
     period: period,
-    start: bounds.start,
-    endExclusive: bounds.endExclusive,
+    start: entry.start,
+    endExclusive: entry.endExclusive,
   );
 });
 
