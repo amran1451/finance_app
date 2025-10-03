@@ -5,7 +5,7 @@ class AppMigrations {
   AppMigrations._();
 
   /// Latest schema version supported by the application.
-  static const int latestVersion = 12;
+  static const int latestVersion = 13;
 
   static final Map<int, List<String>> _migrationScripts = {
     1: [
@@ -118,6 +118,7 @@ class AppMigrations {
           'carryover_minor INTEGER NOT NULL DEFAULT 0, '
           'closed INTEGER NOT NULL DEFAULT 0, '
           'closed_at TEXT NULL, '
+          'start_anchor_payout_id INTEGER NULL, '
           'UNIQUE(year, month, half)'
           ')',
     ],
@@ -130,6 +131,9 @@ class AppMigrations {
       'CREATE INDEX IF NOT EXISTS idx_payouts_date ON payouts(date)',
     ],
     12: [],
+    13: [
+      'ALTER TABLE periods ADD COLUMN start_anchor_payout_id INTEGER NULL',
+    ],
   };
 
   /// Applies migrations from [oldVersion] (exclusive) up to [newVersion] (inclusive).
