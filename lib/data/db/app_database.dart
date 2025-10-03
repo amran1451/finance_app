@@ -38,6 +38,15 @@ class AppDatabase {
     return openDatabase(
       path,
       version: AppMigrations.latestVersion,
+      onConfigure: (db) async {
+        // Enable WAL to allow concurrent readers during write transactions and
+        // avoid "database has been locked" warnings that appear when the UI
+        // performs multiple queries in parallel.
+        await db.execute('PRAGMA journal_mode = WAL');
+        // Provide a small grace period for queued queries to wait for the lock
+        // instead of failing immediately.
+        await db.execute('PRAGMA busy_timeout = 5000');
+      },
       onCreate: (db, version) async {
         await AppMigrations.runMigrations(db, 0, version);
       },
