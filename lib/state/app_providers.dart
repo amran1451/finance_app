@@ -145,6 +145,13 @@ class _TransactionsRepositoryWithDbTick
   final transactions_repo.TransactionsRepository _delegate;
 
   @override
+  Future<transaction_models.TransactionRecord?> findByPayoutId(
+    int payoutId,
+  ) {
+    return _delegate.findByPayoutId(payoutId);
+  }
+
+  @override
   Future<int> add(
     transaction_models.TransactionRecord record, {
     bool asSavingPair = false,
