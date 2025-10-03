@@ -207,6 +207,7 @@ final payoutForPeriodProvider =
 });
 
 final payoutForSelectedPeriodProvider = FutureProvider<Payout?>((ref) async {
+  ref.watch(dbTickProvider);
   final period = ref.watch(selectedPeriodRefProvider);
   return ref.watch(payoutForPeriodProvider(period).future);
 });
