@@ -367,74 +367,113 @@ final remainingDaysFromTodayProvider = Provider<int>((ref) {
   return remaining > 9999 ? 9999 : remaining;
 });
 
-final spentTodayProvider = FutureProvider.family<int, PeriodRef>((ref, period) async {
-  ref.watch(dbTickProvider);
-  final today = ref.watch(todayDateProvider);
-  final (anchor1, anchor2) = ref.watch(anchorDaysProvider);
-  final bounds = period.bounds(anchor1, anchor2);
-  final repository = ref.watch(transactionsRepoProvider);
-  return repository.sumExpensesOnDateWithinPeriod(
-    date: today,
-    periodStart: DateUtils.dateOnly(bounds.start),
-    periodEndExclusive: DateUtils.dateOnly(bounds.endExclusive),
-  );
-});
-
-final dailyBudgetRemainingProvider =
-    FutureProvider.family<int, PeriodRef>((ref, period) async {
-  ref.watch(dbTickProvider);
-  final limit = ref.watch(periodDailyLimitProvider);
-  if (limit <= 0) {
-    return 0;
-  }
-  final spent = await ref.watch(spentTodayProvider(period).future);
-  final remaining = limit - spent;
-  return remaining > 0 ? remaining : 0;
-});
-
-class TodayProgress {
-  const TodayProgress._({
-    required this.show,
-    required this.spent,
-    required this.limit,
+class MetricsSnapshot {
+  const MetricsSnapshot({
+    required this.todaySpent,
+    required this.dailyLimit,
+    required this.dailyLeft,
+    required this.periodBudgetLeft,
+    required this.todayProgress,
   });
 
-  final bool show;
-  final int spent;
-  final int limit;
+  final int todaySpent;
+  final int dailyLimit;
+  final int dailyLeft;
+  final int periodBudgetLeft;
+  final double todayProgress;
 
-  factory TodayProgress.hidden() => const TodayProgress._(
-        show: false,
-        spent: 0,
-        limit: 0,
+  bool get hasDailyLimit => dailyLimit > 0;
+}
+
+class MetricsController extends AsyncNotifier<MetricsSnapshot> {
+  @override
+  Future<MetricsSnapshot> build() {
+    return _computeSnapshot();
+  }
+
+  Future<void> refresh() async {
+    state = await AsyncValue.guard(_computeSnapshot);
+  }
+
+  Future<MetricsSnapshot> _computeSnapshot() async {
+    ref.watch(dbTickProvider);
+    final period = ref.watch(selectedPeriodRefProvider);
+    final (start, endExclusive) = ref.watch(periodBoundsProvider);
+    final repository = ref.watch(transactionsRepoProvider);
+    final today = DateUtils.dateOnly(ref.watch(todayDateProvider));
+    final dailyLimit = ref.watch(periodDailyLimitProvider);
+    final periodBudgetBase = ref.watch(periodBudgetBaseProvider);
+
+    final normalizedStart = DateUtils.dateOnly(start);
+    final normalizedEndExclusive = DateUtils.dateOnly(endExclusive);
+
+    final todaySpent = await repository.sumExpensesOnDateWithinPeriod(
+      date: today,
+      periodStart: normalizedStart,
+      periodEndExclusive: normalizedEndExclusive,
+    );
+
+    final dailyLeft = math.max(0, dailyLimit - todaySpent);
+
+    var periodBudgetLeft = math.max(0, periodBudgetBase);
+    if (periodBudgetBase > 0) {
+      final spent = await repository.sumActualExpenses(
+        period: period,
+        start: normalizedStart,
+        endExclusive: normalizedEndExclusive,
       );
+      periodBudgetLeft = math.max(0, periodBudgetBase - spent);
+    }
 
-  factory TodayProgress.visible({required int spent, required int limit}) {
-    return TodayProgress._(
-      show: true,
-      spent: spent,
-      limit: limit,
+    final todayProgress = dailyLimit > 0
+        ? (todaySpent / math.max(1, dailyLimit)).clamp(0.0, 1.0)
+        : 0.0;
+
+    return MetricsSnapshot(
+      todaySpent: todaySpent,
+      dailyLimit: dailyLimit,
+      dailyLeft: dailyLeft,
+      periodBudgetLeft: periodBudgetLeft,
+      todayProgress: todayProgress,
     );
   }
 }
 
-final todayProgressProvider = Provider<TodayProgress>((ref) {
-  final period = ref.watch(selectedPeriodRefProvider);
-  final active = ref.watch(isActivePeriodProvider);
-  if (!active) {
-    return TodayProgress.hidden();
-  }
+final metricsProvider =
+    AsyncNotifierProvider<MetricsController, MetricsSnapshot>(
+  MetricsController.new,
+);
 
-  final spent = ref.watch(spentTodayProvider(period)).maybeWhen(
-        data: (value) => value,
-        orElse: () => 0,
-      );
-  final limit = ref.watch(periodDailyLimitProvider);
-  if (limit <= 0) {
-    return TodayProgress.hidden();
-  }
+final todaySpentProvider = Provider<int>((ref) {
+  final metrics = ref.watch(metricsProvider);
+  return metrics.maybeWhen(
+    data: (value) => value.todaySpent,
+    orElse: () => 0,
+  );
+});
 
-  return TodayProgress.visible(spent: spent, limit: limit);
+final dailyLeftProvider = Provider<int>((ref) {
+  final metrics = ref.watch(metricsProvider);
+  return metrics.maybeWhen(
+    data: (value) => value.dailyLeft,
+    orElse: () => 0,
+  );
+});
+
+final periodBudgetLeftProvider = Provider<int>((ref) {
+  final metrics = ref.watch(metricsProvider);
+  return metrics.maybeWhen(
+    data: (value) => value.periodBudgetLeft,
+    orElse: () => 0,
+  );
+});
+
+final todayProgressRatioProvider = Provider<double>((ref) {
+  final metrics = ref.watch(metricsProvider);
+  return metrics.maybeWhen(
+    data: (value) => value.todayProgress,
+    orElse: () => 0,
+  );
 });
 
 final periodBudgetBaseProvider = Provider<int>((ref) {
@@ -463,19 +502,6 @@ final sumActualExpensesProvider =
     start: bounds.start,
     endExclusive: bounds.endExclusive,
   );
-});
-
-final periodBudgetRemainingProvider =
-    FutureProvider.family<int, PeriodRef>((ref, period) async {
-  ref.watch(dbTickProvider);
-  final base = ref.watch(periodBudgetBaseProvider);
-  final spent = await ref.watch(sumActualExpensesProvider(period).future);
-  final value = base - spent;
-  if (value <= 0) {
-    return 0;
-  }
-  final maxCap = 1 << 31;
-  return value > maxCap ? maxCap : value;
 });
 
 final remainingBudgetForPeriodProvider =
