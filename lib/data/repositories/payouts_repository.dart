@@ -473,9 +473,75 @@ class SqlitePayoutsRepository implements PayoutsRepository {
       accountId: accountId,
     );
 
+    if (_isSamePeriod(selectedPeriod, targetPeriod)) {
+      await _maybeShiftPeriodStart(
+        txn,
+        period: targetPeriod,
+        anchor1: anchor1,
+        anchor2: anchor2,
+        payoutDate: clampedDate,
+      );
+    }
+
     return (
       payout: payout.copyWith(id: payoutId),
       period: targetPeriod,
+    );
+  }
+
+  bool _isSamePeriod(PeriodRef a, PeriodRef b) {
+    return a.year == b.year && a.month == b.month && a.half == b.half;
+  }
+
+  Future<void> _maybeShiftPeriodStart(
+    Transaction txn, {
+    required PeriodRef period,
+    required int anchor1,
+    required int anchor2,
+    required DateTime payoutDate,
+  }) async {
+    final bounds = periodBoundsFor(period, anchor1, anchor2);
+    final normalizedStart = normalizeDate(bounds.start);
+    final normalizedPayout = normalizeDate(payoutDate);
+    final earliestAllowed = normalizedStart.subtract(const Duration(days: 1));
+
+    if (!normalizedPayout.isBefore(normalizedStart)) {
+      return;
+    }
+
+    if (normalizedPayout.isBefore(earliestAllowed)) {
+      return;
+    }
+
+    final rows = await txn.query(
+      'periods',
+      where: 'year = ? AND month = ? AND half = ?',
+      whereArgs: [period.year, period.month, _halfToDb(period.half)],
+      limit: 1,
+    );
+
+    if (rows.isEmpty) {
+      return;
+    }
+
+    final row = rows.first;
+    final id = row['id'] as int?;
+    if (id == null) {
+      return;
+    }
+
+    final storedStart = _parseDate(row['start'] as String?) ?? normalizedStart;
+    if (!normalizedPayout.isBefore(storedStart)) {
+      return;
+    }
+
+    await txn.update(
+      'periods',
+      {
+        'start': _formatDate(normalizedPayout),
+      },
+      where: 'id = ?',
+      whereArgs: [id],
     );
   }
 
@@ -485,47 +551,67 @@ class SqlitePayoutsRepository implements PayoutsRepository {
     int anchor1,
     int anchor2,
   ) {
+    final normalizedPicked = normalizeDate(picked);
     final bounds = periodBoundsFor(selected, anchor1, anchor2);
-    final start = bounds.start;
-    final endEx = bounds.endExclusive;
-    final allowBefore = start.subtract(const Duration(days: 3));
+    final start = normalizeDate(bounds.start);
+    final endEx = normalizeDate(bounds.endExclusive);
+    const graceDays = 1;
+    final allowBefore = start.subtract(const Duration(days: graceDays));
+    final allowEarlyCurrent = start.subtract(const Duration(days: graceDays));
     final allowAfterExclusive = endEx.add(const Duration(days: 5));
 
-    if (picked.isBefore(allowBefore)) {
+    if (normalizedPicked.isBefore(allowBefore)) {
       final prev = selected.prevHalf();
       final prevBounds = periodBoundsFor(prev, anchor1, anchor2);
-      final prevLastDay = prevBounds.endExclusive.subtract(const Duration(days: 1));
       final prevDate = clampDateToPeriod(
-        prevLastDay,
+        normalizedPicked,
         prevBounds.start,
         prevBounds.endExclusive,
       );
       return (prevDate, prev);
     }
 
-    final clampedCurrent = clampDateToPeriod(picked, start, endEx);
-
-    if (picked.isBefore(endEx)) {
-      return (clampedCurrent, selected);
+    DateTime effectiveDate = normalizedPicked;
+    if (normalizedPicked.isBefore(start) && normalizedPicked.isBefore(allowEarlyCurrent)) {
+      effectiveDate = start;
     }
 
-    if (picked.isBefore(allowAfterExclusive)) {
-      return (clampedCurrent, selected);
+    if (!effectiveDate.isBefore(endEx)) {
+      effectiveDate = endEx.subtract(const Duration(days: 1));
+    }
+
+    if (normalizedPicked.isBefore(endEx)) {
+      return (effectiveDate, selected);
+    }
+
+    if (normalizedPicked.isBefore(allowAfterExclusive)) {
+      return (effectiveDate, selected);
     }
 
     var target = selected.nextHalf();
     var targetBounds = periodBoundsFor(target, anchor1, anchor2);
-    while (!picked.isBefore(targetBounds.endExclusive)) {
+    while (!normalizedPicked.isBefore(targetBounds.endExclusive)) {
       target = target.nextHalf();
       targetBounds = periodBoundsFor(target, anchor1, anchor2);
     }
 
     final clampedTarget = clampDateToPeriod(
-      picked,
+      normalizedPicked,
       targetBounds.start,
       targetBounds.endExclusive,
     );
 
     return (clampedTarget, target);
+  }
+
+  String _halfToDb(HalfPeriod half) {
+    return half == HalfPeriod.first ? 'H1' : 'H2';
+  }
+
+  DateTime? _parseDate(String? value) {
+    if (value == null || value.isEmpty) {
+      return null;
+    }
+    return DateTime.tryParse(value);
   }
 }
