@@ -38,7 +38,10 @@ class HomeScreen extends ConsumerWidget {
     final label = ref.watch(periodLabelProvider);
     final payoutAsync = ref.watch(payoutForSelectedPeriodProvider);
     final suggestedType = ref.watch(payoutSuggestedTypeProvider);
-    final canClosePeriod = ref.watch(canCloseCurrentPeriodProvider);
+    final closablePeriod = ref.watch(periodToCloseProvider);
+    final closablePeriodLabel = closablePeriod == null
+        ? null
+        : ref.watch(periodLabelForRefProvider(closablePeriod));
     final periodStatusAsync = ref.watch(periodStatusProvider(period));
     final periodClosed = periodStatusAsync.maybeWhen(
       data: (status) => status.closed,
@@ -122,28 +125,32 @@ class HomeScreen extends ConsumerWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              if (canClosePeriod) ...[
+              if (closablePeriod != null) ...[
                 MaterialBanner(
                   padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                  content: Text('Период $label завершён. Закрыть?'),
+                  content: Text(
+                    'Период ${closablePeriodLabel ?? label} завершён. Закрыть?',
+                  ),
                   actions: [
                     TextButton(
                       onPressed: () async {
                         final read = ref.read;
-                        final periodRef = read(selectedPeriodRefProvider);
+                        final periodRef = read(periodToCloseProvider);
+                        if (periodRef == null) {
+                          return;
+                        }
                         final spent = await read(
                           spentForPeriodProvider(periodRef).future,
                         );
                         final planned = await read(
                           plannedIncludedAmountForPeriodProvider(periodRef).future,
                         );
-                        final payout = await read(payoutForSelectedPeriodProvider.future);
-                        final dailyLimitMinor =
-                            read(periodDailyLimitProvider);
+                        final payout =
+                            await read(payoutForPeriodProvider(periodRef).future);
                         await read(periodsRepoProvider).closePeriod(
                           periodRef,
                           payoutId: payout?.id,
-                          dailyLimitMinor: dailyLimitMinor,
+                          dailyLimitMinor: payout?.dailyLimitMinor,
                           spentMinor: spent,
                           plannedIncludedMinor: planned,
                           carryoverMinor: 0,

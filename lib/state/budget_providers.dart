@@ -144,20 +144,7 @@ final spentForPeriodProvider = FutureProvider.family<int, PeriodRef>((ref, perio
 });
 
 final canCloseCurrentPeriodProvider = Provider<bool>((ref) {
-  ref.watch(dbTickProvider);
-  final period = ref.watch(selectedPeriodRefProvider);
-  final (start, endExclusive) = ref.watch(periodBoundsProvider);
-  final today = DateTime.now();
-  final normalizedToday = DateTime(today.year, today.month, today.day);
-  final normalizedEndExclusive =
-      DateTime(endExclusive.year, endExclusive.month, endExclusive.day);
-  final statusAsync = ref.watch(periodStatusProvider(period));
-  final isClosed = statusAsync.maybeWhen(
-    data: (status) => status.closed,
-    orElse: () => false,
-  );
-  final reachedEnd = !normalizedToday.isBefore(normalizedEndExclusive);
-  return reachedEnd && !isClosed;
+  return ref.watch(periodToCloseProvider) != null;
 });
 
 final payoutSuggestedTypeProvider = Provider<PayoutType>((ref) {
@@ -192,9 +179,19 @@ final periodBoundsProvider = Provider<(DateTime start, DateTime endExclusive)>((
 final halfPeriodBoundsProvider = periodBoundsProvider;
 
 /// Выплата, относящаяся к выбранному на Главной полупериоду (месяц+half)
-final payoutForSelectedPeriodProvider = FutureProvider<Payout?>((ref) async {
+final periodBoundsForProvider =
+    Provider.family<(DateTime start, DateTime endExclusive), PeriodRef>(
+  (ref, period) {
+    final (anchor1, anchor2) = ref.watch(anchorDaysProvider);
+    final bounds = period.bounds(anchor1, anchor2);
+    return (bounds.start, bounds.endExclusive);
+  },
+);
+
+final payoutForPeriodProvider =
+    FutureProvider.family<Payout?, PeriodRef>((ref, period) async {
   ref.watch(dbTickProvider);
-  final (start, endEx) = ref.watch(periodBoundsProvider);
+  final (start, endEx) = ref.watch(periodBoundsForProvider(period));
   final repo = ref.watch(payoutsRepoProvider);
   try {
     return await repo.findInRange(start, endEx);
@@ -209,18 +206,54 @@ final payoutForSelectedPeriodProvider = FutureProvider<Payout?>((ref) async {
   }
 });
 
+final payoutForSelectedPeriodProvider = FutureProvider<Payout?>((ref) async {
+  final period = ref.watch(selectedPeriodRefProvider);
+  return ref.watch(payoutForPeriodProvider(period).future);
+});
+
 /// Отображаемый заголовок текущего периода в формате «dd MMM – dd MMM».
-final periodLabelProvider = Provider<String>((ref) {
+String _formatPeriodLabel(Ref ref, PeriodRef period) {
   String formatRange(DateTime start, DateTime endExclusive) {
     return compactPeriodLabel(start, endExclusive) ?? '';
   }
 
-  final bounds = ref.watch(periodBoundsProvider);
+  final entryAsync = ref.watch(periodEntryProvider(period));
+  return entryAsync.maybeWhen(
+    data: (entry) => formatRange(entry.start, entry.endExclusive),
+    orElse: () {
+      final bounds = ref.watch(periodBoundsForProvider(period));
+      return formatRange(bounds.$1, bounds.$2);
+    },
+  );
+}
+
+final periodLabelForRefProvider =
+    Provider.family<String, PeriodRef>((ref, period) {
+  return _formatPeriodLabel(ref, period);
+});
+
+final periodLabelProvider = Provider<String>((ref) {
+  final period = ref.watch(selectedPeriodRefProvider);
+  final fallback = _formatPeriodLabel(ref, period);
   final periodInfo = ref.watch(currentPeriodProvider);
   return periodInfo.maybeWhen(
-    data: (value) => formatRange(value.anchorStart, value.end),
-    orElse: () => formatRange(bounds.$1, bounds.$2),
+    data: (value) =>
+        compactPeriodLabel(value.anchorStart, value.end) ?? fallback,
+    orElse: () => fallback,
   );
+});
+
+final periodToCloseProvider = Provider<PeriodRef?>((ref) {
+  ref.watch(dbTickProvider);
+  final selected = ref.watch(selectedPeriodRefProvider);
+  if (_canClosePeriodRef(ref, selected)) {
+    return selected;
+  }
+  final previous = selected.prevHalf();
+  if (_canClosePeriodRef(ref, previous)) {
+    return previous;
+  }
+  return null;
 });
 
 extension PeriodNav on StateController<PeriodRef> {
@@ -663,4 +696,20 @@ bool _isMissingRepoMethod(Object error) {
   return error is NoSuchMethodError ||
       error is UnimplementedError ||
       error is UnsupportedError;
+}
+
+bool _canClosePeriodRef(Ref ref, PeriodRef period) {
+  final statusAsync = ref.watch(periodStatusProvider(period));
+  final isClosed = statusAsync.maybeWhen(
+    data: (status) => status.closed,
+    orElse: () => false,
+  );
+  if (isClosed) {
+    return false;
+  }
+
+  final bounds = ref.watch(periodBoundsForProvider(period));
+  final today = DateUtils.dateOnly(DateTime.now());
+  final normalizedEndExclusive = DateUtils.dateOnly(bounds.$2);
+  return !today.isBefore(normalizedEndExclusive);
 }
