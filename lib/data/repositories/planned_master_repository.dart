@@ -263,6 +263,7 @@ abstract class PlannedMasterRepository {
     int? necessityId,
     String? note,
     String? type,
+    int? categoryId,
   });
 
   Future<PlannedMaster?> findByTitleAndType(
@@ -360,6 +361,7 @@ class SqlitePlannedMasterRepository implements PlannedMasterRepository {
     int? necessityId,
     String? note,
     String? type,
+    int? categoryId,
   }) async {
     final db = await _db;
     final normalizedTitle = title.trim();
@@ -371,13 +373,14 @@ class SqlitePlannedMasterRepository implements PlannedMasterRepository {
 
     final sql = StringBuffer(
       'UPDATE planned_master '
-      'SET title = ?, default_amount_minor = ?, necessity_id = ?, note = ?, updated_at = CURRENT_TIMESTAMP',
+      'SET title = ?, default_amount_minor = ?, necessity_id = ?, note = ?, category_id = ?, updated_at = CURRENT_TIMESTAMP',
     );
     final args = <Object?>[
       normalizedTitle,
       amountMinor,
       necessityId,
       sanitizedNote,
+      categoryId,
     ];
 
     if (normalizedType != null) {
@@ -392,6 +395,18 @@ class SqlitePlannedMasterRepository implements PlannedMasterRepository {
     if (rowsUpdated <= 0) {
       throw const ControlledOperationException('Ничего не изменилось');
     }
+    await db.update(
+      'transactions',
+      {'category_id': categoryId},
+      where: 'is_planned = 1 AND planned_id = ?',
+      whereArgs: [id],
+    );
+    await db.update(
+      'transactions',
+      {'category_id': categoryId},
+      where: "source = 'plan' AND planned_id = ?",
+      whereArgs: [id],
+    );
     return rowsUpdated;
   }
 

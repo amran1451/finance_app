@@ -248,8 +248,10 @@ class HomeScreen extends ConsumerWidget {
                   }
                   final period = ref.watch(selectedPeriodRefProvider);
                   final dailyLimitMinor = ref.watch(periodDailyLimitProvider);
+                  final dailyRemaining = ref.watch(dailyBudgetRemainingProvider(period));
                   return _LimitCards(
                     dailyLimit: dailyLimitMinor,
+                    dailyRemaining: dailyRemaining,
                     leftPeriod: ref.watch(periodBudgetRemainingProvider(period)),
                     onEditLimit: () async {
                       final saved = await showEditDailyLimitSheet(context, ref);
@@ -448,11 +450,13 @@ class _AddPayoutCTA extends StatelessWidget {
 class _LimitCards extends StatelessWidget {
   const _LimitCards({
     required this.dailyLimit,
+    required this.dailyRemaining,
     required this.leftPeriod,
     required this.onEditLimit,
   });
 
   final int dailyLimit;
+  final AsyncValue<int> dailyRemaining;
   final AsyncValue<int> leftPeriod;
   final VoidCallback onEditLimit;
 
@@ -462,7 +466,11 @@ class _LimitCards extends StatelessWidget {
       if (dailyLimit <= 0) {
         return '—';
       }
-      return formatCurrencyMinorToRubles(dailyLimit);
+      return dailyRemaining.when(
+        data: (value) => formatCurrencyMinorToRubles(value),
+        loading: () => '…',
+        error: (_, __) => '—',
+      );
     }
 
     String buildPeriodLabel(AsyncValue<int> value) {
@@ -821,6 +829,12 @@ class _PlannedExpensesList extends ConsumerWidget {
                         context,
                         type: PlannedType.expense,
                         initialRecord: item.record,
+                      ),
+                      onLongPress: () => showPlannedAddForm(
+                        context,
+                        type: PlannedType.expense,
+                        initialRecord: item.record,
+                        initialTitle: item.master?.title,
                       ),
                     ),
                     if (index != items.length - 1) const Divider(height: 0),

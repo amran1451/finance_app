@@ -112,7 +112,7 @@ class _PlannedMasterEditFormState
   @override
   Widget build(BuildContext context) {
     final categoryType = _categoryTypeForType(_type);
-    final categoriesAsync = !_isEditMode && categoryType != null
+    final categoriesAsync = categoryType != null
         ? ref.watch(categoriesByTypeProvider(categoryType))
         : const AsyncValue<List<Category>>.data(<Category>[]);
     final necessityLabelsAsync = _isExpense
@@ -165,9 +165,7 @@ class _PlannedMasterEditFormState
                       }
                       setState(() {
                         _type = values.first;
-                        if (!_isEditMode) {
-                          _categoryId = null;
-                        }
+                        _categoryId = null;
                         if (_type != 'expense') {
                           _selectedNecessityId = null;
                         }
@@ -186,44 +184,41 @@ class _PlannedMasterEditFormState
                       return null;
                     },
                   ),
-                  if (!_isEditMode) ...[
-                    const SizedBox(height: 12),
-                    categoriesAsync.when(
-                      data: (categories) {
-                        if (categories.isEmpty) {
-                          return const Text(
-                            'Нет категорий для выбранного типа. Добавьте их в настройках.',
-                          );
-                        }
-                        return DropdownButtonFormField<int>(
-                          value: _categoryId,
-                          decoration:
-                              const InputDecoration(labelText: 'Категория *'),
-                          items: [
-                            for (final category in categories)
-                              DropdownMenuItem<int>(
-                                value: category.id,
-                                child: Text(category.name),
-                              ),
-                          ],
-                          onChanged: (value) {
-                            setState(() => _categoryId = value);
-                            _updateDirty();
-                          },
-                          validator: (value) {
-                            if (value == null) {
-                              return 'Выберите категорию';
-                            }
-                            return null;
-                          },
+                  const SizedBox(height: 12),
+                  categoriesAsync.when(
+                    data: (categories) {
+                      if (categories.isEmpty) {
+                        return const Text(
+                          'Нет категорий для выбранного типа. Добавьте их в настройках.',
                         );
-                      },
-                      loading: () =>
-                          const Center(child: CircularProgressIndicator()),
-                      error: (error, _) =>
-                          Text('Не удалось загрузить категории: $error'),
-                    ),
-                  ],
+                      }
+                      return DropdownButtonFormField<int>(
+                        value: _categoryId,
+                        decoration: const InputDecoration(labelText: 'Категория *'),
+                        items: [
+                          for (final category in categories)
+                            DropdownMenuItem<int>(
+                              value: category.id,
+                              child: Text(category.name),
+                            ),
+                        ],
+                        onChanged: (value) {
+                          setState(() => _categoryId = value);
+                          _updateDirty();
+                        },
+                        validator: (value) {
+                          if (value == null) {
+                            return 'Выберите категорию';
+                          }
+                          return null;
+                        },
+                      );
+                    },
+                    loading: () =>
+                        const Center(child: CircularProgressIndicator()),
+                    error: (error, _) =>
+                        Text('Не удалось загрузить категории: $error'),
+                  ),
                   const SizedBox(height: 12),
                   TextFormField(
                     controller: _amountController,
@@ -373,6 +368,7 @@ class _PlannedMasterEditFormState
         necessityId: necessityId,
         note: sanitizedNote,
         type: _type != initial.type ? _type : null,
+        categoryId: _categoryId,
       );
       if (!mounted) {
         return;
@@ -736,10 +732,15 @@ class _PlannedMasterEditFormState
           amountMinor != (initial.defaultAmountMinor ?? 0) ||
           sanitizedNote != initialNote ||
           necessityId != initial.necessityId ||
-          _type != initial.type;
+          _type != initial.type ||
+          _categoryId != initial.categoryId;
     }
 
     if (dirty && _isExpense && _selectedNecessityId == null) {
+      dirty = false;
+    }
+
+    if (_categoryId == null) {
       dirty = false;
     }
 

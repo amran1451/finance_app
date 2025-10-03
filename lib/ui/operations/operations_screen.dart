@@ -236,6 +236,8 @@ class _OperationsSection extends ConsumerWidget {
           (item) {
             final record = item.record;
             final category = categories[record.categoryId];
+            final isPlanOperation =
+                record.planInstanceId != null && (record.source?.toLowerCase() == 'plan');
             return Card(
               margin: const EdgeInsets.only(bottom: 12),
               child: ListTile(
@@ -252,13 +254,23 @@ class _OperationsSection extends ConsumerWidget {
                   text: category?.name ?? 'Категория #${record.categoryId}',
                   style: Theme.of(context).textTheme.titleMedium,
                 ),
-                subtitle: SingleLineTooltipText(
-                  text: _subtitleForRecord(
-                    record,
-                    necessityMap,
-                    reasonMap,
-                  ),
-                  style: Theme.of(context).textTheme.bodyMedium,
+                subtitle: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    SingleLineTooltipText(
+                      text: _subtitleForRecord(
+                        record,
+                        necessityMap,
+                        reasonMap,
+                      ),
+                      style: Theme.of(context).textTheme.bodyMedium,
+                    ),
+                    if (isPlanOperation) ...[
+                      const SizedBox(height: 4),
+                      const _PlanBadge(),
+                    ],
+                  ],
                 ),
                 trailing: Column(
                   mainAxisAlignment: MainAxisAlignment.center,
@@ -370,6 +382,29 @@ class _OperationsSection extends ConsumerWidget {
 }
 
 enum _OperationAction { edit, delete }
+
+class _PlanBadge extends StatelessWidget {
+  const _PlanBadge();
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+      decoration: BoxDecoration(
+        color: scheme.secondaryContainer,
+        borderRadius: BorderRadius.circular(999),
+      ),
+      child: Text(
+        'План',
+        style: Theme.of(context).textTheme.labelSmall?.copyWith(
+              color: scheme.onSecondaryContainer,
+              fontWeight: FontWeight.w600,
+            ),
+      ),
+    );
+  }
+}
 
 class _OperationActionsSheet extends StatelessWidget {
   const _OperationActionsSheet();

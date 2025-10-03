@@ -6,6 +6,7 @@ import '../../data/models/transaction_record.dart';
 import '../../data/repositories/necessity_repository.dart';
 import '../../state/app_providers.dart';
 import '../../state/db_refresh.dart';
+import '../../state/planned_master_providers.dart';
 import '../../state/planned_providers.dart';
 import '../widgets/necessity_choice_chip.dart';
 
@@ -419,6 +420,13 @@ class _PlannedAddFormState extends ConsumerState<_PlannedAddForm> {
     final actions = ref.read(plannedActionsProvider);
 
     final existing = widget.initialRecord;
+    int? masterId = existing?.plannedId;
+    String? originalMasterTitle = widget.initialTitle?.trim();
+    if (existing != null && masterId != null &&
+        (originalMasterTitle == null || originalMasterTitle.isEmpty)) {
+      final master = await ref.read(plannedMasterRepoProvider).getById(masterId);
+      originalMasterTitle = master?.title.trim();
+    }
     final record = TransactionRecord(
       id: existing?.id,
       accountId: existing?.accountId ?? accountId,
@@ -438,6 +446,14 @@ class _PlannedAddFormState extends ConsumerState<_PlannedAddForm> {
     if (existing == null) {
       await actions.add(record);
     } else {
+      if (masterId != null &&
+          originalMasterTitle != null &&
+          originalMasterTitle.isNotEmpty &&
+          originalMasterTitle != title) {
+        await ref
+            .read(plannedMasterRepoProvider)
+            .update(masterId, title: title);
+      }
       await actions.update(record);
     }
 
