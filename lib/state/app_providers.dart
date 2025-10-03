@@ -488,6 +488,7 @@ class _PayoutsRepositoryWithDbTick implements payouts_repo.PayoutsRepository {
     required payout_models.PayoutType type,
     required int amountMinor,
     int? accountId,
+    bool shiftPeriodStart = false,
   }) {
     return _delegate.upsertWithClampToSelectedPeriod(
       existing: existing,
@@ -496,6 +497,7 @@ class _PayoutsRepositoryWithDbTick implements payouts_repo.PayoutsRepository {
       type: type,
       amountMinor: amountMinor,
       accountId: accountId,
+      shiftPeriodStart: shiftPeriodStart,
     );
   }
 }

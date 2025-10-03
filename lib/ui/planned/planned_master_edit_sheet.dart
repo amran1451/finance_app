@@ -13,6 +13,7 @@ import '../../state/planned_master_providers.dart';
 import '../../state/planned_providers.dart';
 import '../../utils/app_exceptions.dart';
 import '../../utils/color_hex.dart';
+import '../../utils/date_ru.dart';
 import '../../utils/formatting.dart';
 import '../../utils/period_utils.dart';
 import '../settings/necessity_settings_screen.dart';
@@ -767,21 +768,7 @@ class _PlannedMasterEditFormState
   }
 
   String _formatPeriodLabel(DateTime start, DateTime endExclusive) {
-    const months = [
-      'янв',
-      'фев',
-      'мар',
-      'апр',
-      'май',
-      'июн',
-      'июл',
-      'авг',
-      'сен',
-      'окт',
-      'ноя',
-      'дек',
-    ];
-    final month = months[start.month - 1];
+    final month = ruMonthShort(start.month);
     final endInclusive = endExclusive.subtract(const Duration(days: 1));
     return '$month ${start.day}–${endInclusive.day}';
   }

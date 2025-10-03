@@ -8,6 +8,7 @@ import '../data/models/payout.dart';
 import '../data/models/transaction_record.dart';
 import '../data/repositories/periods_repository.dart';
 import '../data/repositories/transactions_repository.dart';
+import '../utils/payout_rules.dart';
 import 'app_providers.dart';
 import 'db_refresh.dart';
 import '../utils/period_utils.dart';
@@ -19,8 +20,6 @@ typedef BudgetPeriodInfo = ({
   DateTime anchorStart,
   int days,
 });
-
-const _earlyPayoutGraceDays = 1;
 
 int calculateMaxDailyLimitMinor({
   required int remainingBudgetMinor,
@@ -41,7 +40,9 @@ int calculateMaxDailyLimitMinor({
   final periodEndDate = normalizedEndExclusive.subtract(const Duration(days: 1));
   var baseDate = fromToday ? normalizedToday : normalizedPayout;
 
-  final earliestAllowed = normalizedStart.subtract(const Duration(days: _earlyPayoutGraceDays));
+  final earliestAllowed = normalizedStart.subtract(
+    const Duration(days: kEarlyPayoutGraceDays),
+  );
   if (baseDate.isBefore(earliestAllowed)) {
     baseDate = earliestAllowed;
   }
@@ -251,7 +252,7 @@ final currentPeriodProvider = FutureProvider<BudgetPeriodInfo>((ref) async {
       today.isBefore(periodEndExclusive)) {
     final payoutDate = DateUtils.dateOnly(payout.date);
     final graceStart = periodStart.subtract(
-      const Duration(days: _earlyPayoutGraceDays),
+      const Duration(days: kEarlyPayoutGraceDays),
     );
     if (!payoutDate.isBefore(graceStart) && payoutDate.isBefore(periodStart)) {
       anchorStart = payoutDate;
