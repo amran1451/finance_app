@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:intl/intl.dart';
 
 import '../../data/models/account.dart' as db;
 import '../../data/models/payout.dart';
@@ -7,6 +8,7 @@ import '../../state/app_providers.dart';
 import '../../state/budget_providers.dart';
 import '../../state/db_refresh.dart';
 import '../../utils/formatting.dart';
+import '../../utils/payout_rules.dart';
 
 Future<void> showPayoutEditSheet(
   BuildContext context, {
@@ -81,7 +83,9 @@ class _PayoutEditSheetState extends ConsumerState<_PayoutEditSheet> {
     );
     _periodStart = effectiveStart;
     _periodEndExclusive = endEx;
-    _periodMinDate = effectiveStart.subtract(const Duration(days: 1));
+    _periodMinDate = effectiveStart.subtract(
+      const Duration(days: kEarlyPayoutGraceDays),
+    );
     _type = initial?.type ?? widget.forcedType;
     final normalizedInitial = initial?.date == null
         ? null
@@ -216,7 +220,7 @@ class _PayoutEditSheetState extends ConsumerState<_PayoutEditSheet> {
               onTap: () async {
                 final picked = await showDatePicker(
                   context: context,
-                  initialDate: _clampToPeriod(_date),
+                  initialDate: _clampToPickerRange(_date),
                   firstDate: _periodMinDate,
                   lastDate: _periodEndExclusive.subtract(const Duration(days: 1)),
                 );
@@ -347,11 +351,67 @@ class _PayoutEditSheetState extends ConsumerState<_PayoutEditSheet> {
     final text = _amountController.text.trim().replaceAll(',', '.');
     final amount = double.parse(text);
     final amountMinor = (amount * 100).round();
+    final normalizedDate = DateTime(_date.year, _date.month, _date.day);
+    final earliestAllowed = _periodMinDate;
+    final lastAllowed = _periodEndExclusive.subtract(const Duration(days: 1));
+    if (normalizedDate.isBefore(earliestAllowed)) {
+      final allowedLabel = DateFormat('dd.MM', 'ru_RU').format(earliestAllowed);
+      if (!mounted) {
+        return;
+      }
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Доступно не ранее $allowedLabel')),
+      );
+      return;
+    }
+    if (normalizedDate.isAfter(lastAllowed)) {
+      final allowedLabel = DateFormat('dd.MM', 'ru_RU').format(lastAllowed);
+      if (!mounted) {
+        return;
+      }
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Доступно не позднее $allowedLabel')),
+      );
+      return;
+    }
+
+    var shiftPeriod = false;
+    if (normalizedDate.isBefore(_periodStart)) {
+      final pickedLabel = DateFormat('dd.MM', 'ru_RU').format(normalizedDate);
+      final confirm = await showDialog<bool>(
+        context: context,
+        builder: (dialogContext) => AlertDialog(
+          title: const Text('Закрыть предыдущий период?'),
+          content: Text(
+            'Выплата пришла раньше ($pickedLabel). Сдвинуть начало текущего периода на '
+            '$pickedLabel и учесть выплату здесь?',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(dialogContext).pop(false),
+              child: const Text('Отмена'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.of(dialogContext).pop(true),
+              child: const Text('Сдвинуть'),
+            ),
+          ],
+        ),
+      );
+      if (confirm != true) {
+        if (!mounted) {
+          return;
+        }
+        Navigator.of(context).pop();
+        return;
+      }
+      shiftPeriod = true;
+    }
+
     setState(() => _isProcessing = true);
 
     try {
       final payoutsRepo = ref.read(payoutsRepoProvider);
-      final normalizedDate = DateTime(_date.year, _date.month, _date.day);
       final initial = widget.initial;
       final type = _resolveType();
       final selected = ref.read(selectedPeriodRefProvider);
@@ -362,18 +422,25 @@ class _PayoutEditSheetState extends ConsumerState<_PayoutEditSheet> {
         type: type,
         amountMinor: amountMinor,
         accountId: accountId,
+        shiftPeriodStart: shiftPeriod,
       );
       final limitManager = ref.read(budgetLimitManagerProvider);
       final adjustedLimit = await limitManager.adjustDailyLimitIfNeeded(
         payout: result.payout,
         period: result.period,
       );
-      ref.read(selectedPeriodRefProvider.notifier).state = result.period;
+      await ref.read(metricsProvider.notifier).refresh();
+      ref.invalidate(accountsDbProvider);
       bumpDbTick(ref);
       if (!mounted) {
         return;
       }
-      if (adjustedLimit != null) {
+      if (shiftPeriod) {
+        final shiftLabel = DateFormat('dd.MM', 'ru_RU').format(normalizedDate);
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Период сдвинут на $shiftLabel • Выплата учтена')),
+        );
+      } else if (adjustedLimit != null) {
         final formatted = formatCurrencyMinorToRubles(adjustedLimit);
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('Лимит скорректирован до $formatted')),
@@ -427,7 +494,7 @@ class _PayoutEditSheetState extends ConsumerState<_PayoutEditSheet> {
     return formatted;
   }
 
-  DateTime _clampToPeriod(DateTime date) {
+  DateTime _clampToPickerRange(DateTime date) {
     final normalized = DateTime(date.year, date.month, date.day);
     if (normalized.isBefore(_periodMinDate)) {
       return _periodMinDate;

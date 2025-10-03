@@ -8,6 +8,7 @@ import '../../state/db_refresh.dart';
 import '../../state/planned_master_providers.dart';
 import '../../state/app_providers.dart';
 import '../../state/planned_providers.dart';
+import '../../utils/date_ru.dart';
 import '../../utils/formatting.dart';
 import '../../utils/period_utils.dart';
 import 'planned_assign_to_period_sheet.dart';
@@ -442,21 +443,7 @@ enum _DeleteMasterChoice {
 enum _InstanceMenuAction { deleteInstance, deleteMaster }
 
 String periodBadge(DateTime start, DateTime endEx) {
-  const m = [
-    'янв',
-    'фев',
-    'мар',
-    'апр',
-    'май',
-    'июн',
-    'июл',
-    'авг',
-    'сен',
-    'окт',
-    'ноя',
-    'дек'
-  ];
-  final month = m[start.month - 1];
+  final month = ruMonthShort(start.month);
   final to = endEx.subtract(const Duration(days: 1)).day;
   return '$month ${start.day}–$to';
 }

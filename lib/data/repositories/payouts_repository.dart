@@ -2,6 +2,7 @@ import 'package:sqflite/sqflite.dart';
 
 import '../db/app_database.dart';
 import '../models/payout.dart';
+import '../../utils/payout_rules.dart';
 import '../../utils/period_utils.dart';
 
 abstract class PayoutsRepository {
@@ -47,6 +48,7 @@ abstract class PayoutsRepository {
     required PayoutType type,
     required int amountMinor,
     int? accountId,
+    bool shiftPeriodStart = false,
   });
 }
 
@@ -83,6 +85,7 @@ class SqlitePayoutsRepository implements PayoutsRepository {
         accountId: resolvedAccountId,
         anchor1: anchors[0],
         anchor2: anchors[1],
+        shiftPeriodStart: false,
       );
       return result.payout.id!;
     });
@@ -114,6 +117,7 @@ class SqlitePayoutsRepository implements PayoutsRepository {
         accountId: resolvedAccountId,
         anchor1: anchors[0],
         anchor2: anchors[1],
+        shiftPeriodStart: false,
       );
     });
   }
@@ -239,6 +243,7 @@ class SqlitePayoutsRepository implements PayoutsRepository {
     required PayoutType type,
     required int amountMinor,
     int? accountId,
+    bool shiftPeriodStart = false,
   }) async {
     final db = await _db;
     final normalized = normalizeDate(pickedDate);
@@ -257,6 +262,7 @@ class SqlitePayoutsRepository implements PayoutsRepository {
         accountId: resolvedAccountId,
         anchor1: anchors[0],
         anchor2: anchors[1],
+        shiftPeriodStart: shiftPeriodStart,
       );
     });
   }
@@ -424,13 +430,27 @@ class SqlitePayoutsRepository implements PayoutsRepository {
     required int accountId,
     required int anchor1,
     required int anchor2,
+    required bool shiftPeriodStart,
   }) async {
-    final (clampedDate, targetPeriod) = _clampToHalfWithWindow(
-      pickedDate,
-      selectedPeriod,
-      anchor1,
-      anchor2,
+    final normalizedPicked = normalizeDate(pickedDate);
+    final bounds = periodBoundsFor(selectedPeriod, anchor1, anchor2);
+    final normalizedStart = normalizeDate(bounds.start);
+    final normalizedEndExclusive = normalizeDate(bounds.endExclusive);
+    final earliestAllowed = normalizedStart.subtract(
+      const Duration(days: kEarlyPayoutGraceDays),
     );
+    final latestAllowed = normalizedEndExclusive.subtract(
+      const Duration(days: 1),
+    );
+
+    if (normalizedPicked.isBefore(earliestAllowed) ||
+        normalizedPicked.isAfter(latestAllowed)) {
+      throw ArgumentError.value(
+        pickedDate,
+        'pickedDate',
+        'Дата выплаты вне допустимого диапазона выбранного периода',
+      );
+    }
 
     final resolvedExisting = existing ??
         (existingId != null ? await _loadPayoutById(txn, existingId) : null);
@@ -439,14 +459,14 @@ class SqlitePayoutsRepository implements PayoutsRepository {
             Payout(
               id: existingId,
               type: type,
-              date: clampedDate,
+              date: normalizedPicked,
               amountMinor: amountMinor,
               accountId: accountId,
             ))
         .copyWith(
       id: existingId,
       type: type,
-      date: clampedDate,
+      date: normalizedPicked,
       amountMinor: amountMinor,
       accountId: accountId,
     );
@@ -468,51 +488,35 @@ class SqlitePayoutsRepository implements PayoutsRepository {
       txn,
       payoutId: payoutId,
       type: type,
-      date: clampedDate,
+      date: normalizedPicked,
       amountMinor: amountMinor,
       accountId: accountId,
     );
 
-    if (_isSamePeriod(selectedPeriod, targetPeriod)) {
-      await _maybeShiftPeriodStart(
+    if (shiftPeriodStart) {
+      await _updatePeriodStart(
         txn,
-        period: targetPeriod,
+        period: selectedPeriod,
+        newStart: normalizedPicked,
         anchor1: anchor1,
         anchor2: anchor2,
-        payoutDate: clampedDate,
       );
     }
 
     return (
       payout: payout.copyWith(id: payoutId),
-      period: targetPeriod,
+      period: selectedPeriod,
     );
   }
 
-  bool _isSamePeriod(PeriodRef a, PeriodRef b) {
-    return a.year == b.year && a.month == b.month && a.half == b.half;
-  }
-
-  Future<void> _maybeShiftPeriodStart(
+  Future<void> _updatePeriodStart(
     Transaction txn, {
     required PeriodRef period,
+    required DateTime newStart,
     required int anchor1,
     required int anchor2,
-    required DateTime payoutDate,
   }) async {
-    final bounds = periodBoundsFor(period, anchor1, anchor2);
-    final normalizedStart = normalizeDate(bounds.start);
-    final normalizedPayout = normalizeDate(payoutDate);
-    final earliestAllowed = normalizedStart.subtract(const Duration(days: 1));
-
-    if (!normalizedPayout.isBefore(normalizedStart)) {
-      return;
-    }
-
-    if (normalizedPayout.isBefore(earliestAllowed)) {
-      return;
-    }
-
+    final normalizedStart = normalizeDate(newStart);
     final rows = await txn.query(
       'periods',
       where: 'year = ? AND month = ? AND half = ?',
@@ -530,78 +534,29 @@ class SqlitePayoutsRepository implements PayoutsRepository {
       return;
     }
 
-    final storedStart = _parseDate(row['start'] as String?) ?? normalizedStart;
-    if (!normalizedPayout.isBefore(storedStart)) {
+    final defaultBounds = period.bounds(anchor1, anchor2);
+    final storedStart =
+        _parseDate(row['start'] as String?) ?? normalizeDate(defaultBounds.start);
+    final storedEndExclusiveRaw =
+        _parseDate(row['end_exclusive'] as String?) ?? defaultBounds.endExclusive;
+    final storedEndExclusive = normalizeDate(storedEndExclusiveRaw);
+
+    if (!normalizedStart.isBefore(storedStart)) {
+      return;
+    }
+
+    if (!normalizedStart.isBefore(storedEndExclusive)) {
       return;
     }
 
     await txn.update(
       'periods',
       {
-        'start': _formatDate(normalizedPayout),
+        'start': _formatDate(normalizedStart),
       },
       where: 'id = ?',
       whereArgs: [id],
     );
-  }
-
-  (DateTime, PeriodRef) _clampToHalfWithWindow(
-    DateTime picked,
-    PeriodRef selected,
-    int anchor1,
-    int anchor2,
-  ) {
-    final normalizedPicked = normalizeDate(picked);
-    final bounds = periodBoundsFor(selected, anchor1, anchor2);
-    final start = normalizeDate(bounds.start);
-    final endEx = normalizeDate(bounds.endExclusive);
-    const graceDays = 1;
-    final allowBefore = start.subtract(const Duration(days: graceDays));
-    final allowEarlyCurrent = start.subtract(const Duration(days: graceDays));
-    final allowAfterExclusive = endEx.add(const Duration(days: 5));
-
-    if (normalizedPicked.isBefore(allowBefore)) {
-      final prev = selected.prevHalf();
-      final prevBounds = periodBoundsFor(prev, anchor1, anchor2);
-      final prevDate = clampDateToPeriod(
-        normalizedPicked,
-        prevBounds.start,
-        prevBounds.endExclusive,
-      );
-      return (prevDate, prev);
-    }
-
-    DateTime effectiveDate = normalizedPicked;
-    if (normalizedPicked.isBefore(start) && normalizedPicked.isBefore(allowEarlyCurrent)) {
-      effectiveDate = start;
-    }
-
-    if (!effectiveDate.isBefore(endEx)) {
-      effectiveDate = endEx.subtract(const Duration(days: 1));
-    }
-
-    if (normalizedPicked.isBefore(endEx)) {
-      return (effectiveDate, selected);
-    }
-
-    if (normalizedPicked.isBefore(allowAfterExclusive)) {
-      return (effectiveDate, selected);
-    }
-
-    var target = selected.nextHalf();
-    var targetBounds = periodBoundsFor(target, anchor1, anchor2);
-    while (!normalizedPicked.isBefore(targetBounds.endExclusive)) {
-      target = target.nextHalf();
-      targetBounds = periodBoundsFor(target, anchor1, anchor2);
-    }
-
-    final clampedTarget = clampDateToPeriod(
-      normalizedPicked,
-      targetBounds.start,
-      targetBounds.endExclusive,
-    );
-
-    return (clampedTarget, target);
   }
 
   String _halfToDb(HalfPeriod half) {
