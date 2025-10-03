@@ -191,7 +191,9 @@ final periodBoundsForProvider =
 final payoutForPeriodProvider =
     FutureProvider.family<Payout?, PeriodRef>((ref, period) async {
   ref.watch(dbTickProvider);
-  final (start, endEx) = ref.watch(periodBoundsForProvider(period));
+  final entry = await ref.watch(periodEntryProvider(period).future);
+  final start = entry.start;
+  final endEx = entry.endExclusive;
   final repo = ref.watch(payoutsRepoProvider);
   try {
     return await repo.findInRange(start, endEx);
