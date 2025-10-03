@@ -5,7 +5,7 @@ class AppMigrations {
   AppMigrations._();
 
   /// Latest schema version supported by the application.
-  static const int latestVersion = 11;
+  static const int latestVersion = 12;
 
   static final Map<int, List<String>> _migrationScripts = {
     1: [
@@ -129,6 +129,7 @@ class AppMigrations {
     11: [
       'CREATE INDEX IF NOT EXISTS idx_payouts_date ON payouts(date)',
     ],
+    12: [],
   };
 
   /// Applies migrations from [oldVersion] (exclusive) up to [newVersion] (inclusive).
@@ -173,6 +174,30 @@ class AppMigrations {
             columnName: 'daily_limit_from_today',
             alterStatement:
                 'ALTER TABLE payouts ADD COLUMN daily_limit_from_today INTEGER NOT NULL DEFAULT 0',
+          );
+          break;
+        case 12:
+          await _ensureColumnExists(
+            db,
+            tableName: 'transactions',
+            columnName: 'plan_instance_id',
+            alterStatement:
+                'ALTER TABLE transactions ADD COLUMN plan_instance_id INTEGER NULL',
+          );
+          await _ensureColumnExists(
+            db,
+            tableName: 'transactions',
+            columnName: 'source',
+            alterStatement:
+                'ALTER TABLE transactions ADD COLUMN source TEXT NULL',
+          );
+          await db.execute(
+            'CREATE INDEX IF NOT EXISTS idx_transactions_plan_instance_id ON transactions(plan_instance_id)',
+          );
+          await db.execute(
+            'CREATE UNIQUE INDEX IF NOT EXISTS idx_transactions_plan_instance_account '
+            'ON transactions(plan_instance_id, account_id) '
+            'WHERE plan_instance_id IS NOT NULL',
           );
           break;
         default:

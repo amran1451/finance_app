@@ -114,7 +114,7 @@ class _DailyLimitSheetState extends ConsumerState<_DailyLimitSheet> {
       return;
     }
 
-    final maxDaily = _computeMaxDailyMinor();
+    final maxDaily = _computeMaxDailyMinor(fromToday: _fromToday);
     if (maxDaily != null && minorValue > maxDaily) {
       final messenger = ScaffoldMessenger.of(context);
       final replacementText = formatCurrencyMinorPlain(maxDaily);
@@ -162,18 +162,42 @@ class _DailyLimitSheetState extends ConsumerState<_DailyLimitSheet> {
     }
   }
 
-  int? _computeMaxDailyMinor() {
-    final baseDays = ref.read(periodDaysFromPayoutProvider);
-    if (baseDays <= 0) {
+  int? _computeMaxDailyMinor({required bool fromToday}) {
+    final periodInfo = ref.read(currentPeriodProvider).valueOrNull;
+    if (periodInfo == null) {
       return null;
     }
-    return widget.payout.amountMinor ~/ baseDays;
+    final periodRef = ref.read(selectedPeriodRefProvider);
+    final remainingAsync = ref.read(remainingBudgetForPeriodProvider(periodRef));
+    final remainingBudget = remainingAsync.valueOrNull;
+    if (remainingBudget == null) {
+      return null;
+    }
+    final today = ref.read(todayDateProvider);
+    final maxDaily = calculateMaxDailyLimitMinor(
+      remainingBudgetMinor:
+          fromToday ? remainingBudget.fromToday : remainingBudget.fromPeriodStart,
+      periodEndExclusive: periodInfo.end,
+      today: today,
+    );
+    return maxDaily > 0 ? maxDaily : 0;
   }
 
   @override
   Widget build(BuildContext context) {
-    final baseDays = ref.watch(periodDaysFromPayoutProvider);
-    final maxDaily = baseDays > 0 ? widget.payout.amountMinor ~/ baseDays : null;
+    final periodInfo = ref.watch(currentPeriodProvider).valueOrNull;
+    final periodRef = ref.watch(selectedPeriodRefProvider);
+    final remainingAsync = ref.watch(remainingBudgetForPeriodProvider(periodRef));
+    final today = ref.watch(todayDateProvider);
+    final maxDaily = periodInfo != null && remainingAsync.hasValue
+        ? calculateMaxDailyLimitMinor(
+            remainingBudgetMinor: _fromToday
+                ? remainingAsync.value!.fromToday
+                : remainingAsync.value!.fromPeriodStart,
+            periodEndExclusive: periodInfo.end,
+            today: today,
+          )
+        : null;
 
     return Column(
       mainAxisSize: MainAxisSize.min,

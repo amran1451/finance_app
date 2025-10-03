@@ -13,6 +13,7 @@ class TransactionRecord {
     this.time,
     this.note,
     this.plannedId,
+    this.planInstanceId,
     this.isPlanned = false,
     this.includedInPeriod = true,
     this.tags = const <String>[],
@@ -21,6 +22,7 @@ class TransactionRecord {
     this.necessityLabel,
     this.reasonId,
     this.reasonLabel,
+    this.source,
   });
 
   final int? id;
@@ -32,6 +34,7 @@ class TransactionRecord {
   final String? time;
   final String? note;
   final int? plannedId;
+   final int? planInstanceId;
   final bool isPlanned;
   final bool includedInPeriod;
   final List<String> tags;
@@ -40,6 +43,7 @@ class TransactionRecord {
   final String? necessityLabel;
   final int? reasonId;
   final String? reasonLabel;
+  final String? source;
 
   TransactionRecord copyWith({
     int? id,
@@ -51,6 +55,7 @@ class TransactionRecord {
     String? time,
     String? note,
     Object? plannedId = _unset,
+    Object? planInstanceId = _unset,
     bool? isPlanned,
     bool? includedInPeriod,
     List<String>? tags,
@@ -59,6 +64,7 @@ class TransactionRecord {
     Object? necessityLabel = _unset,
     Object? reasonId = _unset,
     Object? reasonLabel = _unset,
+    Object? source = _unset,
   }) {
     return TransactionRecord(
       id: id ?? this.id,
@@ -71,6 +77,9 @@ class TransactionRecord {
       note: note ?? this.note,
       plannedId:
           plannedId == _unset ? this.plannedId : plannedId as int?,
+      planInstanceId: planInstanceId == _unset
+          ? this.planInstanceId
+          : planInstanceId as int?,
       isPlanned: isPlanned ?? this.isPlanned,
       includedInPeriod: includedInPeriod ?? this.includedInPeriod,
       tags: tags ?? this.tags,
@@ -86,6 +95,7 @@ class TransactionRecord {
       reasonLabel: reasonLabel == _unset
           ? this.reasonLabel
           : reasonLabel as String?,
+      source: source == _unset ? this.source : source as String?,
     );
   }
 
@@ -100,6 +110,7 @@ class TransactionRecord {
       time: map['time'] as String?,
       note: map['note'] as String?,
       plannedId: map['planned_id'] as int?,
+      planInstanceId: map['plan_instance_id'] as int?,
       isPlanned: (map['is_planned'] as int? ?? 0) != 0,
       includedInPeriod: (map['included_in_period'] as int? ?? 0) != 0,
       tags: _decodeTags(map['tags'] as String?),
@@ -108,6 +119,7 @@ class TransactionRecord {
       necessityLabel: map['necessity_label'] as String?,
       reasonId: map['reason_id'] as int?,
       reasonLabel: map['reason_label'] as String?,
+      source: map['source'] as String?,
     );
   }
 
@@ -122,6 +134,7 @@ class TransactionRecord {
       'time': time,
       'note': note,
       'planned_id': plannedId,
+      'plan_instance_id': planInstanceId,
       'is_planned': isPlanned ? 1 : 0,
       'included_in_period': includedInPeriod ? 1 : 0,
       'tags': tags.isEmpty ? null : jsonEncode(tags),
@@ -130,6 +143,7 @@ class TransactionRecord {
       'necessity_label': necessityLabel,
       'reason_id': reasonId,
       'reason_label': reasonLabel,
+      'source': source,
     };
   }
 

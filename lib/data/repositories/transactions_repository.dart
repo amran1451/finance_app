@@ -217,11 +217,18 @@ class SqliteTransactionsRepository implements TransactionsRepository {
   @override
   Future<void> deletePlannedInstance(int plannedId) async {
     final db = await _db;
-    await db.delete(
-      'transactions',
-      where: 'id = ? AND is_planned = 1',
-      whereArgs: [plannedId],
-    );
+    await db.transaction((txn) async {
+      await txn.delete(
+        'transactions',
+        where: 'plan_instance_id = ? AND source = ?',
+        whereArgs: [plannedId, 'plan'],
+      );
+      await txn.delete(
+        'transactions',
+        where: 'id = ? AND is_planned = 1',
+        whereArgs: [plannedId],
+      );
+    });
   }
 
   @override
@@ -561,15 +568,57 @@ class SqliteTransactionsRepository implements TransactionsRepository {
   @override
   Future<void> setPlannedIncluded(int plannedId, bool included) async {
     final db = await _db;
-    await db.update(
-      'transactions',
-      {
-        'included_in_period': included ? 1 : 0,
-        'updated_at': DateTime.now().toIso8601String(),
-      },
-      where: 'is_planned = 1 AND id = ?',
-      whereArgs: [plannedId],
-    );
+    await db.transaction((txn) async {
+      final plannedRows = await txn.query(
+        'transactions',
+        where: 'is_planned = 1 AND id = ?',
+        whereArgs: [plannedId],
+        limit: 1,
+      );
+      if (plannedRows.isEmpty) {
+        return;
+      }
+      final planned = TransactionRecord.fromMap(plannedRows.first);
+      await txn.update(
+        'transactions',
+        {
+          'included_in_period': included ? 1 : 0,
+          'updated_at': DateTime.now().toIso8601String(),
+        },
+        where: 'id = ?',
+        whereArgs: [plannedId],
+      );
+      if (included) {
+        final existing = await txn.query(
+          'transactions',
+          where: 'plan_instance_id = ?',
+          whereArgs: [plannedId],
+          limit: 1,
+        );
+        if (existing.isNotEmpty) {
+          return;
+        }
+        final now = DateTime.now();
+        final plannedDate = DateTime(now.year, now.month, now.day);
+        final operation = planned.copyWith(
+          id: null,
+          isPlanned: false,
+          includedInPeriod: true,
+          planInstanceId: plannedId,
+          plannedId: planned.plannedId,
+          date: plannedDate,
+          source: 'plan',
+        );
+        final values = Map<String, Object?>.from(operation.toMap())..remove('id');
+        await txn.insert('transactions', values);
+      } else {
+        await txn.delete(
+          'transactions',
+          where: 'plan_instance_id = ? AND source = ?',
+          whereArgs: [plannedId, 'plan'],
+        );
+      }
+    });
   }
 
   @override
