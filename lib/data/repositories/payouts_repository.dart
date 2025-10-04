@@ -611,6 +611,53 @@ class SqlitePayoutsRepository implements PayoutsRepository {
       where: 'id = ?',
       whereArgs: [id],
     );
+
+    final previousPeriod = period.prevHalf();
+    final previousRows = await executor.query(
+      'periods',
+      where: 'year = ? AND month = ? AND half = ?',
+      whereArgs: [
+        previousPeriod.year,
+        previousPeriod.month,
+        _halfToDb(previousPeriod.half),
+      ],
+      limit: 1,
+    );
+
+    if (previousRows.isEmpty) {
+      return;
+    }
+
+    final previousRow = previousRows.first;
+    final previousId = previousRow['id'] as int?;
+    if (previousId == null) {
+      return;
+    }
+
+    final defaultPreviousBounds = previousPeriod.bounds(anchor1, anchor2);
+    final previousStartRaw = previousRow['start'] as String?;
+    final previousEndRaw = previousRow['end_exclusive'] as String?;
+    final previousStartParsed =
+        _parseDate(previousStartRaw) ?? defaultPreviousBounds.start;
+    final previousEndParsed =
+        _parseDate(previousEndRaw) ?? defaultPreviousBounds.endExclusive;
+    final normalizedPreviousStart = normalizeDate(previousStartParsed);
+    final normalizedPreviousEndExclusive =
+        normalizeDate(previousEndParsed);
+    final newEndExclusive = normalizedStart;
+
+    if (!newEndExclusive.isAtSameMomentAs(normalizedPreviousEndExclusive) &&
+        newEndExclusive.isAfter(normalizedPreviousStart) &&
+        newEndExclusive.isBefore(normalizedPreviousEndExclusive)) {
+      await executor.update(
+        'periods',
+        {
+          'end_exclusive': _formatDate(newEndExclusive),
+        },
+        where: 'id = ?',
+        whereArgs: [previousId],
+      );
+    }
   }
 
   Future<void> _restorePeriodStarts(
