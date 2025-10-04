@@ -15,6 +15,26 @@ For help getting started with Flutter development, view the
 [online documentation](https://docs.flutter.dev/), which offers tutorials,
 samples, guidance on mobile development, and a full API reference.
 
+## Troubleshooting: Unable to update Dart SDK on Windows
+
+If the Flutter tool shows repeated errors like `Unable to update Dart SDK` or
+PowerShell reports that `Rename-Item` cannot rename the
+`C:\src\flutter\bin\cache\dart-sdk` folder, the cached SDK is usually locked
+by another process. To recover:
+
+1. Close Visual Studio Code, Android Studio, terminals, and any running Dart or
+   Flutter processes.
+2. Open a new **elevated** PowerShell window (Run as administrator).
+3. Delete the stale cache folder manually:
+   ```powershell
+   Remove-Item "C:\src\flutter\bin\cache\dart-sdk" -Recurse -Force
+   ```
+4. Rerun `flutter doctor` (or the original command). Flutter will download a
+   fresh Dart SDK into the cache and the update should complete successfully.
+
+If the deletion is blocked, reboot Windows to release file locks and repeat the
+steps above.
+
 ## Dependency maintenance
 
 After updating dependencies, run:
