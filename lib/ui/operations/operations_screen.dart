@@ -14,6 +14,7 @@ import '../../state/operations_filters.dart';
 import '../../state/entry_flow_providers.dart';
 import '../../state/reason_providers.dart';
 import '../../utils/formatting.dart';
+import '../../utils/period_utils.dart';
 import '../../routing/app_router.dart';
 import '../../data/repositories/transactions_repository.dart'
     show TransactionListItem;
@@ -293,11 +294,48 @@ class _OperationsSection extends ConsumerWidget {
                   ],
                 ),
                 onLongPress: () async {
+                  final (anchor1, anchor2) = ref.read(anchorDaysProvider);
+                  final periodRef =
+                      periodRefForDate(record.date, anchor1, anchor2);
+                  final status =
+                      await ref.read(periodStatusProvider(periodRef).future);
+                  if (status.closed) {
+                    if (!context.mounted) {
+                      return;
+                    }
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(
+                        content: Text(
+                          'Период закрыт. Чтобы изменить операцию, откройте период.',
+                        ),
+                      ),
+                    );
+                    return;
+                  }
                   final action = await showModalBottomSheet<_OperationAction>(
                     context: context,
                     builder: (context) => const _OperationActionsSheet(),
                   );
                   if (action == null) {
+                    return;
+                  }
+                  if (action != _OperationAction.edit &&
+                      action != _OperationAction.delete) {
+                    return;
+                  }
+                  final latestStatus =
+                      await ref.read(periodStatusProvider(periodRef).future);
+                  if (latestStatus.closed) {
+                    if (!context.mounted) {
+                      return;
+                    }
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(
+                        content: Text(
+                          'Период закрыт. Чтобы изменить операцию, откройте период.',
+                        ),
+                      ),
+                    );
                     return;
                   }
                   if (action == _OperationAction.delete) {
