@@ -11,6 +11,7 @@ abstract class PayoutsRepository {
     DateTime date,
     int amountMinor, {
     int? accountId,
+    DatabaseExecutor? executor,
   });
 
   Future<void> update({
@@ -19,9 +20,10 @@ abstract class PayoutsRepository {
     required DateTime date,
     required int amountMinor,
     int? accountId,
+    DatabaseExecutor? executor,
   });
 
-  Future<void> delete(int id);
+  Future<void> delete(int id, {DatabaseExecutor? executor});
 
   Future<Payout?> getLast();
 
@@ -35,6 +37,7 @@ abstract class PayoutsRepository {
     required int payoutId,
     required int dailyLimitMinor,
     required bool fromToday,
+    DatabaseExecutor? executor,
   });
 
   Future<({int dailyLimitMinor, bool fromToday})> getDailyLimit(int payoutId);
@@ -49,6 +52,7 @@ abstract class PayoutsRepository {
     required int amountMinor,
     int? accountId,
     bool shiftPeriodStart = false,
+    DatabaseExecutor? executor,
   });
 }
 
@@ -60,35 +64,53 @@ class SqlitePayoutsRepository implements PayoutsRepository {
 
   Future<Database> get _db async => _database.database;
 
+  Future<T> _runWrite<T>(
+    Future<T> Function(DatabaseExecutor executor) action, {
+    DatabaseExecutor? executor,
+    String? debugContext,
+  }) {
+    if (executor != null) {
+      return action(executor);
+    }
+    return _database.runInWriteTransaction<T>(
+      (txn) => action(txn),
+      debugContext: debugContext,
+    );
+  }
+
   @override
   Future<int> add(
     PayoutType type,
     DateTime date,
     int amountMinor, {
     int? accountId,
+    DatabaseExecutor? executor,
   }) async {
-    final db = await _db;
     final normalizedDate = normalizeDate(date);
-    return db.transaction((txn) async {
-      final resolvedAccountId = await _resolveAccountId(txn, accountId);
-      final (anchor1Raw, anchor2Raw) = await _loadAnchorDays(txn);
-      final anchors = [anchor1Raw, anchor2Raw]..sort();
-      final selected = periodRefForDate(normalizedDate, anchors[0], anchors[1]);
-      final result = await _upsertWithTransaction(
-        txn,
-        existing: null,
-        existingId: null,
-        selectedPeriod: selected,
-        pickedDate: normalizedDate,
-        type: type,
-        amountMinor: amountMinor,
-        accountId: resolvedAccountId,
-        anchor1: anchors[0],
-        anchor2: anchors[1],
-        shiftPeriodStart: false,
-      );
-      return result.payout.id!;
-    });
+    return _runWrite<int>(
+      (txn) async {
+        final resolvedAccountId = await _resolveAccountId(txn, accountId);
+        final (anchor1Raw, anchor2Raw) = await _loadAnchorDays(txn);
+        final anchors = [anchor1Raw, anchor2Raw]..sort();
+        final selected = periodRefForDate(normalizedDate, anchors[0], anchors[1]);
+        final result = await _upsertWithExecutor(
+          txn,
+          existing: null,
+          existingId: null,
+          selectedPeriod: selected,
+          pickedDate: normalizedDate,
+          type: type,
+          amountMinor: amountMinor,
+          accountId: resolvedAccountId,
+          anchor1: anchors[0],
+          anchor2: anchors[1],
+          shiftPeriodStart: false,
+        );
+        return result.payout.id!;
+      },
+      executor: executor,
+      debugContext: 'payouts.add',
+    );
   }
 
   @override
@@ -98,56 +120,63 @@ class SqlitePayoutsRepository implements PayoutsRepository {
     required DateTime date,
     required int amountMinor,
     int? accountId,
+    DatabaseExecutor? executor,
   }) async {
-    final db = await _db;
     final normalizedDate = normalizeDate(date);
-    await db.transaction((txn) async {
-      final resolvedAccountId = await _resolveAccountId(txn, accountId);
-      final (anchor1Raw, anchor2Raw) = await _loadAnchorDays(txn);
-      final anchors = [anchor1Raw, anchor2Raw]..sort();
-      final selected = periodRefForDate(normalizedDate, anchors[0], anchors[1]);
-      await _upsertWithTransaction(
-        txn,
-        existing: null,
-        existingId: id,
-        selectedPeriod: selected,
-        pickedDate: normalizedDate,
-        type: type,
-        amountMinor: amountMinor,
-        accountId: resolvedAccountId,
-        anchor1: anchors[0],
-        anchor2: anchors[1],
-        shiftPeriodStart: false,
-      );
-    });
+    await _runWrite<void>(
+      (txn) async {
+        final resolvedAccountId = await _resolveAccountId(txn, accountId);
+        final (anchor1Raw, anchor2Raw) = await _loadAnchorDays(txn);
+        final anchors = [anchor1Raw, anchor2Raw]..sort();
+        final selected = periodRefForDate(normalizedDate, anchors[0], anchors[1]);
+        await _upsertWithExecutor(
+          txn,
+          existing: null,
+          existingId: id,
+          selectedPeriod: selected,
+          pickedDate: normalizedDate,
+          type: type,
+          amountMinor: amountMinor,
+          accountId: resolvedAccountId,
+          anchor1: anchors[0],
+          anchor2: anchors[1],
+          shiftPeriodStart: false,
+        );
+      },
+      executor: executor,
+      debugContext: 'payouts.update',
+    );
   }
 
   @override
-  Future<void> delete(int id) async {
-    final db = await _db;
-    await db.transaction((txn) async {
-      final impactedPeriods = await txn.query(
-        'periods',
-        where: 'start_anchor_payout_id = ?',
-        whereArgs: [id],
-      );
+  Future<void> delete(int id, {DatabaseExecutor? executor}) async {
+    await _runWrite<void>(
+      (txn) async {
+        final impactedPeriods = await txn.query(
+          'periods',
+          where: 'start_anchor_payout_id = ?',
+          whereArgs: [id],
+        );
 
-      await txn.delete(
-        'transactions',
-        where: 'payout_id = ?',
-        whereArgs: [id],
-      );
-      await txn.delete(
-        'payouts',
-        where: 'id = ?',
-        whereArgs: [id],
-      );
+        await txn.delete(
+          'transactions',
+          where: 'payout_id = ?',
+          whereArgs: [id],
+        );
+        await txn.delete(
+          'payouts',
+          where: 'id = ?',
+          whereArgs: [id],
+        );
 
-      await _restorePeriodStarts(
-        txn,
-        periodRows: impactedPeriods,
-      );
-    });
+        await _restorePeriodStarts(
+          txn,
+          periodRows: impactedPeriods,
+        );
+      },
+      executor: executor,
+      debugContext: 'payouts.delete',
+    );
   }
 
   @override
@@ -214,16 +243,22 @@ class SqlitePayoutsRepository implements PayoutsRepository {
     required int payoutId,
     required int dailyLimitMinor,
     required bool fromToday,
+    DatabaseExecutor? executor,
   }) async {
-    final db = await _db;
-    await db.update(
-      'payouts',
-      {
-        'daily_limit_minor': dailyLimitMinor,
-        'daily_limit_from_today': fromToday ? 1 : 0,
+    await _runWrite<void>(
+      (db) async {
+        await db.update(
+          'payouts',
+          {
+            'daily_limit_minor': dailyLimitMinor,
+            'daily_limit_from_today': fromToday ? 1 : 0,
+          },
+          where: 'id = ?',
+          whereArgs: [payoutId],
+        );
       },
-      where: 'id = ?',
-      whereArgs: [payoutId],
+      executor: executor,
+      debugContext: 'payouts.setDailyLimit',
     );
   }
 
@@ -255,27 +290,32 @@ class SqlitePayoutsRepository implements PayoutsRepository {
     required int amountMinor,
     int? accountId,
     bool shiftPeriodStart = false,
+    DatabaseExecutor? executor,
   }) async {
-    final db = await _db;
     final normalized = normalizeDate(pickedDate);
-    return db.transaction((txn) async {
-      final resolvedAccountId = await _resolveAccountId(txn, accountId ?? existing?.accountId);
-      final (anchor1Raw, anchor2Raw) = await _loadAnchorDays(txn);
-      final anchors = [anchor1Raw, anchor2Raw]..sort();
-      return _upsertWithTransaction(
-        txn,
-        existing: existing,
-        existingId: existing?.id,
-        selectedPeriod: selectedPeriod,
-        pickedDate: normalized,
-        type: type,
-        amountMinor: amountMinor,
-        accountId: resolvedAccountId,
-        anchor1: anchors[0],
-        anchor2: anchors[1],
-        shiftPeriodStart: shiftPeriodStart,
-      );
-    });
+    return _runWrite<({Payout payout, PeriodRef period})>(
+      (txn) async {
+        final resolvedAccountId =
+            await _resolveAccountId(txn, accountId ?? existing?.accountId);
+        final (anchor1Raw, anchor2Raw) = await _loadAnchorDays(txn);
+        final anchors = [anchor1Raw, anchor2Raw]..sort();
+        return _upsertWithExecutor(
+          txn,
+          existing: existing,
+          existingId: existing?.id,
+          selectedPeriod: selectedPeriod,
+          pickedDate: normalized,
+          type: type,
+          amountMinor: amountMinor,
+          accountId: resolvedAccountId,
+          anchor1: anchors[0],
+          anchor2: anchors[1],
+          shiftPeriodStart: shiftPeriodStart,
+        );
+      },
+      executor: executor,
+      debugContext: 'payouts.upsertClamp',
+    );
   }
 
   Map<String, Object?> _payoutValues(Payout payout) {
@@ -430,8 +470,8 @@ class SqlitePayoutsRepository implements PayoutsRepository {
     return Payout.fromMap(rows.first);
   }
 
-  Future<({Payout payout, PeriodRef period})> _upsertWithTransaction(
-    Transaction txn, {
+  Future<({Payout payout, PeriodRef period})> _upsertWithExecutor(
+    DatabaseExecutor executor, {
     required Payout? existing,
     required int? existingId,
     required PeriodRef selectedPeriod,
@@ -464,7 +504,7 @@ class SqlitePayoutsRepository implements PayoutsRepository {
     }
 
     final resolvedExisting = existing ??
-        (existingId != null ? await _loadPayoutById(txn, existingId) : null);
+        (existingId != null ? await _loadPayoutById(executor, existingId) : null);
 
     final payout = (resolvedExisting ??
             Payout(
@@ -485,18 +525,18 @@ class SqlitePayoutsRepository implements PayoutsRepository {
     late final int payoutId;
     if (existingId != null) {
       payoutId = existingId;
-      await txn.update(
+      await executor.update(
         'payouts',
         payoutValues,
         where: 'id = ?',
         whereArgs: [payoutId],
       );
     } else {
-      payoutId = await txn.insert('payouts', payoutValues);
+      payoutId = await executor.insert('payouts', payoutValues);
     }
 
     await _syncIncomeTransaction(
-      txn,
+      executor,
       payoutId: payoutId,
       type: type,
       date: normalizedPicked,
@@ -506,7 +546,7 @@ class SqlitePayoutsRepository implements PayoutsRepository {
 
     if (shiftPeriodStart) {
       await _updatePeriodStart(
-        txn,
+        executor,
         period: selectedPeriod,
         newStart: normalizedPicked,
         anchor1: anchor1,
@@ -522,7 +562,7 @@ class SqlitePayoutsRepository implements PayoutsRepository {
   }
 
   Future<void> _updatePeriodStart(
-    Transaction txn, {
+    DatabaseExecutor executor, {
     required PeriodRef period,
     required DateTime newStart,
     required int anchor1,
@@ -530,7 +570,7 @@ class SqlitePayoutsRepository implements PayoutsRepository {
     required int payoutId,
   }) async {
     final normalizedStart = normalizeDate(newStart);
-    final rows = await txn.query(
+    final rows = await executor.query(
       'periods',
       where: 'year = ? AND month = ? AND half = ?',
       whereArgs: [period.year, period.month, _halfToDb(period.half)],
@@ -562,7 +602,7 @@ class SqlitePayoutsRepository implements PayoutsRepository {
       return;
     }
 
-    await txn.update(
+    await executor.update(
       'periods',
       {
         'start': _formatDate(normalizedStart),
@@ -574,14 +614,14 @@ class SqlitePayoutsRepository implements PayoutsRepository {
   }
 
   Future<void> _restorePeriodStarts(
-    Transaction txn, {
+    DatabaseExecutor executor, {
     required List<Map<String, Object?>> periodRows,
   }) async {
     if (periodRows.isEmpty) {
       return;
     }
 
-    final (anchor1Raw, anchor2Raw) = await _loadAnchorDays(txn);
+    final (anchor1Raw, anchor2Raw) = await _loadAnchorDays(executor);
     final anchors = [anchor1Raw, anchor2Raw]..sort();
 
     for (final row in periodRows) {
@@ -608,7 +648,7 @@ class SqlitePayoutsRepository implements PayoutsRepository {
         earliestAllowed = defaultStart;
       }
 
-      final candidates = await txn.query(
+      final candidates = await executor.query(
         'payouts',
         columns: ['id', 'date'],
         where: 'date >= ? AND date < ?',
@@ -636,7 +676,7 @@ class SqlitePayoutsRepository implements PayoutsRepository {
         }
       }
 
-      await txn.update(
+      await executor.update(
         'periods',
         {
           'start': _formatDate(nextStart),

@@ -5,7 +5,7 @@ class AppMigrations {
   AppMigrations._();
 
   /// Latest schema version supported by the application.
-  static const int latestVersion = 14;
+  static const int latestVersion = 15;
 
   static final Map<int, List<String>> _migrationScripts = {
     1: [
@@ -137,6 +137,20 @@ class AppMigrations {
           'ON transactions(is_planned, date)',
       'CREATE INDEX IF NOT EXISTS idx_transactions_type_planned_included_date '
           'ON transactions(type, is_planned, included_in_period, date)',
+    ],
+    15: [
+      'CREATE INDEX IF NOT EXISTS idx_transactions_included_date '
+          'ON transactions(included_in_period, date)',
+      'CREATE INDEX IF NOT EXISTS idx_transactions_category_date '
+          'ON transactions(category_id, date)',
+      'CREATE INDEX IF NOT EXISTS idx_transactions_planned_date '
+          'ON transactions(planned_id, date)',
+      'CREATE INDEX IF NOT EXISTS idx_transactions_payout_date '
+          'ON transactions(payout_id, date)',
+      'CREATE INDEX IF NOT EXISTS idx_transactions_plan_source '
+          'ON transactions(plan_instance_id, source)',
+      'CREATE INDEX IF NOT EXISTS idx_payouts_account_date ON payouts(account_id, date)',
+      'CREATE INDEX IF NOT EXISTS idx_periods_closed_start ON periods(closed, start)',
     ],
   };
 

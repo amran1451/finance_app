@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:sqflite/sqflite.dart';
 
 import '../data/bootstrap/app_bootstrapper.dart';
 import '../data/db/app_database.dart';
@@ -156,13 +157,17 @@ class _TransactionsRepositoryWithDbTick
     transaction_models.TransactionRecord record, {
     bool asSavingPair = false,
     bool? includedInPeriod,
+    DatabaseExecutor? executor,
   }) async {
     final result = await _delegate.add(
       record,
       asSavingPair: asSavingPair,
       includedInPeriod: includedInPeriod,
+      executor: executor,
     );
-    bumpDbTick(_ref);
+    if (executor == null) {
+      bumpDbTick(_ref);
+    }
     return result;
   }
 
@@ -176,6 +181,7 @@ class _TransactionsRepositoryWithDbTick
     required bool included,
     int? necessityId,
     String? note,
+    DatabaseExecutor? executor,
   }) async {
     await _delegate.assignMasterToPeriod(
       masterId: masterId,
@@ -186,26 +192,40 @@ class _TransactionsRepositoryWithDbTick
       included: included,
       necessityId: necessityId,
       note: note,
+      executor: executor,
     );
-    bumpDbTick(_ref);
+    if (executor == null) {
+      bumpDbTick(_ref);
+    }
   }
 
   @override
-  Future<void> delete(int id) async {
-    await _delegate.delete(id);
-    bumpDbTick(_ref);
+  Future<void> delete(int id, {DatabaseExecutor? executor}) async {
+    await _delegate.delete(id, executor: executor);
+    if (executor == null) {
+      bumpDbTick(_ref);
+    }
   }
 
   @override
-  Future<void> deletePlannedInstance(int plannedId) async {
-    await _delegate.deletePlannedInstance(plannedId);
-    bumpDbTick(_ref);
+  Future<void> deletePlannedInstance(int plannedId,
+      {DatabaseExecutor? executor}) async {
+    await _delegate.deletePlannedInstance(plannedId, executor: executor);
+    if (executor == null) {
+      bumpDbTick(_ref);
+    }
   }
 
   @override
-  Future<int> deleteInstancesByPlannedId(int plannedId) async {
-    final result = await _delegate.deleteInstancesByPlannedId(plannedId);
-    bumpDbTick(_ref);
+  Future<int> deleteInstancesByPlannedId(int plannedId,
+      {DatabaseExecutor? executor}) async {
+    final result = await _delegate.deleteInstancesByPlannedId(
+      plannedId,
+      executor: executor,
+    );
+    if (executor == null) {
+      bumpDbTick(_ref);
+    }
     return result;
   }
 
@@ -303,6 +323,7 @@ class _TransactionsRepositoryWithDbTick
     String? necessityLabel,
     bool includedInPeriod = false,
     int criticality = 0,
+    DatabaseExecutor? executor,
   }) async {
     final result = await _delegate.createPlannedInstance(
       plannedId: plannedId,
@@ -316,8 +337,11 @@ class _TransactionsRepositoryWithDbTick
       necessityLabel: necessityLabel,
       includedInPeriod: includedInPeriod,
       criticality: criticality,
+      executor: executor,
     );
-    bumpDbTick(_ref);
+    if (executor == null) {
+      bumpDbTick(_ref);
+    }
     return result;
   }
 
@@ -338,24 +362,42 @@ class _TransactionsRepositoryWithDbTick
   Future<void> setIncludedInPeriod({
     required int transactionId,
     required bool value,
+    DatabaseExecutor? executor,
   }) async {
     await _delegate.setIncludedInPeriod(
       transactionId: transactionId,
       value: value,
+      executor: executor,
     );
-    bumpDbTick(_ref);
+    if (executor == null) {
+      bumpDbTick(_ref);
+    }
   }
 
   @override
-  Future<void> setPlannedCompletion(int id, bool isCompleted) async {
-    await _delegate.setPlannedCompletion(id, isCompleted);
-    bumpDbTick(_ref);
+  Future<void> setPlannedCompletion(int id, bool isCompleted,
+      {DatabaseExecutor? executor}) async {
+    await _delegate.setPlannedCompletion(
+      id,
+      isCompleted,
+      executor: executor,
+    );
+    if (executor == null) {
+      bumpDbTick(_ref);
+    }
   }
 
   @override
-  Future<void> setPlannedIncluded(int plannedId, bool included) async {
-    await _delegate.setPlannedIncluded(plannedId, included);
-    bumpDbTick(_ref);
+  Future<void> setPlannedIncluded(int plannedId, bool included,
+      {DatabaseExecutor? executor}) async {
+    await _delegate.setPlannedIncluded(
+      plannedId,
+      included,
+      executor: executor,
+    );
+    if (executor == null) {
+      bumpDbTick(_ref);
+    }
   }
 
   @override
@@ -401,12 +443,16 @@ class _TransactionsRepositoryWithDbTick
   Future<void> update(
     transaction_models.TransactionRecord record, {
     bool? includedInPeriod,
+    DatabaseExecutor? executor,
   }) async {
     await _delegate.update(
       record,
       includedInPeriod: includedInPeriod,
+      executor: executor,
     );
-    bumpDbTick(_ref);
+    if (executor == null) {
+      bumpDbTick(_ref);
+    }
   }
 }
 
@@ -422,19 +468,23 @@ class _PayoutsRepositoryWithDbTick implements payouts_repo.PayoutsRepository {
     DateTime date,
     int amountMinor, {
     int? accountId,
+    DatabaseExecutor? executor,
   }) {
     return _delegate.add(
       type,
       date,
       amountMinor,
       accountId: accountId,
+      executor: executor,
     );
   }
 
   @override
-  Future<void> delete(int id) async {
-    await _delegate.delete(id);
-    bumpDbTick(_ref);
+  Future<void> delete(int id, {DatabaseExecutor? executor}) async {
+    await _delegate.delete(id, executor: executor);
+    if (executor == null) {
+      bumpDbTick(_ref);
+    }
   }
 
   @override
@@ -468,13 +518,17 @@ class _PayoutsRepositoryWithDbTick implements payouts_repo.PayoutsRepository {
     required int payoutId,
     required int dailyLimitMinor,
     required bool fromToday,
+    DatabaseExecutor? executor,
   }) async {
     await _delegate.setDailyLimit(
       payoutId: payoutId,
       dailyLimitMinor: dailyLimitMinor,
       fromToday: fromToday,
+      executor: executor,
     );
-    bumpDbTick(_ref);
+    if (executor == null) {
+      bumpDbTick(_ref);
+    }
   }
 
   @override
@@ -489,6 +543,7 @@ class _PayoutsRepositoryWithDbTick implements payouts_repo.PayoutsRepository {
     required DateTime date,
     required int amountMinor,
     int? accountId,
+    DatabaseExecutor? executor,
   }) {
     return _delegate.update(
       id: id,
@@ -496,6 +551,7 @@ class _PayoutsRepositoryWithDbTick implements payouts_repo.PayoutsRepository {
       date: date,
       amountMinor: amountMinor,
       accountId: accountId,
+      executor: executor,
     );
   }
 
@@ -509,6 +565,7 @@ class _PayoutsRepositoryWithDbTick implements payouts_repo.PayoutsRepository {
     required int amountMinor,
     int? accountId,
     bool shiftPeriodStart = false,
+    DatabaseExecutor? executor,
   }) {
     return _delegate.upsertWithClampToSelectedPeriod(
       existing: existing,
@@ -518,6 +575,7 @@ class _PayoutsRepositoryWithDbTick implements payouts_repo.PayoutsRepository {
       amountMinor: amountMinor,
       accountId: accountId,
       shiftPeriodStart: shiftPeriodStart,
+      executor: executor,
     );
   }
 }

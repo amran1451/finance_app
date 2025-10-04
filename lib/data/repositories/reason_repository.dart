@@ -43,13 +43,16 @@ abstract class ReasonRepository {
     required String name,
     String? color,
     int? sortOrder,
+    DatabaseExecutor? executor,
   });
 
-  Future<void> update(int id, {String? name, String? color});
+  Future<void> update(int id,
+      {String? name, String? color, DatabaseExecutor? executor});
 
-  Future<void> archive(int id, {bool archived = true});
+  Future<void> archive(int id,
+      {bool archived = true, DatabaseExecutor? executor});
 
-  Future<void> reorder(List<int> orderedIds);
+  Future<void> reorder(List<int> orderedIds, {DatabaseExecutor? executor});
 
   Future<ReasonLabel?> findById(int id);
 }
@@ -61,6 +64,20 @@ class ReasonRepositorySqlite implements ReasonRepository {
   final AppDatabase _database;
 
   Future<Database> get _db async => _database.database;
+
+  Future<T> _runWrite<T>(
+    Future<T> Function(DatabaseExecutor executor) action, {
+    DatabaseExecutor? executor,
+    String? debugContext,
+  }) {
+    if (executor != null) {
+      return action(executor);
+    }
+    return _database.runInWriteTransaction<T>(
+      (txn) => action(txn),
+      debugContext: debugContext,
+    );
+  }
 
   @override
   Future<ReasonLabel?> findById(int id) async {
@@ -93,28 +110,34 @@ class ReasonRepositorySqlite implements ReasonRepository {
     required String name,
     String? color,
     int? sortOrder,
+    DatabaseExecutor? executor,
   }) async {
-    final db = await _db;
-    final resolvedSortOrder =
-        sortOrder ?? await _nextSortOrder(db, includeArchived: true);
-    final id = await db.insert('reason_labels', {
-      'name': name,
-      'color': color,
-      'sort_order': resolvedSortOrder,
-      'archived': 0,
-    });
-    return ReasonLabel(
-      id: id,
-      name: name,
-      color: color,
-      sortOrder: resolvedSortOrder,
-      archived: false,
+    return _runWrite<ReasonLabel>(
+      (db) async {
+        final resolvedSortOrder =
+            sortOrder ?? await _nextSortOrder(db, includeArchived: true);
+        final id = await db.insert('reason_labels', {
+          'name': name,
+          'color': color,
+          'sort_order': resolvedSortOrder,
+          'archived': 0,
+        });
+        return ReasonLabel(
+          id: id,
+          name: name,
+          color: color,
+          sortOrder: resolvedSortOrder,
+          archived: false,
+        );
+      },
+      executor: executor,
+      debugContext: 'reason.create',
     );
   }
 
   @override
-  Future<void> update(int id, {String? name, String? color}) async {
-    final db = await _db;
+  Future<void> update(int id,
+      {String? name, String? color, DatabaseExecutor? executor}) async {
     final values = <String, Object?>{};
     if (name != null) {
       values['name'] = name;
@@ -125,41 +148,58 @@ class ReasonRepositorySqlite implements ReasonRepository {
     if (values.isEmpty) {
       return;
     }
-    await db.update(
-      'reason_labels',
-      values,
-      where: 'id = ?',
-      whereArgs: [id],
-    );
-  }
-
-  @override
-  Future<void> archive(int id, {bool archived = true}) async {
-    final db = await _db;
-    await db.update(
-      'reason_labels',
-      {'archived': archived ? 1 : 0},
-      where: 'id = ?',
-      whereArgs: [id],
-    );
-  }
-
-  @override
-  Future<void> reorder(List<int> orderedIds) async {
-    final db = await _db;
-    await db.transaction((txn) async {
-      for (var i = 0; i < orderedIds.length; i++) {
-        await txn.update(
+    await _runWrite<void>(
+      (db) async {
+        await db.update(
           'reason_labels',
-          {'sort_order': i},
+          values,
           where: 'id = ?',
-          whereArgs: [orderedIds[i]],
+          whereArgs: [id],
         );
-      }
-    });
+      },
+      executor: executor,
+      debugContext: 'reason.update',
+    );
   }
 
-  Future<int> _nextSortOrder(Database db, {bool includeArchived = false}) async {
+  @override
+  Future<void> archive(int id,
+      {bool archived = true, DatabaseExecutor? executor}) async {
+    await _runWrite<void>(
+      (db) async {
+        await db.update(
+          'reason_labels',
+          {'archived': archived ? 1 : 0},
+          where: 'id = ?',
+          whereArgs: [id],
+        );
+      },
+      executor: executor,
+      debugContext: 'reason.archive',
+    );
+  }
+
+  @override
+  Future<void> reorder(List<int> orderedIds,
+      {DatabaseExecutor? executor}) async {
+    await _runWrite<void>(
+      (txn) async {
+        for (var i = 0; i < orderedIds.length; i++) {
+          await txn.update(
+            'reason_labels',
+            {'sort_order': i},
+            where: 'id = ?',
+            whereArgs: [orderedIds[i]],
+          );
+        }
+      },
+      executor: executor,
+      debugContext: 'reason.reorder',
+    );
+  }
+
+  Future<int> _nextSortOrder(DatabaseExecutor db,
+      {bool includeArchived = false}) async {
     final whereClause = includeArchived ? null : 'archived = 0';
     final rows = await db.query(
       'reason_labels',

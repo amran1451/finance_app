@@ -250,8 +250,7 @@ class PlannedFacade {
     final necessityLabel =
         necessityId == null ? null : await _loadNecessityLabel(necessityId);
 
-    final db = await _database.database;
-    await db.transaction((txn) async {
+    await _database.runInWriteTransaction((txn) async {
       PlannedMaster? master;
       if (reuseExisting) {
         master = await _masterRepository.findByTitleAndType(
@@ -286,7 +285,7 @@ class PlannedFacade {
         note: sanitizedNote,
         executor: txn,
       );
-    });
+    }, debugContext: 'plannedMaster.createAndAssign');
   }
 
   Future<(int, int)> _resolveAnchors() async {

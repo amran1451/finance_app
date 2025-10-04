@@ -1,7 +1,9 @@
 import 'dart:async';
 
+import 'package:flutter/foundation.dart';
 import 'package:path/path.dart' as p;
 import 'package:sqflite/sqflite.dart';
+import 'package:synchronized/synchronized.dart';
 
 import 'migrations.dart';
 
@@ -13,6 +15,7 @@ class AppDatabase {
 
   Database? _database;
   Completer<Database>? _openingCompleter;
+  final Lock _writeLock = Lock();
 
   /// Lazily opens the database and returns an instance of [Database].
   Future<Database> get database async {
@@ -67,13 +70,9 @@ class AppDatabase {
       path,
       version: AppMigrations.latestVersion,
       onConfigure: (db) async {
-        // Enable WAL to allow concurrent readers during write transactions and
-        // avoid "database has been locked" warnings that appear when the UI
-        // performs multiple queries in parallel.
-        await db.execute('PRAGMA journal_mode = WAL');
-        // Provide a small grace period for queued queries to wait for the lock
-        // instead of failing immediately.
-        await db.execute('PRAGMA busy_timeout = 5000');
+        await db.execute('PRAGMA journal_mode = WAL;');
+        await db.execute('PRAGMA busy_timeout = 10000;');
+        await db.execute('PRAGMA foreign_keys = ON;');
       },
       onCreate: (db, version) async {
         await AppMigrations.runMigrations(db, 0, version);
@@ -82,5 +81,33 @@ class AppDatabase {
         await AppMigrations.runMigrations(db, oldVersion, newVersion);
       },
     );
+  }
+
+  /// Executes [action] inside a synchronized write transaction.
+  Future<T> runInWriteTransaction<T>(
+    Future<T> Function(Transaction txn) action, {
+    String? debugContext,
+  }) async {
+    final db = await database;
+    return _writeLock.synchronized(() async {
+      final stopwatch = Stopwatch()..start();
+      assert(() {
+        final label = debugContext == null ? 'write' : 'write:$debugContext';
+        debugPrint('[db] BEGIN $label');
+        return true;
+      }());
+      try {
+        return await db.transaction<T>((txn) async {
+          return action(txn);
+        });
+      } finally {
+        stopwatch.stop();
+        assert(() {
+          final label = debugContext == null ? 'write' : 'write:$debugContext';
+          debugPrint('[db] END $label in ${stopwatch.elapsedMilliseconds}ms');
+          return true;
+        }());
+      }
+    });
   }
 }
