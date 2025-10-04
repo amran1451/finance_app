@@ -77,6 +77,11 @@ abstract class PeriodsRepository {
 
   Future<PeriodStatus> getStatus(PeriodRef period);
 
+  Future<void> reopen(
+    PeriodRef period, {
+    DatabaseExecutor? executor,
+  });
+
   Future<void> reopenLast({DatabaseExecutor? executor});
 }
 
@@ -218,6 +223,34 @@ class SqlitePeriodsRepository implements PeriodsRepository {
       },
       executor: executor,
       debugContext: 'periods.closePeriod',
+    );
+  }
+
+  @override
+  Future<void> reopen(
+    PeriodRef period, {
+    DatabaseExecutor? executor,
+  }) async {
+    await _runWrite<void>(
+      (txn) async {
+        final existing =
+            await _findPeriod(txn, period.year, period.month, period.half);
+        final id = existing?['id'] as int?;
+        if (id == null) {
+          return;
+        }
+        await txn.update(
+          'periods',
+          {
+            'closed': 0,
+            'closed_at': null,
+          },
+          where: 'id = ?',
+          whereArgs: [id],
+        );
+      },
+      executor: executor,
+      debugContext: 'periods.reopen',
     );
   }
 
