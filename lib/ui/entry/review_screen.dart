@@ -19,6 +19,7 @@ import '../../state/reason_providers.dart';
 import '../../utils/category_type_extensions.dart';
 import '../../utils/formatting.dart';
 import '../../utils/color_hex.dart';
+import '../../utils/period_utils.dart';
 import '../widgets/add_another_snack.dart';
 import '../widgets/amount_keypad.dart';
 import '../widgets/necessity_choice_chip.dart';
@@ -390,6 +391,21 @@ class _ReviewScreenState extends ConsumerState<ReviewScreen> {
       final operationDate = selectedDate.value;
       final normalizedDate =
           DateTime(operationDate.year, operationDate.month, operationDate.day);
+      final (anchor1, anchor2) = ref.read(anchorDaysProvider);
+      final operationPeriod = periodRefForDate(normalizedDate, anchor1, anchor2);
+      final periodStatus =
+          await ref.read(periodStatusProvider(operationPeriod).future);
+      if (periodStatus.closed) {
+        if (!mounted) {
+          return;
+        }
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Период закрыт. Откройте период для редактирования.'),
+          ),
+        );
+        return;
+      }
       final inCurrent = ref.read(isInCurrentPeriodProvider(normalizedDate));
 
       final normalizedOriginalDate = isEditingOperation
@@ -494,6 +510,7 @@ class _ReviewScreenState extends ConsumerState<ReviewScreen> {
           includedInPeriod: isPlannedExpense ? null : inCurrent,
         );
       }
+      await _maybePromptToClosePeriod(operationPeriod);
       bumpDbTick(ref);
       controller.reset();
       if (!mounted) {
@@ -947,6 +964,77 @@ class _ReviewScreenState extends ConsumerState<ReviewScreen> {
         ),
       ),
     );
+  }
+
+  Future<void> _maybePromptToClosePeriod(PeriodRef period) async {
+    final status = await ref.read(periodStatusProvider(period).future);
+    if (status.closed) {
+      return;
+    }
+
+    final (anchor1, anchor2) = ref.read(anchorDaysProvider);
+    final bounds = period.bounds(anchor1, anchor2);
+    final today = DateUtils.dateOnly(DateTime.now());
+    final endExclusive = DateUtils.dateOnly(bounds.endExclusive);
+    if (today.isBefore(endExclusive)) {
+      return;
+    }
+
+    if (!mounted) {
+      return;
+    }
+
+    final periodLabel = ref.read(periodLabelForRefProvider(period));
+    final shouldClose = await showDialog<bool>(
+          context: context,
+          builder: (dialogContext) => AlertDialog(
+            title: const Text('Закрыть период?'),
+            content: Text('Период $periodLabel завершён. Закрыть его?'),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.of(dialogContext).pop(false),
+                child: const Text('Отмена'),
+              ),
+              FilledButton(
+                onPressed: () => Navigator.of(dialogContext).pop(true),
+                child: const Text('Закрыть'),
+              ),
+            ],
+          ),
+        ) ??
+        false;
+    if (!shouldClose) {
+      return;
+    }
+
+    try {
+      final read = ref.read;
+      final spent = await read(spentForPeriodProvider(period).future);
+      final planned =
+          await read(plannedIncludedAmountForPeriodProvider(period).future);
+      final payout = await read(payoutForPeriodProvider(period).future);
+      await read(periodsRepoProvider).closePeriod(
+        period,
+        payoutId: payout?.id,
+        dailyLimitMinor: payout?.dailyLimitMinor,
+        spentMinor: spent,
+        plannedIncludedMinor: planned,
+        carryoverMinor: 0,
+      );
+      if (!mounted) {
+        return;
+      }
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Период $periodLabel закрыт')),
+      );
+    } catch (error) {
+      if (!mounted) {
+        return;
+      }
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Не удалось закрыть период: $error')),
+      );
+    }
   }
 }
 
