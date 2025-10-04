@@ -555,9 +555,34 @@ class SqlitePayoutsRepository implements PayoutsRepository {
       );
     }
 
+    final actualPeriod = periodRefForDate(normalizedPicked, anchor1, anchor2);
+    var effectivePeriod = selectedPeriod;
+    if (actualPeriod != selectedPeriod) {
+      if (actualPeriod == selectedPeriod.nextHalf()) {
+        await _updatePeriodEnd(
+          executor,
+          period: selectedPeriod,
+          newEndExclusive: normalizedPicked,
+          anchor1: anchor1,
+          anchor2: anchor2,
+          payoutId: payoutId,
+        );
+        effectivePeriod = actualPeriod;
+      } else if (!shiftPeriodStart && actualPeriod == selectedPeriod.prevHalf()) {
+        await _updatePeriodStart(
+          executor,
+          period: selectedPeriod,
+          newStart: normalizedPicked,
+          anchor1: anchor1,
+          anchor2: anchor2,
+          payoutId: payoutId,
+        );
+      }
+    }
+
     return (
       payout: payout.copyWith(id: payoutId),
-      period: selectedPeriod,
+      period: effectivePeriod,
     );
   }
 
@@ -658,6 +683,116 @@ class SqlitePayoutsRepository implements PayoutsRepository {
         whereArgs: [previousId],
       );
     }
+  }
+
+  Future<void> _updatePeriodEnd(
+    DatabaseExecutor executor, {
+    required PeriodRef period,
+    required DateTime newEndExclusive,
+    required int anchor1,
+    required int anchor2,
+    required int payoutId,
+  }) async {
+    final normalizedEnd = normalizeDate(newEndExclusive);
+    final rows = await executor.query(
+      'periods',
+      where: 'year = ? AND month = ? AND half = ?',
+      whereArgs: [period.year, period.month, _halfToDb(period.half)],
+      limit: 1,
+    );
+
+    if (rows.isEmpty) {
+      return;
+    }
+
+    final row = rows.first;
+    final id = row['id'] as int?;
+    if (id == null) {
+      return;
+    }
+
+    final defaultBounds = period.bounds(anchor1, anchor2);
+    final storedStartRaw = row['start'] as String?;
+    final storedEndRaw = row['end_exclusive'] as String?;
+    final storedStartParsed =
+        _parseDate(storedStartRaw) ?? normalizeDate(defaultBounds.start);
+    final storedEndParsed =
+        _parseDate(storedEndRaw) ?? normalizeDate(defaultBounds.endExclusive);
+    final normalizedStart = normalizeDate(storedStartParsed);
+    final normalizedStoredEnd = normalizeDate(storedEndParsed);
+
+    if (!normalizedEnd.isAfter(normalizedStart)) {
+      return;
+    }
+
+    if (!normalizedEnd.isBefore(normalizedStoredEnd)) {
+      return;
+    }
+
+    await executor.update(
+      'periods',
+      {
+        'end_exclusive': _formatDate(normalizedEnd),
+      },
+      where: 'id = ?',
+      whereArgs: [id],
+    );
+
+    final nextPeriod = period.nextHalf();
+    final nextRows = await executor.query(
+      'periods',
+      where: 'year = ? AND month = ? AND half = ?',
+      whereArgs: [
+        nextPeriod.year,
+        nextPeriod.month,
+        _halfToDb(nextPeriod.half),
+      ],
+      limit: 1,
+    );
+
+    if (nextRows.isEmpty) {
+      return;
+    }
+
+    final nextRow = nextRows.first;
+    final nextId = nextRow['id'] as int?;
+    if (nextId == null) {
+      return;
+    }
+
+    final defaultNextBounds = nextPeriod.bounds(anchor1, anchor2);
+    final nextStartRaw = nextRow['start'] as String?;
+    final nextEndRaw = nextRow['end_exclusive'] as String?;
+    final nextStartParsed =
+        _parseDate(nextStartRaw) ?? normalizeDate(defaultNextBounds.start);
+    final nextEndParsed =
+        _parseDate(nextEndRaw) ?? normalizeDate(defaultNextBounds.endExclusive);
+    final normalizedNextEndExclusive = normalizeDate(nextEndParsed);
+
+    if (!normalizedEnd.isBefore(normalizedNextEndExclusive)) {
+      return;
+    }
+
+    final normalizedNextStart = normalizeDate(nextStartParsed);
+    final nextUpdate = <String, Object?>{};
+    if (!normalizedEnd.isAtSameMomentAs(normalizedNextStart)) {
+      nextUpdate['start'] = _formatDate(normalizedEnd);
+    }
+    final existingAnchor = nextRow['start_anchor_payout_id'] as int?;
+    if (existingAnchor != payoutId) {
+      nextUpdate['start_anchor_payout_id'] = payoutId;
+    }
+
+    if (nextUpdate.isEmpty) {
+      return;
+    }
+
+    await executor.update(
+      'periods',
+      nextUpdate,
+      where: 'id = ?',
+      whereArgs: [nextId],
+    );
   }
 
   Future<void> _restorePeriodStarts(
