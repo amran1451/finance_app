@@ -70,8 +70,8 @@ class AppDatabase {
       path,
       version: AppMigrations.latestVersion,
       onConfigure: (db) async {
-        await db.execute('PRAGMA journal_mode = WAL;');
-        await db.execute('PRAGMA busy_timeout = 10000;');
+        await db.rawQuery('PRAGMA journal_mode = WAL;');
+        await db.rawQuery('PRAGMA busy_timeout = 10000;');
         await db.execute('PRAGMA foreign_keys = ON;');
       },
       onCreate: (db, version) async {
