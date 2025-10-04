@@ -291,7 +291,7 @@ class SqlitePeriodsRepository implements PeriodsRepository {
     if (rows.isEmpty) {
       return null;
     }
-    return rows.first;
+    return Map<String, Object?>.from(rows.first);
   }
 
   Future<Map<String, Object?>?> _findById(DatabaseExecutor executor, int id) async {
@@ -304,7 +304,7 @@ class SqlitePeriodsRepository implements PeriodsRepository {
     if (rows.isEmpty) {
       return null;
     }
-    return rows.first;
+    return Map<String, Object?>.from(rows.first);
   }
 
   PeriodEntry _mapEntry(Map<String, Object?> row) {
