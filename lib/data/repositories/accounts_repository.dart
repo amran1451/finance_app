@@ -10,15 +10,17 @@ abstract class AccountsRepository {
 
   Future<List<Account>> listActive();
 
-  Future<int> create(Account account);
+  Future<int> create(Account account, {DatabaseExecutor? executor});
 
-  Future<void> update(Account account);
+  Future<void> update(Account account, {DatabaseExecutor? executor});
 
-  Future<void> delete(int id);
+  Future<void> delete(int id, {DatabaseExecutor? executor});
 
-  Future<int> getComputedBalanceMinor(int accountId);
+  Future<int> getComputedBalanceMinor(int accountId,
+      {DatabaseExecutor? executor});
 
-  Future<void> reconcileToComputed(int accountId);
+  Future<void> reconcileToComputed(int accountId,
+      {DatabaseExecutor? executor});
 }
 
 class SqliteAccountsRepository implements AccountsRepository {
@@ -31,17 +33,39 @@ class SqliteAccountsRepository implements AccountsRepository {
 
   Future<Database> get _db async => _database.database;
 
-  @override
-  Future<int> create(Account account) async {
-    final db = await _db;
-    final values = account.toMap()..remove('id');
-    return db.insert('accounts', values);
+  Future<T> _runWrite<T>(
+    Future<T> Function(DatabaseExecutor executor) action, {
+    DatabaseExecutor? executor,
+    String? debugContext,
+  }) {
+    if (executor != null) {
+      return action(executor);
+    }
+    return _database.runInWriteTransaction<T>(
+      (txn) => action(txn),
+      debugContext: debugContext,
+    );
   }
 
   @override
-  Future<void> delete(int id) async {
-    final db = await _db;
-    await db.delete('accounts', where: 'id = ?', whereArgs: [id]);
+  Future<int> create(Account account, {DatabaseExecutor? executor}) async {
+    final values = account.toMap()..remove('id');
+    return _runWrite<int>(
+      (db) => db.insert('accounts', values),
+      executor: executor,
+      debugContext: 'accounts.create',
+    );
+  }
+
+  @override
+  Future<void> delete(int id, {DatabaseExecutor? executor}) async {
+    await _runWrite<void>(
+      (db) async {
+        await db.delete('accounts', where: 'id = ?', whereArgs: [id]);
+      },
+      executor: executor,
+      debugContext: 'accounts.delete',
+    );
   }
 
   @override
@@ -78,8 +102,9 @@ class SqliteAccountsRepository implements AccountsRepository {
   }
 
   @override
-  Future<int> getComputedBalanceMinor(int accountId) async {
-    final db = await _db;
+  Future<int> getComputedBalanceMinor(int accountId,
+      {DatabaseExecutor? executor}) async {
+    final db = executor ?? await _db;
     final accountRow = await db.query(
       'accounts',
       columns: ['start_balance_minor', 'name'],
@@ -118,29 +143,43 @@ class SqliteAccountsRepository implements AccountsRepository {
   }
 
   @override
-  Future<void> reconcileToComputed(int accountId) async {
-    final computed = await getComputedBalanceMinor(accountId);
-    final db = await _db;
-    await db.update(
-      'accounts',
-      {'start_balance_minor': computed},
-      where: 'id = ?',
-      whereArgs: [accountId],
+  Future<void> reconcileToComputed(int accountId,
+      {DatabaseExecutor? executor}) async {
+    await _runWrite<void>(
+      (db) async {
+        final computed = await getComputedBalanceMinor(
+          accountId,
+          executor: db,
+        );
+        await db.update(
+          'accounts',
+          {'start_balance_minor': computed},
+          where: 'id = ?',
+          whereArgs: [accountId],
+        );
+      },
+      executor: executor,
+      debugContext: 'accounts.reconcile',
     );
   }
 
   @override
-  Future<void> update(Account account) async {
+  Future<void> update(Account account, {DatabaseExecutor? executor}) async {
     final id = account.id;
     if (id == null) {
       throw ArgumentError('Account id is required for update');
     }
-    final db = await _db;
-    await db.update(
-      'accounts',
-      account.toMap(),
-      where: 'id = ?',
-      whereArgs: [id],
+    await _runWrite<void>(
+      (db) async {
+        await db.update(
+          'accounts',
+          account.toMap(),
+          where: 'id = ?',
+          whereArgs: [id],
+        );
+      },
+      executor: executor,
+      debugContext: 'accounts.update',
     );
   }
 

@@ -54,16 +54,18 @@ abstract class TransactionsRepository {
     TransactionRecord record, {
     bool asSavingPair = false,
     bool? includedInPeriod,
+    DatabaseExecutor? executor,
   });
 
   Future<void> update(
     TransactionRecord record, {
     bool? includedInPeriod,
+    DatabaseExecutor? executor,
   });
 
-  Future<void> delete(int id);
+  Future<void> delete(int id, {DatabaseExecutor? executor});
 
-  Future<void> deletePlannedInstance(int plannedId);
+  Future<void> deletePlannedInstance(int plannedId, {DatabaseExecutor? executor});
 
   Future<List<TransactionRecord>> listPlanned({
     TransactionType? type,
@@ -82,6 +84,7 @@ abstract class TransactionsRepository {
     String? necessityLabel,
     bool includedInPeriod = false,
     int criticality = 0,
+    DatabaseExecutor? executor,
   });
 
   Future<void> assignMasterToPeriod({
@@ -93,6 +96,7 @@ abstract class TransactionsRepository {
     required bool included,
     int? necessityId,
     String? note,
+    DatabaseExecutor? executor,
   });
 
   Future<List<TransactionItem>> listPlannedByPeriod({
@@ -102,13 +106,15 @@ abstract class TransactionsRepository {
     bool? onlyIncluded,
   });
 
-  Future<int> deleteInstancesByPlannedId(int plannedId);
+  Future<int> deleteInstancesByPlannedId(int plannedId, {DatabaseExecutor? executor});
 
-  Future<void> setPlannedCompletion(int id, bool isCompleted);
+  Future<void> setPlannedCompletion(int id, bool isCompleted,
+      {DatabaseExecutor? executor});
 
   Future<void> setIncludedInPeriod({
     required int transactionId,
     required bool value,
+    DatabaseExecutor? executor,
   });
 
   Future<int> sumIncludedPlannedExpenses({
@@ -117,7 +123,8 @@ abstract class TransactionsRepository {
     required DateTime endExclusive,
   });
 
-  Future<void> setPlannedIncluded(int plannedId, bool included);
+  Future<void> setPlannedIncluded(int plannedId, bool included,
+      {DatabaseExecutor? executor});
 
   /// Сумма внеплановых расходов в [date] (учитывая границы активного периода)
   Future<int> sumUnplannedExpensesOnDate(DateTime date);
@@ -150,6 +157,20 @@ class SqliteTransactionsRepository implements TransactionsRepository {
 
   Future<Database> get _db async => _database.database;
 
+  Future<T> _runWrite<T>(
+    Future<T> Function(DatabaseExecutor executor) action, {
+    DatabaseExecutor? executor,
+    String? debugContext,
+  }) {
+    if (executor != null) {
+      return action(executor);
+    }
+    return _database.runInWriteTransaction<T>(
+      (txn) => action(txn),
+      debugContext: debugContext,
+    );
+  }
+
   @override
   Future<TransactionRecord?> findByPayoutId(int payoutId) async {
     final db = await _db;
@@ -170,82 +191,95 @@ class SqliteTransactionsRepository implements TransactionsRepository {
     TransactionRecord record, {
     bool asSavingPair = false,
     bool? includedInPeriod,
+    DatabaseExecutor? executor,
   }) async {
-    final db = await _db;
-    return db.transaction((txn) async {
-      final categoryType = await _getCategoryType(txn, record.categoryId);
-      final adjustedRecord = record.copyWith(
-        id: null,
-        type: categoryType == CategoryType.saving
-            ? TransactionType.saving
-            : record.type,
-      );
-      final primaryValues = Map<String, Object?>.from(adjustedRecord.toMap())
-        ..remove('id');
-      if (adjustedRecord.type == TransactionType.income) {
-        primaryValues['necessity_id'] = null;
-        primaryValues['necessity_label'] = null;
-        primaryValues['reason_id'] = null;
-        primaryValues['reason_label'] = null;
-        primaryValues['criticality'] = 0;
-      }
-      if (includedInPeriod != null) {
-        primaryValues['included_in_period'] = includedInPeriod ? 1 : 0;
-      } else if (adjustedRecord.isPlanned) {
-        primaryValues['included_in_period'] =
-            adjustedRecord.includedInPeriod ? 1 : 0;
-      }
-      final primaryId = await txn.insert('transactions', primaryValues);
-
-      if (asSavingPair && categoryType == CategoryType.saving) {
-        final savingsAccountId = await _findSavingsAccountId(txn);
-        if (savingsAccountId == null) {
-          throw StateError(
-            'Счёт "${SqliteAccountsRepository.savingsAccountName}" не найден',
-          );
+    return _runWrite<int>(
+      (db) async {
+        final categoryType = await _getCategoryType(db, record.categoryId);
+        final adjustedRecord = record.copyWith(
+          id: null,
+          type: categoryType == CategoryType.saving
+              ? TransactionType.saving
+              : record.type,
+        );
+        final primaryValues = Map<String, Object?>.from(adjustedRecord.toMap())
+          ..remove('id');
+        if (adjustedRecord.type == TransactionType.income) {
+          primaryValues['necessity_id'] = null;
+          primaryValues['necessity_label'] = null;
+          primaryValues['reason_id'] = null;
+          primaryValues['reason_label'] = null;
+          primaryValues['criticality'] = 0;
         }
-        if (savingsAccountId != record.accountId) {
-          final pairRecord = adjustedRecord.copyWith(
-            id: null,
-            accountId: savingsAccountId,
-          );
-          final pairValues = Map<String, Object?>.from(pairRecord.toMap())
-            ..remove('id');
-          if (includedInPeriod != null) {
-            pairValues['included_in_period'] = includedInPeriod ? 1 : 0;
-          } else if (adjustedRecord.isPlanned) {
-            pairValues['included_in_period'] =
-                adjustedRecord.includedInPeriod ? 1 : 0;
+        if (includedInPeriod != null) {
+          primaryValues['included_in_period'] = includedInPeriod ? 1 : 0;
+        } else if (adjustedRecord.isPlanned) {
+          primaryValues['included_in_period'] =
+              adjustedRecord.includedInPeriod ? 1 : 0;
+        }
+        final primaryId = await db.insert('transactions', primaryValues);
+
+        if (asSavingPair && categoryType == CategoryType.saving) {
+          final savingsAccountId = await _findSavingsAccountId(db);
+          if (savingsAccountId == null) {
+            throw StateError(
+              'Счёт "${SqliteAccountsRepository.savingsAccountName}" не найден',
+            );
           }
-          await txn.insert('transactions', pairValues);
+          if (savingsAccountId != record.accountId) {
+            final pairRecord = adjustedRecord.copyWith(
+              id: null,
+              accountId: savingsAccountId,
+            );
+            final pairValues = Map<String, Object?>.from(pairRecord.toMap())
+              ..remove('id');
+            if (includedInPeriod != null) {
+              pairValues['included_in_period'] = includedInPeriod ? 1 : 0;
+            } else if (adjustedRecord.isPlanned) {
+              pairValues['included_in_period'] =
+                  adjustedRecord.includedInPeriod ? 1 : 0;
+            }
+            await db.insert('transactions', pairValues);
+          }
         }
-      }
 
-      return primaryId;
-    });
+        return primaryId;
+      },
+      executor: executor,
+      debugContext: 'transactions.add',
+    );
   }
 
   @override
-  Future<void> delete(int id) async {
-    final db = await _db;
-    await db.delete('transactions', where: 'id = ?', whereArgs: [id]);
+  Future<void> delete(int id, {DatabaseExecutor? executor}) async {
+    await _runWrite<void>(
+      (db) async {
+        await db.delete('transactions', where: 'id = ?', whereArgs: [id]);
+      },
+      executor: executor,
+      debugContext: 'transactions.delete',
+    );
   }
 
   @override
-  Future<void> deletePlannedInstance(int plannedId) async {
-    final db = await _db;
-    await db.transaction((txn) async {
-      await txn.delete(
-        'transactions',
-        where: 'plan_instance_id = ? AND source = ?',
-        whereArgs: [plannedId, 'plan'],
-      );
-      await txn.delete(
-        'transactions',
-        where: 'id = ? AND is_planned = 1',
-        whereArgs: [plannedId],
-      );
-    });
+  Future<void> deletePlannedInstance(int plannedId,
+      {DatabaseExecutor? executor}) async {
+    await _runWrite<void>(
+      (db) async {
+        await db.delete(
+          'transactions',
+          where: 'plan_instance_id = ? AND source = ?',
+          whereArgs: [plannedId, 'plan'],
+        );
+        await db.delete(
+          'transactions',
+          where: 'id = ? AND is_planned = 1',
+          whereArgs: [plannedId],
+        );
+      },
+      executor: executor,
+      debugContext: 'transactions.deletePlannedInstance',
+    );
   }
 
   @override
@@ -355,29 +389,35 @@ class SqliteTransactionsRepository implements TransactionsRepository {
   Future<void> update(
     TransactionRecord record, {
     bool? includedInPeriod,
+    DatabaseExecutor? executor,
   }) async {
     final id = record.id;
     if (id == null) {
       throw ArgumentError('Transaction id is required for update');
     }
-    final db = await _db;
-    final values = Map<String, Object?>.from(record.toMap());
-    values.remove('id');
-    if (record.type == TransactionType.income) {
-      values['necessity_id'] = null;
-      values['necessity_label'] = null;
-      values['reason_id'] = null;
-      values['reason_label'] = null;
-      values['criticality'] = 0;
-    }
-    if (includedInPeriod != null) {
-      values['included_in_period'] = includedInPeriod ? 1 : 0;
-    }
-    await db.update(
-      'transactions',
-      values,
-      where: 'id = ?',
-      whereArgs: [id],
+    await _runWrite<void>(
+      (db) async {
+        final values = Map<String, Object?>.from(record.toMap());
+        values.remove('id');
+        if (record.type == TransactionType.income) {
+          values['necessity_id'] = null;
+          values['necessity_label'] = null;
+          values['reason_id'] = null;
+          values['reason_label'] = null;
+          values['criticality'] = 0;
+        }
+        if (includedInPeriod != null) {
+          values['included_in_period'] = includedInPeriod ? 1 : 0;
+        }
+        await db.update(
+          'transactions',
+          values,
+          where: 'id = ?',
+          whereArgs: [id],
+        );
+      },
+      executor: executor,
+      debugContext: 'transactions.update',
     );
   }
 
@@ -418,28 +458,34 @@ class SqliteTransactionsRepository implements TransactionsRepository {
     String? necessityLabel,
     bool includedInPeriod = false,
     int criticality = 0,
+    DatabaseExecutor? executor,
   }) async {
-    final db = await _db;
-    final values = <String, Object?>{
-      'planned_id': plannedId,
-      'type': type,
-      'account_id': accountId,
-      'category_id': categoryId,
-      'amount_minor': amountMinor,
-      'date': _formatDate(date),
-      'time': null,
-      'note': note?.trim().isEmpty ?? true ? null : note?.trim(),
-      'is_planned': 1,
-      'included_in_period': includedInPeriod ? 1 : 0,
-      'tags': null,
-      'criticality': criticality,
-      'necessity_id': necessityId,
-      'necessity_label': necessityLabel,
-      'reason_id': null,
-      'reason_label': null,
-      'payout_id': null,
-    };
-    return db.insert('transactions', values);
+    return _runWrite<int>(
+      (db) async {
+        final values = <String, Object?>{
+          'planned_id': plannedId,
+          'type': type,
+          'account_id': accountId,
+          'category_id': categoryId,
+          'amount_minor': amountMinor,
+          'date': _formatDate(date),
+          'time': null,
+          'note': note?.trim().isEmpty ?? true ? null : note?.trim(),
+          'is_planned': 1,
+          'included_in_period': includedInPeriod ? 1 : 0,
+          'tags': null,
+          'criticality': criticality,
+          'necessity_id': necessityId,
+          'necessity_label': necessityLabel,
+          'reason_id': null,
+          'reason_label': null,
+          'payout_id': null,
+        };
+        return db.insert('transactions', values);
+      },
+      executor: executor,
+      debugContext: 'transactions.createPlannedInstance',
+    );
   }
 
   @override
@@ -452,44 +498,49 @@ class SqliteTransactionsRepository implements TransactionsRepository {
     required bool included,
     int? necessityId,
     String? note,
+    DatabaseExecutor? executor,
   }) async {
-    final db = await _db;
-    await db.transaction((txn) async {
-      final masterRows = await txn.query(
-        'planned_master',
-        where: 'id = ?',
-        whereArgs: [masterId],
-        limit: 1,
-      );
-      if (masterRows.isEmpty) {
-        throw StateError('Не найден шаблон с идентификатором $masterId');
-      }
-      final master = masterRows.first;
-      final type = (master['type'] as String? ?? 'expense').toLowerCase();
-      final sanitizedNote = note == null || note.trim().isEmpty ? null : note.trim();
-      final necessityLabel = await _loadNecessityLabel(txn, necessityId);
-      final instanceDate = _resolveInstanceDate(start, endExclusive);
-      final values = <String, Object?>{
-        'planned_id': masterId,
-        'type': type,
-        'account_id': 0,
-        'category_id': categoryId,
-        'amount_minor': amountMinor,
-        'date': _formatDate(instanceDate),
-        'time': null,
-        'note': sanitizedNote,
-        'is_planned': 1,
-        'included_in_period': included ? 1 : 0,
-        'tags': null,
-        'criticality': 0,
-        'necessity_id': necessityId,
-        'necessity_label': necessityLabel,
-        'reason_id': null,
-        'reason_label': null,
-        'payout_id': null,
-      };
-      await txn.insert('transactions', values);
-    });
+    await _runWrite<void>(
+      (db) async {
+        final masterRows = await db.query(
+          'planned_master',
+          where: 'id = ?',
+          whereArgs: [masterId],
+          limit: 1,
+        );
+        if (masterRows.isEmpty) {
+          throw StateError('Не найден шаблон с идентификатором $masterId');
+        }
+        final master = masterRows.first;
+        final type = (master['type'] as String? ?? 'expense').toLowerCase();
+        final sanitizedNote =
+            note == null || note.trim().isEmpty ? null : note.trim();
+        final necessityLabel = await _loadNecessityLabel(db, necessityId);
+        final instanceDate = _resolveInstanceDate(start, endExclusive);
+        final values = <String, Object?>{
+          'planned_id': masterId,
+          'type': type,
+          'account_id': 0,
+          'category_id': categoryId,
+          'amount_minor': amountMinor,
+          'date': _formatDate(instanceDate),
+          'time': null,
+          'note': sanitizedNote,
+          'is_planned': 1,
+          'included_in_period': included ? 1 : 0,
+          'tags': null,
+          'criticality': 0,
+          'necessity_id': necessityId,
+          'necessity_label': necessityLabel,
+          'reason_id': null,
+          'reason_label': null,
+          'payout_id': null,
+        };
+        await db.insert('transactions', values);
+      },
+      executor: executor,
+      debugContext: 'transactions.assignMasterToPeriod',
+    );
   }
 
   @override
@@ -520,23 +571,35 @@ class SqliteTransactionsRepository implements TransactionsRepository {
   }
 
   @override
-  Future<int> deleteInstancesByPlannedId(int plannedId) async {
-    final db = await _db;
-    return db.delete(
-      'transactions',
-      where: 'planned_id = ?',
-      whereArgs: [plannedId],
+  Future<int> deleteInstancesByPlannedId(int plannedId,
+      {DatabaseExecutor? executor}) async {
+    return _runWrite<int>(
+      (db) async {
+        return db.delete(
+          'transactions',
+          where: 'planned_id = ?',
+          whereArgs: [plannedId],
+        );
+      },
+      executor: executor,
+      debugContext: 'transactions.deleteInstancesByPlannedId',
     );
   }
 
   @override
-  Future<void> setPlannedCompletion(int id, bool isCompleted) async {
-    final db = await _db;
-    await db.update(
-      'transactions',
-      {'included_in_period': isCompleted ? 1 : 0},
-      where: 'id = ?',
-      whereArgs: [id],
+  Future<void> setPlannedCompletion(int id, bool isCompleted,
+      {DatabaseExecutor? executor}) async {
+    await _runWrite<void>(
+      (db) async {
+        await db.update(
+          'transactions',
+          {'included_in_period': isCompleted ? 1 : 0},
+          where: 'id = ?',
+          whereArgs: [id],
+        );
+      },
+      executor: executor,
+      debugContext: 'transactions.setPlannedCompletion',
     );
   }
 
@@ -544,13 +607,19 @@ class SqliteTransactionsRepository implements TransactionsRepository {
   Future<void> setIncludedInPeriod({
     required int transactionId,
     required bool value,
+    DatabaseExecutor? executor,
   }) async {
-    final db = await _db;
-    await db.update(
-      'transactions',
-      {'included_in_period': value ? 1 : 0},
-      where: 'id = ?',
-      whereArgs: [transactionId],
+    await _runWrite<void>(
+      (db) async {
+        await db.update(
+          'transactions',
+          {'included_in_period': value ? 1 : 0},
+          where: 'id = ?',
+          whereArgs: [transactionId],
+        );
+      },
+      executor: executor,
+      debugContext: 'transactions.setIncludedInPeriod',
     );
   }
 
@@ -583,59 +652,64 @@ class SqliteTransactionsRepository implements TransactionsRepository {
   }
 
   @override
-  Future<void> setPlannedIncluded(int plannedId, bool included) async {
-    final db = await _db;
-    await db.transaction((txn) async {
-      final plannedRows = await txn.query(
-        'transactions',
-        where: 'is_planned = 1 AND id = ?',
-        whereArgs: [plannedId],
-        limit: 1,
-      );
-      if (plannedRows.isEmpty) {
-        return;
-      }
-      final planned = TransactionRecord.fromMap(plannedRows.first);
-      await txn.update(
-        'transactions',
-        {
-          'included_in_period': included ? 1 : 0,
-          'updated_at': DateTime.now().toIso8601String(),
-        },
-        where: 'id = ?',
-        whereArgs: [plannedId],
-      );
-      if (included) {
-        final existing = await txn.query(
+  Future<void> setPlannedIncluded(int plannedId, bool included,
+      {DatabaseExecutor? executor}) async {
+    await _runWrite<void>(
+      (db) async {
+        final plannedRows = await db.query(
           'transactions',
-          where: 'plan_instance_id = ?',
+          where: 'is_planned = 1 AND id = ?',
           whereArgs: [plannedId],
           limit: 1,
         );
-        if (existing.isNotEmpty) {
+        if (plannedRows.isEmpty) {
           return;
         }
-        final now = DateTime.now();
-        final plannedDate = DateTime(now.year, now.month, now.day);
-        final operation = planned.copyWith(
-          id: null,
-          isPlanned: false,
-          includedInPeriod: true,
-          planInstanceId: plannedId,
-          plannedId: planned.plannedId,
-          date: plannedDate,
-          source: 'plan',
-        );
-        final values = Map<String, Object?>.from(operation.toMap())..remove('id');
-        await txn.insert('transactions', values);
-      } else {
-        await txn.delete(
+        final planned = TransactionRecord.fromMap(plannedRows.first);
+        await db.update(
           'transactions',
-          where: 'plan_instance_id = ? AND source = ?',
-          whereArgs: [plannedId, 'plan'],
+          {
+            'included_in_period': included ? 1 : 0,
+            'updated_at': DateTime.now().toIso8601String(),
+          },
+          where: 'id = ?',
+          whereArgs: [plannedId],
         );
-      }
-    });
+        if (included) {
+          final existing = await db.query(
+            'transactions',
+            where: 'plan_instance_id = ?',
+            whereArgs: [plannedId],
+            limit: 1,
+          );
+          if (existing.isNotEmpty) {
+            return;
+          }
+          final now = DateTime.now();
+          final plannedDate = DateTime(now.year, now.month, now.day);
+          final operation = planned.copyWith(
+            id: null,
+            isPlanned: false,
+            includedInPeriod: true,
+            planInstanceId: plannedId,
+            plannedId: planned.plannedId,
+            date: plannedDate,
+            source: 'plan',
+          );
+          final values = Map<String, Object?>.from(operation.toMap())
+            ..remove('id');
+          await db.insert('transactions', values);
+        } else {
+          await db.delete(
+            'transactions',
+            where: 'plan_instance_id = ? AND source = ?',
+            whereArgs: [plannedId, 'plan'],
+          );
+        }
+      },
+      executor: executor,
+      debugContext: 'transactions.setPlannedIncluded',
+    );
   }
 
   @override

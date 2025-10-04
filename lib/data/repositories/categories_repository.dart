@@ -10,19 +10,19 @@ abstract class CategoriesRepository {
 
   Future<List<Category>> getByType(CategoryType type);
 
-  Future<int> create(Category category);
+  Future<int> create(Category category, {DatabaseExecutor? executor});
 
-  Future<void> update(Category category);
+  Future<void> update(Category category, {DatabaseExecutor? executor});
 
-  Future<void> delete(int id);
+  Future<void> delete(int id, {DatabaseExecutor? executor});
 
-  Future<void> bulkMove(List<int> ids, int? parentId);
+  Future<void> bulkMove(List<int> ids, int? parentId, {DatabaseExecutor? executor});
 
   Future<List<Category>> groupsByType(CategoryType type);
 
   Future<List<Category>> childrenOf(int groupId);
 
-  Future<void> restoreDefaults();
+  Future<void> restoreDefaults({DatabaseExecutor? executor});
 }
 
 class SqliteCategoriesRepository implements CategoriesRepository {
@@ -33,37 +33,65 @@ class SqliteCategoriesRepository implements CategoriesRepository {
 
   Future<Database> get _db async => _database.database;
 
-  @override
-  Future<int> create(Category category) async {
-    final db = await _db;
-    final values = category.toMap()..remove('id');
-    return db.insert('categories', values);
-  }
-
-  @override
-  Future<void> delete(int id) async {
-    final db = await _db;
-    await db.delete('categories', where: 'id = ?', whereArgs: [id]);
-    await db.update(
-      'categories',
-      {'parent_id': null},
-      where: 'parent_id = ?',
-      whereArgs: [id],
+  Future<T> _runWrite<T>(
+    Future<T> Function(DatabaseExecutor executor) action, {
+    DatabaseExecutor? executor,
+    String? debugContext,
+  }) {
+    if (executor != null) {
+      return action(executor);
+    }
+    return _database.runInWriteTransaction<T>(
+      (txn) => action(txn),
+      debugContext: debugContext,
     );
   }
 
   @override
-  Future<void> bulkMove(List<int> ids, int? parentId) async {
+  Future<int> create(Category category, {DatabaseExecutor? executor}) async {
+    final values = category.toMap()..remove('id');
+    return _runWrite<int>(
+      (db) => db.insert('categories', values),
+      executor: executor,
+      debugContext: 'categories.create',
+    );
+  }
+
+  @override
+  Future<void> delete(int id, {DatabaseExecutor? executor}) async {
+    await _runWrite<void>(
+      (db) async {
+        await db.delete('categories', where: 'id = ?', whereArgs: [id]);
+        await db.update(
+          'categories',
+          {'parent_id': null},
+          where: 'parent_id = ?',
+          whereArgs: [id],
+        );
+      },
+      executor: executor,
+      debugContext: 'categories.delete',
+    );
+  }
+
+  @override
+  Future<void> bulkMove(List<int> ids, int? parentId,
+      {DatabaseExecutor? executor}) async {
     if (ids.isEmpty) {
       return;
     }
-    final db = await _db;
     final placeholders = List.filled(ids.length, '?').join(',');
-    await db.update(
-      'categories',
-      {'parent_id': parentId},
-      where: 'id IN ($placeholders)',
-      whereArgs: ids,
+    await _runWrite<void>(
+      (db) async {
+        await db.update(
+          'categories',
+          {'parent_id': parentId},
+          where: 'id IN ($placeholders)',
+          whereArgs: ids,
+        );
+      },
+      executor: executor,
+      debugContext: 'categories.bulkMove',
     );
   }
 
@@ -126,14 +154,14 @@ class SqliteCategoriesRepository implements CategoriesRepository {
   }
 
   @override
-  Future<void> restoreDefaults() async {
-    final db = await _db;
-    await db.transaction((txn) async {
-      final existingRows = await txn.query(
-        'categories',
-        columns: ['id', 'type', 'name', 'is_group', 'parent_id'],
-      );
-      final cache = <_CategoryKey, int>{};
+  Future<void> restoreDefaults({DatabaseExecutor? executor}) async {
+    await _runWrite<void>(
+      (txn) async {
+        final existingRows = await txn.query(
+          'categories',
+          columns: ['id', 'type', 'name', 'is_group', 'parent_id'],
+        );
+        final cache = <_CategoryKey, int>{};
       for (final row in existingRows) {
         final id = row['id'] as int?;
         final type = row['type'] as String?;
@@ -179,21 +207,29 @@ class SqliteCategoriesRepository implements CategoriesRepository {
           cache: cache,
         );
       }
-    });
+      },
+      executor: executor,
+      debugContext: 'categories.restoreDefaults',
+    );
   }
 
   @override
-  Future<void> update(Category category) async {
+  Future<void> update(Category category, {DatabaseExecutor? executor}) async {
     final id = category.id;
     if (id == null) {
       throw ArgumentError('Category id is required for update');
     }
-    final db = await _db;
-    await db.update(
-      'categories',
-      category.toMap(),
-      where: 'id = ?',
-      whereArgs: [id],
+    await _runWrite<void>(
+      (db) async {
+        await db.update(
+          'categories',
+          category.toMap(),
+          where: 'id = ?',
+          whereArgs: [id],
+        );
+      },
+      executor: executor,
+      debugContext: 'categories.update',
     );
   }
 

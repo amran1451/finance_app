@@ -61,8 +61,9 @@ abstract class PeriodsRepository {
     int month,
     HalfPeriod half,
     DateTime start,
-    DateTime endExclusive,
-  );
+    DateTime endExclusive, {
+    DatabaseExecutor? executor,
+  });
 
   Future<void> closePeriod(
     PeriodRef period, {
@@ -71,11 +72,12 @@ abstract class PeriodsRepository {
     int? spentMinor,
     int? plannedIncludedMinor,
     int? carryoverMinor,
+    DatabaseExecutor? executor,
   });
 
   Future<PeriodStatus> getStatus(PeriodRef period);
 
-  Future<void> reopenLast();
+  Future<void> reopenLast({DatabaseExecutor? executor});
 }
 
 class SqlitePeriodsRepository implements PeriodsRepository {
@@ -86,17 +88,32 @@ class SqlitePeriodsRepository implements PeriodsRepository {
 
   Future<Database> get _db async => _database.database;
 
+  Future<T> _runWrite<T>(
+    Future<T> Function(DatabaseExecutor executor) action, {
+    DatabaseExecutor? executor,
+    String? debugContext,
+  }) {
+    if (executor != null) {
+      return action(executor);
+    }
+    return _database.runInWriteTransaction<T>(
+      (txn) => action(txn),
+      debugContext: debugContext,
+    );
+  }
+
   @override
   Future<PeriodEntry> getOrCreate(
     int year,
     int month,
     HalfPeriod half,
     DateTime start,
-    DateTime endExclusive,
-  ) async {
-    final db = await _db;
-    return db.transaction((txn) async {
-      final existing = await _findPeriod(txn, year, month, half);
+    DateTime endExclusive, {
+    DatabaseExecutor? executor,
+  }) async {
+    return _runWrite<PeriodEntry>(
+      (txn) async {
+        final existing = await _findPeriod(txn, year, month, half);
       if (existing != null) {
         final normalizedStart = normalizeDate(start);
         final normalizedEndExclusive = normalizeDate(endExclusive);
@@ -143,7 +160,7 @@ class SqlitePeriodsRepository implements PeriodsRepository {
         return _mapEntry(existing);
       }
 
-      final id = await txn.insert('periods', {
+        final id = await txn.insert('periods', {
         'year': year,
         'month': month,
         'half': _halfToDb(half),
@@ -158,7 +175,10 @@ class SqlitePeriodsRepository implements PeriodsRepository {
         throw StateError('Failed to create period row for $year-$month $half');
       }
       return _mapEntry(inserted);
-    });
+      },
+      executor: executor,
+      debugContext: 'periods.getOrCreate',
+    );
   }
 
   @override
@@ -169,29 +189,36 @@ class SqlitePeriodsRepository implements PeriodsRepository {
     int? spentMinor,
     int? plannedIncludedMinor,
     int? carryoverMinor,
+    DatabaseExecutor? executor,
   }) async {
-    final db = await _db;
-    await db.transaction((txn) async {
-      final existing = await _findPeriod(txn, period.year, period.month, period.half);
-      if (existing == null) {
-        throw StateError('Period ${period.year}-${period.month} ${period.half} not initialized');
-      }
+    await _runWrite<void>(
+      (txn) async {
+        final existing =
+            await _findPeriod(txn, period.year, period.month, period.half);
+        if (existing == null) {
+          throw StateError(
+            'Period ${period.year}-${period.month} ${period.half} not initialized',
+          );
+        }
 
-      await txn.update(
-        'periods',
-        {
-          'payout_id': payoutId,
-          'daily_limit_minor': dailyLimitMinor,
-          'spent_minor': spentMinor,
-          'planned_included_minor': plannedIncludedMinor,
-          'carryover_minor': carryoverMinor ?? 0,
-          'closed': 1,
-          'closed_at': DateTime.now().toIso8601String(),
-        },
-        where: 'id = ?',
-        whereArgs: [existing['id']],
-      );
-    });
+        await txn.update(
+          'periods',
+          {
+            'payout_id': payoutId,
+            'daily_limit_minor': dailyLimitMinor,
+            'spent_minor': spentMinor,
+            'planned_included_minor': plannedIncludedMinor,
+            'carryover_minor': carryoverMinor ?? 0,
+            'closed': 1,
+            'closed_at': DateTime.now().toIso8601String(),
+          },
+          where: 'id = ?',
+          whereArgs: [existing['id']],
+        );
+      },
+      executor: executor,
+      debugContext: 'periods.closePeriod',
+    );
   }
 
   @override
@@ -218,32 +245,35 @@ class SqlitePeriodsRepository implements PeriodsRepository {
   }
 
   @override
-  Future<void> reopenLast() async {
-    final db = await _db;
-    await db.transaction((txn) async {
-      final rows = await txn.query(
-        'periods',
-        where: 'closed = 1',
-        orderBy: 'start DESC, id DESC',
-        limit: 1,
-      );
-      if (rows.isEmpty) {
-        return;
-      }
-      final id = rows.first['id'] as int?;
-      if (id == null) {
-        return;
-      }
-      await txn.update(
-        'periods',
-        {
-          'closed': 0,
-          'closed_at': null,
-        },
-        where: 'id = ?',
-        whereArgs: [id],
-      );
-    });
+  Future<void> reopenLast({DatabaseExecutor? executor}) async {
+    await _runWrite<void>(
+      (txn) async {
+        final rows = await txn.query(
+          'periods',
+          where: 'closed = 1',
+          orderBy: 'start DESC, id DESC',
+          limit: 1,
+        );
+        if (rows.isEmpty) {
+          return;
+        }
+        final id = rows.first['id'] as int?;
+        if (id == null) {
+          return;
+        }
+        await txn.update(
+          'periods',
+          {
+            'closed': 0,
+            'closed_at': null,
+          },
+          where: 'id = ?',
+          whereArgs: [id],
+        );
+      },
+      executor: executor,
+      debugContext: 'periods.reopenLast',
+    );
   }
 
   Future<Map<String, Object?>?> _findPeriod(

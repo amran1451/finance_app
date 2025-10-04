@@ -19,19 +19,17 @@ class AppBootstrapper {
 
   /// Ensures that the essential data is present in the database.
   Future<void> run() async {
-    final db = await _db;
-    final alreadySeeded = await _isSeedCompleted(db);
-    if (alreadySeeded) {
-      return;
-    }
+    await _database.runInWriteTransaction((txn) async {
+      final alreadySeeded = await _isSeedCompleted(txn);
+      if (alreadySeeded) {
+        return;
+      }
 
-    await db.transaction((txn) async {
       await _seedAccounts(txn);
       await _seedSettings(txn);
-    });
-
-    await _categoriesRepository.restoreDefaults();
-    await _markSeedCompleted(db);
+      await _categoriesRepository.restoreDefaults(executor: txn);
+      await _markSeedCompleted(txn);
+    }, debugContext: 'bootstrap.seed');
   }
 
   Future<bool> _isSeedCompleted(DatabaseExecutor executor) async {

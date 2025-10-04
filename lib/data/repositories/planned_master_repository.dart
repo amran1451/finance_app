@@ -254,7 +254,7 @@ const Object _updateOptional = Object();
 abstract class PlannedMasterRepository {
   Future<List<PlannedMaster>> list({bool includeArchived = false});
 
-  Future<PlannedMaster?> getById(int id);
+  Future<PlannedMaster?> getById(int id, {DatabaseExecutor? executor});
 
   Future<int> updateMaster({
     required int id,
@@ -264,6 +264,7 @@ abstract class PlannedMasterRepository {
     String? note,
     String? type,
     int? categoryId,
+    DatabaseExecutor? executor,
   });
 
   Future<PlannedMaster?> findByTitleAndType(
@@ -307,6 +308,7 @@ abstract class PlannedMasterRepository {
     int? defaultAmountMinor,
     int? categoryId,
     String? note,
+    DatabaseExecutor? executor,
   });
 
   Future<PlannedMaster> createMaster({
@@ -327,9 +329,10 @@ abstract class PlannedMasterRepository {
     Object? categoryId = _updateOptional,
     Object? note = _updateOptional,
     bool? archived,
+    DatabaseExecutor? executor,
   });
 
-  Future<void> delete(int id);
+  Future<void> delete(int id, {DatabaseExecutor? executor});
 }
 
 class SqlitePlannedMasterRepository implements PlannedMasterRepository {
@@ -342,6 +345,20 @@ class SqlitePlannedMasterRepository implements PlannedMasterRepository {
   static const Set<String> _allowedTypes = {'expense', 'income', 'saving'};
 
   Future<Database> get _db async => _database.database;
+
+  Future<T> _runWrite<T>(
+    Future<T> Function(DatabaseExecutor executor) action, {
+    DatabaseExecutor? executor,
+    String? debugContext,
+  }) {
+    if (executor != null) {
+      return action(executor);
+    }
+    return _database.runInWriteTransaction<T>(
+      (txn) => action(txn),
+      debugContext: debugContext,
+    );
+  }
 
   static const String _assignedNowExpression = '''
     EXISTS(
@@ -362,8 +379,8 @@ class SqlitePlannedMasterRepository implements PlannedMasterRepository {
     String? note,
     String? type,
     int? categoryId,
+    DatabaseExecutor? executor,
   }) async {
-    final db = await _db;
     final normalizedTitle = title.trim();
     if (normalizedTitle.isEmpty) {
       throw ArgumentError.value(title, 'title', 'Title cannot be empty');
@@ -371,43 +388,49 @@ class SqlitePlannedMasterRepository implements PlannedMasterRepository {
     final sanitizedNote = note == null || note.trim().isEmpty ? null : note.trim();
     final normalizedType = type == null ? null : _normalizeType(type);
 
-    final sql = StringBuffer(
-      'UPDATE planned_master '
-      'SET title = ?, default_amount_minor = ?, necessity_id = ?, note = ?, category_id = ?, updated_at = CURRENT_TIMESTAMP',
-    );
-    final args = <Object?>[
-      normalizedTitle,
-      amountMinor,
-      necessityId,
-      sanitizedNote,
-      categoryId,
-    ];
+    return _runWrite<int>(
+      (db) async {
+        final sql = StringBuffer(
+          'UPDATE planned_master '
+          'SET title = ?, default_amount_minor = ?, necessity_id = ?, note = ?, category_id = ?, updated_at = CURRENT_TIMESTAMP',
+        );
+        final args = <Object?>[
+          normalizedTitle,
+          amountMinor,
+          necessityId,
+          sanitizedNote,
+          categoryId,
+        ];
 
-    if (normalizedType != null) {
-      sql.write(', type = ?');
-      args.add(normalizedType);
-    }
+        if (normalizedType != null) {
+          sql.write(', type = ?');
+          args.add(normalizedType);
+        }
 
-    sql.write(' WHERE id = ?');
-    args.add(id);
+        sql.write(' WHERE id = ?');
+        args.add(id);
 
-    final rowsUpdated = await db.rawUpdate(sql.toString(), args);
-    if (rowsUpdated <= 0) {
-      throw const ControlledOperationException('Ничего не изменилось');
-    }
-    await db.update(
-      'transactions',
-      {'category_id': categoryId},
-      where: 'is_planned = 1 AND planned_id = ?',
-      whereArgs: [id],
+        final rowsUpdated = await db.rawUpdate(sql.toString(), args);
+        if (rowsUpdated <= 0) {
+          throw const ControlledOperationException('Ничего не изменилось');
+        }
+        await db.update(
+          'transactions',
+          {'category_id': categoryId},
+          where: 'is_planned = 1 AND planned_id = ?',
+          whereArgs: [id],
+        );
+        await db.update(
+          'transactions',
+          {'category_id': categoryId},
+          where: "source = 'plan' AND planned_id = ?",
+          whereArgs: [id],
+        );
+        return rowsUpdated;
+      },
+      executor: executor,
+      debugContext: 'plannedMaster.updateMaster',
     );
-    await db.update(
-      'transactions',
-      {'category_id': categoryId},
-      where: "source = 'plan' AND planned_id = ?",
-      whereArgs: [id],
-    );
-    return rowsUpdated;
   }
 
   @override
@@ -417,8 +440,8 @@ class SqlitePlannedMasterRepository implements PlannedMasterRepository {
     int? defaultAmountMinor,
     int? categoryId,
     String? note,
+    DatabaseExecutor? executor,
   }) async {
-    final db = await _db;
     final normalizedType = _normalizeType(type);
     final values = <String, Object?>{
       'type': normalizedType,
@@ -427,7 +450,11 @@ class SqlitePlannedMasterRepository implements PlannedMasterRepository {
       'category_id': categoryId,
       'note': note,
     };
-    return db.insert('planned_master', values);
+    return _runWrite<int>(
+      (db) => db.insert('planned_master', values),
+      executor: executor,
+      debugContext: 'plannedMaster.create',
+    );
   }
 
   @override
@@ -440,7 +467,6 @@ class SqlitePlannedMasterRepository implements PlannedMasterRepository {
     String? note,
     DatabaseExecutor? executor,
   }) async {
-    final db = executor ?? await _db;
     final normalizedType = _normalizeType(type);
     final trimmedTitle = title.trim();
     final sanitizedNote = note == null || note.trim().isEmpty ? null : note.trim();
@@ -462,36 +488,47 @@ class SqlitePlannedMasterRepository implements PlannedMasterRepository {
       'created_at': now.toIso8601String(),
       'updated_at': now.toIso8601String(),
     };
-    final id = await db.insert('planned_master', values);
-    final rows = await db.query(
-      'planned_master',
-      where: 'id = ?',
-      whereArgs: [id],
-      limit: 1,
+    return _runWrite<PlannedMaster>(
+      (db) async {
+        final id = await db.insert('planned_master', values);
+        final rows = await db.query(
+          'planned_master',
+          where: 'id = ?',
+          whereArgs: [id],
+          limit: 1,
+        );
+        if (rows.isEmpty) {
+          throw StateError('Failed to create planned master for "$title"');
+        }
+        return PlannedMaster.fromMap(rows.first);
+      },
+      executor: executor,
+      debugContext: 'plannedMaster.createMaster',
     );
-    if (rows.isEmpty) {
-      throw StateError('Failed to create planned master for "$title"');
-    }
-    return PlannedMaster.fromMap(rows.first);
   }
 
   @override
-  Future<void> delete(int id) async {
-    final db = await _db;
-    final linked = await db.rawQuery(
-      'SELECT COUNT(*) AS cnt FROM transactions WHERE planned_id = ?',
-      [id],
+  Future<void> delete(int id, {DatabaseExecutor? executor}) async {
+    await _runWrite<void>(
+      (db) async {
+        final linked = await db.rawQuery(
+          'SELECT COUNT(*) AS cnt FROM transactions WHERE planned_id = ?',
+          [id],
+        );
+        final count = linked.isNotEmpty ? _readInt(linked.first['cnt']) : 0;
+        if (count > 0) {
+          throw StateError('Cannot delete planned master with existing instances');
+        }
+        await db.delete('planned_master', where: 'id = ?', whereArgs: [id]);
+      },
+      executor: executor,
+      debugContext: 'plannedMaster.delete',
     );
-    final count = linked.isNotEmpty ? _readInt(linked.first['cnt']) : 0;
-    if (count > 0) {
-      throw StateError('Cannot delete planned master with existing instances');
-    }
-    await db.delete('planned_master', where: 'id = ?', whereArgs: [id]);
   }
 
   @override
-  Future<PlannedMaster?> getById(int id) async {
-    final db = await _db;
+  Future<PlannedMaster?> getById(int id, {DatabaseExecutor? executor}) async {
+    final db = executor ?? await _db;
     final rows = await db.query(
       'planned_master',
       where: 'id = ?',
@@ -757,36 +794,45 @@ class SqlitePlannedMasterRepository implements PlannedMasterRepository {
     Object? categoryId = _updateOptional,
     Object? note = _updateOptional,
     bool? archived,
+    DatabaseExecutor? executor,
   }) async {
-    final existing = await getById(id);
-    if (existing == null) {
-      return false;
-    }
+    return _runWrite<bool>(
+      (db) async {
+        final existing = await getById(
+          id,
+          executor: db,
+        );
+        if (existing == null) {
+          return false;
+        }
 
-    final normalizedType = type == null ? null : _normalizeType(type);
+        final normalizedType = type == null ? null : _normalizeType(type);
 
-    final next = existing.copyWith(
-      type: normalizedType,
-      title: title,
-      defaultAmountMinor: defaultAmountMinor,
-      categoryId: categoryId,
-      note: note,
-      archived: archived,
-      updatedAt: DateTime.now().toUtc(),
+        final next = existing.copyWith(
+          type: normalizedType,
+          title: title,
+          defaultAmountMinor: defaultAmountMinor,
+          categoryId: categoryId,
+          note: note,
+          archived: archived,
+          updatedAt: DateTime.now().toUtc(),
+        );
+
+        final updatedValues = next.toMap()
+          ..remove('id')
+          ..remove('created_at');
+
+        final rowsUpdated = await db.update(
+          'planned_master',
+          updatedValues,
+          where: 'id = ?',
+          whereArgs: [id],
+        );
+        return rowsUpdated > 0;
+      },
+      executor: executor,
+      debugContext: 'plannedMaster.update',
     );
-
-    final updatedValues = next.toMap()
-      ..remove('id')
-      ..remove('created_at');
-
-    final db = await _db;
-    final rowsUpdated = await db.update(
-      'planned_master',
-      updatedValues,
-      where: 'id = ?',
-      whereArgs: [id],
-    );
-    return rowsUpdated > 0;
   }
 
   String _formatDate(DateTime date) {
