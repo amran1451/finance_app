@@ -125,6 +125,53 @@ class HomeScreen extends ConsumerWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
+              if (periodClosed) ...[
+                MaterialBanner(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                  content: const Text(
+                    'Период закрыт. Откройте его, чтобы продолжить редактировать данные.',
+                  ),
+                  actions: [
+                    TextButton(
+                      onPressed: () async {
+                        final read = ref.read;
+                        final periodRef = read(selectedPeriodRefProvider);
+                        final periodLabel = read(periodLabelProvider);
+                        try {
+                          await read(periodsRepoProvider).reopen(periodRef);
+                          ref.invalidate(periodStatusProvider(periodRef));
+                          ref.invalidate(periodToCloseProvider);
+                          bumpDbTick(ref);
+                          if (!context.mounted) {
+                            return;
+                          }
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(
+                              content: Text(
+                                'Период $periodLabel открыт для редактирования',
+                              ),
+                            ),
+                          );
+                        } catch (error) {
+                          if (!context.mounted) {
+                            return;
+                          }
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(
+                              content: Text(
+                                'Не удалось открыть период: $error',
+                              ),
+                            ),
+                          );
+                        }
+                      },
+                      child: const Text('Открыть период'),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 16),
+              ],
               if (closablePeriod != null) ...[
                 MaterialBanner(
                   padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
