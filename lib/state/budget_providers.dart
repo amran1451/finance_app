@@ -114,11 +114,10 @@ final periodStatusProvider = FutureProvider.family<PeriodStatus, PeriodRef>((ref
   return repository.getStatus(period);
 });
 
-final plannedIncludedAmountForPeriodProvider =
-    FutureProvider.family<int, PeriodRef>((ref, period) async {
+final plannedIncludedAmountForEntryProvider =
+    FutureProvider.family<int, PeriodEntry>((ref, entry) async {
   ref.watch(dbTickProvider);
   final repository = ref.watch(transactionsRepoProvider);
-  final entry = await ref.watch(periodEntryProvider(period).future);
   final items = await repository.listPlannedByPeriod(
     start: entry.start,
     endExclusive: entry.endExclusive,
@@ -131,6 +130,12 @@ final plannedIncludedAmountForPeriodProvider =
   return items.fold<int>(0, (sum, item) => sum + item.amountMinor);
 });
 
+final plannedIncludedAmountForPeriodProvider =
+    FutureProvider.family<int, PeriodRef>((ref, period) async {
+  final entry = await ref.watch(periodEntryProvider(period).future);
+  return ref.watch(plannedIncludedAmountForEntryProvider(entry).future);
+});
+
 final spentForPeriodProvider = FutureProvider.family<int, PeriodRef>((ref, period) async {
   ref.watch(dbTickProvider);
   final repository = ref.watch(transactionsRepoProvider);
@@ -139,7 +144,7 @@ final spentForPeriodProvider = FutureProvider.family<int, PeriodRef>((ref, perio
     entry.start,
     entry.endExclusive,
   );
-  final planned = await ref.watch(plannedIncludedAmountForPeriodProvider(period).future);
+  final planned = await ref.watch(plannedIncludedAmountForEntryProvider(entry).future);
   return unplanned + planned;
 });
 
