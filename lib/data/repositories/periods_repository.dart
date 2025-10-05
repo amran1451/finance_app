@@ -116,72 +116,42 @@ class SqlitePeriodsRepository implements PeriodsRepository {
     DateTime endExclusive, {
     DatabaseExecutor? executor,
   }) async {
-    return _runWrite<PeriodEntry>(
-      (txn) async {
-        final existing = await _findPeriod(txn, year, month, half);
-      if (existing != null) {
-        final normalizedStart = normalizeDate(start);
-        final normalizedEndExclusive = normalizeDate(endExclusive);
-        final storedStartRaw = existing['start'] as String?;
-        final storedEndRaw = existing['end_exclusive'] as String?;
-        final storedStartParsed = _parseDate(storedStartRaw);
-        final storedEndParsed = _parseDate(storedEndRaw);
-        final storedStart =
-            storedStartParsed != null ? normalizeDate(storedStartParsed) : null;
-        final storedEndExclusive =
-            storedEndParsed != null ? normalizeDate(storedEndParsed) : null;
+    final normalizedStart = normalizeDate(start);
+    final normalizedEndExclusive = normalizeDate(endExclusive);
 
-        var effectiveStart = storedStart ?? normalizedStart;
-        if (normalizedStart.isBefore(effectiveStart)) {
-          effectiveStart = normalizedStart;
-        }
+    if (executor != null) {
+      return _ensurePeriod(
+        executor,
+        year,
+        month,
+        half,
+        normalizedStart,
+        normalizedEndExclusive,
+      );
+    }
 
-        var effectiveEndExclusive = storedEndExclusive ?? normalizedEndExclusive;
-        if (normalizedEndExclusive.isAfter(effectiveEndExclusive)) {
-          effectiveEndExclusive = normalizedEndExclusive;
-        }
-
-        final needsStartUpdate = storedStart == null
-            ? true
-            : !effectiveStart.isAtSameMomentAs(storedStart);
-        final needsEndUpdate = storedEndExclusive == null
-            ? true
-            : !effectiveEndExclusive.isAtSameMomentAs(storedEndExclusive);
-
-        if (needsStartUpdate || needsEndUpdate) {
-          await txn.update(
-            'periods',
-            {
-              'start': _formatDate(effectiveStart),
-              'end_exclusive': _formatDate(effectiveEndExclusive),
-            },
-            where: 'id = ?',
-            whereArgs: [existing['id']],
-          );
-          existing['start'] = _formatDate(effectiveStart);
-          existing['end_exclusive'] = _formatDate(effectiveEndExclusive);
-        }
-
+    final db = await _db;
+    final existing = await _findPeriod(db, year, month, half);
+    if (existing != null) {
+      final evaluation = _calculateBoundaryUpdate(
+        existing,
+        normalizedStart,
+        normalizedEndExclusive,
+      );
+      if (!evaluation.needsUpdate) {
         return _mapEntry(existing);
       }
+    }
 
-        final id = await txn.insert('periods', {
-        'year': year,
-        'month': month,
-        'half': _halfToDb(half),
-        'start': _formatDate(start),
-        'end_exclusive': _formatDate(endExclusive),
-        'carryover_minor': 0,
-        'closed': 0,
-      });
-
-      final inserted = await _findById(txn, id);
-      if (inserted == null) {
-        throw StateError('Failed to create period row for $year-$month $half');
-      }
-      return _mapEntry(inserted);
-      },
-      executor: executor,
+    return _runWrite<PeriodEntry>(
+      (txn) => _ensurePeriod(
+        txn,
+        year,
+        month,
+        half,
+        normalizedStart,
+        normalizedEndExclusive,
+      ),
       debugContext: 'periods.getOrCreate',
     );
   }
@@ -223,6 +193,98 @@ class SqlitePeriodsRepository implements PeriodsRepository {
       },
       executor: executor,
       debugContext: 'periods.closePeriod',
+    );
+  }
+
+  Future<PeriodEntry> _ensurePeriod(
+    DatabaseExecutor executor,
+    int year,
+    int month,
+    HalfPeriod half,
+    DateTime normalizedStart,
+    DateTime normalizedEndExclusive,
+  ) async {
+    final existing = await _findPeriod(executor, year, month, half);
+    if (existing != null) {
+      final evaluation = _calculateBoundaryUpdate(
+        existing,
+        normalizedStart,
+        normalizedEndExclusive,
+      );
+      if (evaluation.needsUpdate) {
+        final id = existing['id'] as int?;
+        if (id == null) {
+          throw StateError('Period row missing id');
+        }
+        await executor.update(
+          'periods',
+          {
+            'start': _formatDate(evaluation.effectiveStart),
+            'end_exclusive': _formatDate(evaluation.effectiveEndExclusive),
+          },
+          where: 'id = ?',
+          whereArgs: [id],
+        );
+        existing['start'] = _formatDate(evaluation.effectiveStart);
+        existing['end_exclusive'] =
+            _formatDate(evaluation.effectiveEndExclusive);
+      }
+      return _mapEntry(existing);
+    }
+
+    final id = await executor.insert('periods', {
+      'year': year,
+      'month': month,
+      'half': _halfToDb(half),
+      'start': _formatDate(normalizedStart),
+      'end_exclusive': _formatDate(normalizedEndExclusive),
+      'carryover_minor': 0,
+      'closed': 0,
+    });
+
+    final inserted = await _findById(executor, id);
+    if (inserted == null) {
+      throw StateError('Failed to create period row for $year-$month $half');
+    }
+    return _mapEntry(inserted);
+  }
+
+  _BoundaryEvaluation _calculateBoundaryUpdate(
+    Map<String, Object?> row,
+    DateTime normalizedStart,
+    DateTime normalizedEndExclusive,
+  ) {
+    final storedStartRaw = row['start'] as String?;
+    final storedEndRaw = row['end_exclusive'] as String?;
+    final storedStartParsed = _parseDate(storedStartRaw);
+    final storedEndParsed = _parseDate(storedEndRaw);
+    final storedStart =
+        storedStartParsed != null ? normalizeDate(storedStartParsed) : null;
+    final storedEndExclusive =
+        storedEndParsed != null ? normalizeDate(storedEndParsed) : null;
+
+    var effectiveStart = storedStart ?? normalizedStart;
+    if (normalizedStart.isBefore(effectiveStart)) {
+      effectiveStart = normalizedStart;
+    }
+
+    var effectiveEndExclusive = storedEndExclusive ?? normalizedEndExclusive;
+    if (normalizedEndExclusive.isAfter(effectiveEndExclusive)) {
+      effectiveEndExclusive = normalizedEndExclusive;
+    }
+
+    final needsStartUpdate = storedStart == null
+        ? true
+        : !effectiveStart.isAtSameMomentAs(storedStart);
+    final needsEndUpdate = storedEndExclusive == null
+        ? true
+        : !effectiveEndExclusive.isAtSameMomentAs(storedEndExclusive);
+
+    return _BoundaryEvaluation(
+      effectiveStart: effectiveStart,
+      effectiveEndExclusive: effectiveEndExclusive,
+      needsStartUpdate: needsStartUpdate,
+      needsEndUpdate: needsEndUpdate,
     );
   }
 
@@ -426,4 +488,20 @@ class SqlitePeriodsRepository implements PeriodsRepository {
     }
     return 0;
   }
+}
+
+class _BoundaryEvaluation {
+  const _BoundaryEvaluation({
+    required this.effectiveStart,
+    required this.effectiveEndExclusive,
+    required this.needsStartUpdate,
+    required this.needsEndUpdate,
+  });
+
+  final DateTime effectiveStart;
+  final DateTime effectiveEndExclusive;
+  final bool needsStartUpdate;
+  final bool needsEndUpdate;
+
+  bool get needsUpdate => needsStartUpdate || needsEndUpdate;
 }
