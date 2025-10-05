@@ -53,6 +53,8 @@ final periodOperationsProvider =
     final result = [...transactions];
 
     if (filter == OpTypeFilter.all || filter == OpTypeFilter.income) {
+      final selectedPeriod = ref.watch(selectedPeriodRefProvider);
+      final (anchor1, anchor2) = ref.watch(anchorDaysProvider);
       final payout = await ref.watch(payoutForSelectedPeriodProvider.future);
       final payoutId = payout?.id;
       if (payoutId != null) {
@@ -67,7 +69,13 @@ final periodOperationsProvider =
             (item) => item.record.id != null &&
                 item.record.id == payoutRecord.id,
           );
-          if (!alreadyIncluded && !withinBounds) {
+          final actualPeriod =
+              periodRefForDate(payoutRecord.date, anchor1, anchor2);
+          final isActualPeriodSelected =
+              actualPeriod.year == selectedPeriod.year &&
+                  actualPeriod.month == selectedPeriod.month &&
+                  actualPeriod.half == selectedPeriod.half;
+          if (!alreadyIncluded && !withinBounds && isActualPeriodSelected) {
             result.add(TransactionListItem(record: payoutRecord));
             result.sort((a, b) {
               final cmp = b.record.date.compareTo(a.record.date);
