@@ -5,7 +5,7 @@ class AppMigrations {
   AppMigrations._();
 
   /// Latest schema version supported by the application.
-  static const int latestVersion = 16;
+  static const int latestVersion = 17;
 
   static final Map<int, List<String>> _migrationScripts = {
     1: [
@@ -158,6 +158,7 @@ class AppMigrations {
       'CREATE INDEX IF NOT EXISTS idx_payouts_assigned_period ON payouts(assigned_period_id)',
       'CREATE INDEX IF NOT EXISTS idx_transactions_payout_period ON transactions(payout_period_id)',
     ],
+    17: [],
   };
 
   /// Applies migrations from [oldVersion] (exclusive) up to [newVersion] (inclusive).
@@ -237,6 +238,43 @@ class AppMigrations {
                 'ALTER TABLE periods ADD COLUMN start_anchor_payout_id INTEGER NULL',
           );
           break;
+        case 17:
+          final hasClosedColumn = await _columnExists(
+            db,
+            tableName: 'periods',
+            columnName: 'closed',
+          );
+          await _ensureColumnExists(
+            db,
+            tableName: 'periods',
+            columnName: 'isClosed',
+            alterStatement:
+                'ALTER TABLE periods ADD COLUMN isClosed INTEGER NOT NULL DEFAULT 0',
+          );
+          await _ensureColumnExists(
+            db,
+            tableName: 'periods',
+            columnName: 'closedAt',
+            alterStatement:
+                'ALTER TABLE periods ADD COLUMN closedAt INTEGER NULL',
+          );
+          if (hasClosedColumn) {
+            await db.execute(
+              'UPDATE periods SET isClosed = closed WHERE closed IS NOT NULL',
+            );
+          }
+          final hasClosedAtColumn = await _columnExists(
+            db,
+            tableName: 'periods',
+            columnName: 'closed_at',
+          );
+          if (hasClosedAtColumn) {
+            await db.execute(
+              "UPDATE periods SET closedAt = CAST(strftime('%s', closed_at) AS INTEGER) * 1000 "
+              "WHERE closed_at IS NOT NULL AND TRIM(closed_at) <> ''",
+            );
+          }
+          break;
         default:
           break;
       }
@@ -255,16 +293,27 @@ class AppMigrations {
     required String columnName,
     required String alterStatement,
   }) async {
-    final columns = await db.rawQuery('PRAGMA table_info($tableName)');
-    final normalizedColumnName = columnName.toLowerCase();
-    final hasColumn = columns.any(
-      (column) =>
-          (column['name'] as String?)?.toLowerCase() == normalizedColumnName,
+    final hasColumn = await _columnExists(
+      db,
+      tableName: tableName,
+      columnName: columnName,
     );
-
     if (!hasColumn) {
       await db.execute(alterStatement);
     }
+  }
+
+  static Future<bool> _columnExists(
+    Database db, {
+    required String tableName,
+    required String columnName,
+  }) async {
+    final columns = await db.rawQuery('PRAGMA table_info($tableName)');
+    final normalizedColumnName = columnName.toLowerCase();
+    return columns.any(
+      (column) =>
+          (column['name'] as String?)?.toLowerCase() == normalizedColumnName,
+    );
   }
 
   static Future<void> _seedNecessityLabels(Database db) async {

@@ -120,7 +120,8 @@ final payoutsRepoProvider = Provider<payouts_repo.PayoutsRepository>((ref) {
 
 final periodsRepoProvider = Provider<periods_repo.PeriodsRepository>((ref) {
   final database = ref.watch(appDatabaseProvider);
-  return periods_repo.SqlitePeriodsRepository(database: database);
+  final repository = periods_repo.SqlitePeriodsRepository(database: database);
+  return _PeriodsRepositoryWithDbTick(ref, repository);
 });
 
 final settingsRepoProvider = Provider<settings_repo.SettingsRepository>((ref) {
@@ -459,6 +460,81 @@ class _TransactionsRepositoryWithDbTick
     if (executor == null) {
       bumpDbTick(_ref);
     }
+  }
+}
+
+class _PeriodsRepositoryWithDbTick implements periods_repo.PeriodsRepository {
+  _PeriodsRepositoryWithDbTick(this._ref, this._delegate);
+
+  final Ref _ref;
+  final periods_repo.PeriodsRepository _delegate;
+
+  @override
+  Future<void> closePeriod(
+    PeriodRef period, {
+    int? payoutId,
+    int? dailyLimitMinor,
+    int? spentMinor,
+    int? plannedIncludedMinor,
+    int? carryoverMinor,
+    DatabaseExecutor? executor,
+  }) {
+    return _delegate.closePeriod(
+      period,
+      payoutId: payoutId,
+      dailyLimitMinor: dailyLimitMinor,
+      spentMinor: spentMinor,
+      plannedIncludedMinor: plannedIncludedMinor,
+      carryoverMinor: carryoverMinor,
+      executor: executor,
+    );
+  }
+
+  @override
+  Future<periods_repo.PeriodEntry> getOrCreate(
+    int year,
+    int month,
+    HalfPeriod half,
+    DateTime start,
+    DateTime endExclusive, {
+    DatabaseExecutor? executor,
+  }) {
+    return _delegate.getOrCreate(
+      year,
+      month,
+      half,
+      start,
+      endExclusive,
+      executor: executor,
+    );
+  }
+
+  @override
+  Future<periods_repo.PeriodStatus> getStatus(PeriodRef period) {
+    return _delegate.getStatus(period);
+  }
+
+  @override
+  Future<void> reopen(
+    PeriodRef period, {
+    DatabaseExecutor? executor,
+  }) {
+    return _delegate.reopen(period, executor: executor);
+  }
+
+  @override
+  Future<void> reopenLast({DatabaseExecutor? executor}) {
+    return _delegate.reopenLast(executor: executor);
+  }
+
+  @override
+  Future<void> setPeriodClosed(
+    PeriodRef ref, {
+    required bool closed,
+    DateTime? at,
+  }) async {
+    await _delegate.setPeriodClosed(ref, closed: closed, at: at);
+    bumpDbTick(_ref);
   }
 }
 

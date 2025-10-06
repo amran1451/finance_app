@@ -11,7 +11,6 @@ import '../../state/budget_providers.dart';
 import '../../state/entry_flow_providers.dart';
 import '../../state/planned_providers.dart';
 import '../../state/db_refresh.dart';
-import '../../state/home_providers.dart';
 import '../../utils/formatting.dart';
 import '../../utils/period_utils.dart';
 import '../../utils/ru_plural.dart';
@@ -39,14 +38,9 @@ class HomeScreen extends ConsumerWidget {
     final label = ref.watch(periodLabelProvider);
     final payoutAsync = ref.watch(payoutForSelectedPeriodProvider);
     final suggestedType = ref.watch(payoutSuggestedTypeProvider);
-    final closablePeriod = ref.watch(periodToCloseProvider);
-    final homeUiState = ref.watch(homeUiStateProvider);
-    final closablePeriodLabel = closablePeriod == null
-        ? null
-        : ref.watch(periodLabelForRefProvider(closablePeriod));
     final periodStatusAsync = ref.watch(periodStatusProvider(period));
     final periodClosed = periodStatusAsync.maybeWhen(
-      data: (status) => status.closed,
+      data: (status) => status.isClosed,
       orElse: () => false,
     );
     final isActivePeriod = ref.watch(isActivePeriodProvider);
@@ -127,34 +121,7 @@ class HomeScreen extends ConsumerWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              AnimatedSize(
-                duration: const Duration(milliseconds: 200),
-                alignment: Alignment.topCenter,
-                child: AnimatedSwitcher(
-                  duration: const Duration(milliseconds: 200),
-                  child: periodClosed
-                      ? _OpenPeriodBanner(
-                          key: ValueKey(period.id),
-                          period: period,
-                          periodLabel: label,
-                        )
-                      : const SizedBox.shrink(),
-                ),
-              ),
-              AnimatedSize(
-                duration: const Duration(milliseconds: 200),
-                alignment: Alignment.topCenter,
-                child: AnimatedSwitcher(
-                  duration: const Duration(milliseconds: 200),
-                  child: homeUiState.showCloseBanner && closablePeriod != null
-                      ? _ClosePeriodBanner(
-                          key: ValueKey(closablePeriod.id),
-                          period: closablePeriod,
-                          periodLabel: closablePeriodLabel ?? label,
-                        )
-                      : const SizedBox.shrink(),
-                ),
-              ),
+              const _PeriodBannerContainer(),
               Padding(
                 padding:
                     const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
@@ -378,165 +345,110 @@ class HomeScreen extends ConsumerWidget {
 
 }
 
-class _ClosePeriodBanner extends ConsumerWidget {
-  const _ClosePeriodBanner({
-    super.key,
-    required this.period,
-    required this.periodLabel,
-  });
-
-  final PeriodRef period;
-  final String periodLabel;
+class _PeriodBannerContainer extends ConsumerWidget {
+  const _PeriodBannerContainer();
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    return Column(
-      children: [
-        MaterialBanner(
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-          content: Text('Период $periodLabel завершён. Закрыть?'),
-          actions: [
-            TextButton(
-              onPressed: () async {
-                final read = ref.read;
-                final messenger = ScaffoldMessenger.of(context);
-                try {
-                  final spent = await read(
-                    spentForPeriodProvider(period).future,
-                  );
-                  final planned = await read(
-                    plannedIncludedAmountForPeriodProvider(period).future,
-                  );
-                  final payout = await read(
-                    payoutForPeriodProvider(period).future,
-                  );
-                  await read(periodsRepoProvider).closePeriod(
-                    period,
-                    payoutId: payout?.id,
-                    dailyLimitMinor: payout?.dailyLimitMinor,
-                    spentMinor: spent,
-                    plannedIncludedMinor: planned,
-                    carryoverMinor: 0,
-                  );
-                  await ref.refresh(periodStatusProvider(period).future);
-                  read(selectedPeriodRefProvider.notifier).state = period.nextHalf();
-                  bumpDbTick(ref);
-                  ref.invalidate(periodStatusProvider(period));
-                  ref.invalidate(periodToCloseProvider);
-                  ref.read(homeUiStateProvider.notifier).hideCloseBanner();
-                  if (!context.mounted) {
-                    return;
-                  }
-                  messenger.hideCurrentSnackBar();
-                  messenger.showSnackBar(
-                    SnackBar(
-                      content: Text('Период $periodLabel закрыт'),
-                      action: SnackBarAction(
-                        label: 'Отменить',
-                        onPressed: () {
-                          final notifier =
-                              ref.read(selectedPeriodRefProvider.notifier);
-                          notifier.state = period;
-                          ref
-                              .read(periodsRepoProvider)
-                              .reopen(period)
-                              .then((_) {
-                            ref.invalidate(periodStatusProvider(period));
-                            ref.invalidate(periodToCloseProvider);
-                            bumpDbTick(ref);
-                            ref
-                                .read(homeUiStateProvider.notifier)
-                                .showCloseBannerFor(period);
-                          }).catchError((error) {
-                            messenger.showSnackBar(
-                              SnackBar(
-                                content: Text(
-                                  'Не удалось открыть период: $error',
-                                ),
-                              ),
-                            );
-                          });
-                        },
-                      ),
-                    ),
-                  );
-                } catch (error) {
-                  if (!context.mounted) {
-                    return;
-                  }
-                  messenger.showSnackBar(
-                    SnackBar(
-                      content: Text('Не удалось закрыть период: $error'),
-                    ),
-                  );
-                }
-              },
-              child: const Text('Закрыть'),
-            ),
-            TextButton(
-              onPressed: () {
-                ref.read(homeUiStateProvider.notifier).hideCloseBanner();
-              },
-              child: const Text('Позже'),
-            ),
-          ],
-        ),
-        const SizedBox(height: 16),
-      ],
+    final period = ref.watch(selectedPeriodRefProvider);
+    final vm = ref.watch(periodBannerVmProvider(period));
+    return AnimatedSize(
+      duration: const Duration(milliseconds: 200),
+      alignment: Alignment.topCenter,
+      child: AnimatedSwitcher(
+        duration: const Duration(milliseconds: 200),
+        child: vm.isVisible
+            ? _PeriodBanner(
+                key: ValueKey('${period.id}-${vm.cta}'),
+                period: period,
+                vm: vm,
+              )
+            : const SizedBox.shrink(),
+      ),
     );
   }
 }
 
-class _OpenPeriodBanner extends ConsumerWidget {
-  const _OpenPeriodBanner({
+class _PeriodBanner extends ConsumerStatefulWidget {
+  const _PeriodBanner({
     super.key,
     required this.period,
-    required this.periodLabel,
+    required this.vm,
   });
 
   final PeriodRef period;
-  final String periodLabel;
+  final PeriodBannerVm vm;
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<_PeriodBanner> createState() => _PeriodBannerState();
+}
+
+class _PeriodBannerState extends ConsumerState<_PeriodBanner> {
+  bool _isProcessing = false;
+
+  Future<void> _handleTap() async {
+    final cta = widget.vm.cta;
+    if (cta == null || _isProcessing) {
+      return;
+    }
+    setState(() {
+      _isProcessing = true;
+    });
+    final messenger = ScaffoldMessenger.of(context);
+    try {
+      await ref.read(periodsRepoProvider).setPeriodClosed(
+            widget.period,
+            closed: cta == PeriodCta.close,
+          );
+      if (!mounted) {
+        return;
+      }
+      if (cta == PeriodCta.close) {
+        ref.read(selectedPeriodRefProvider.notifier).state =
+            widget.period.nextHalf();
+      }
+      ref.invalidate(periodProvider(widget.period));
+      ref.invalidate(periodStatusProvider(widget.period));
+      ref.invalidate(periodToCloseProvider);
+      final label = widget.vm.label ?? '';
+      final statusLabel = cta == PeriodCta.close ? 'закрыт' : 'открыт';
+      messenger.showSnackBar(
+        SnackBar(
+          content: Text('Период $label $statusLabel'),
+        ),
+      );
+    } catch (error) {
+      if (!mounted) {
+        return;
+      }
+      messenger.showSnackBar(
+        SnackBar(
+          content: Text('Не удалось обновить период: $error'),
+        ),
+      );
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isProcessing = false;
+        });
+      }
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final text = widget.vm.text ?? '';
+    final actionLabel =
+        widget.vm.cta == PeriodCta.close ? 'Закрыть' : 'Открыть';
     return Column(
       children: [
         MaterialBanner(
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-          content: const Text(
-            'Период закрыт. Откройте его, чтобы продолжить редактировать данные.',
-          ),
+          content: Text(text),
           actions: [
             TextButton(
-              onPressed: () async {
-                final read = ref.read;
-                try {
-                  await read(periodsRepoProvider).reopen(period);
-                  ref.invalidate(periodStatusProvider(period));
-                  ref.invalidate(periodToCloseProvider);
-                  bumpDbTick(ref);
-                  if (!context.mounted) {
-                    return;
-                  }
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(
-                      content: Text(
-                        'Период $periodLabel открыт для редактирования',
-                      ),
-                    ),
-                  );
-                } catch (error) {
-                  if (!context.mounted) {
-                    return;
-                  }
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(
-                      content: Text('Не удалось открыть период: $error'),
-                    ),
-                  );
-                }
-              },
-              child: const Text('Открыть период'),
+              onPressed: _isProcessing ? null : _handleTap,
+              child: Text(actionLabel),
             ),
           ],
         ),

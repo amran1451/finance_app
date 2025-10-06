@@ -395,7 +395,7 @@ class _ReviewScreenState extends ConsumerState<ReviewScreen> {
       final operationPeriod = periodRefForDate(normalizedDate, anchor1, anchor2);
       final periodStatus =
           await ref.read(periodStatusProvider(operationPeriod).future);
-      if (periodStatus.closed) {
+      if (periodStatus.isClosed) {
         if (!mounted) {
           return;
         }
@@ -968,7 +968,7 @@ class _ReviewScreenState extends ConsumerState<ReviewScreen> {
 
   Future<void> _maybePromptToClosePeriod(PeriodRef period) async {
     final status = await ref.read(periodStatusProvider(period).future);
-    if (status.closed) {
+    if (status.isClosed) {
       return;
     }
 

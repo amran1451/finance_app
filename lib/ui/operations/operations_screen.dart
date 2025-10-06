@@ -299,7 +299,7 @@ class _OperationsSection extends ConsumerWidget {
                       periodRefForDate(record.date, anchor1, anchor2);
                   final status =
                       await ref.read(periodStatusProvider(periodRef).future);
-                  if (status.closed) {
+                  if (status.isClosed) {
                     if (!context.mounted) {
                       return;
                     }
@@ -325,7 +325,7 @@ class _OperationsSection extends ConsumerWidget {
                   }
                   final latestStatus =
                       await ref.read(periodStatusProvider(periodRef).future);
-                  if (latestStatus.closed) {
+                  if (latestStatus.isClosed) {
                     if (!context.mounted) {
                       return;
                     }

@@ -560,7 +560,7 @@ class _PayoutEditSheetState extends ConsumerState<_PayoutEditSheet> {
   Future<void> _closePreviousPeriodIfNeeded(PeriodRef current) async {
     final previous = current.prevHalf();
     final status = await ref.read(periodStatusProvider(previous).future);
-    if (status.closed) {
+    if (status.isClosed) {
       return;
     }
     final bounds = ref.read(periodBoundsForProvider(previous));
