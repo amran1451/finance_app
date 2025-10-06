@@ -428,8 +428,9 @@ class _PayoutEditSheetState extends ConsumerState<_PayoutEditSheet> {
     try {
       final payoutsRepo = ref.read(payoutsRepoProvider);
       final initial = widget.initial;
-      final type = _resolveType();
       final selected = selectedPeriod;
+      final allowedType = allowedPayoutTypeForHalf(selected.half);
+      final type = _resolveType(allowedType);
       final result = await payoutsRepo.upsertWithClampToSelectedPeriod(
         existing: initial,
         selectedPeriod: selected,
