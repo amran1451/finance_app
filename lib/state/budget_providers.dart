@@ -274,7 +274,7 @@ final periodToCloseProvider = Provider<PeriodRef?>((ref) {
     final now = DateTime.now();
     if (now.isBefore(hiddenUntil)) {
       final duration = hiddenUntil.difference(now);
-      if (duration.isPositive) {
+      if (duration > Duration.zero) {
         final timer = Timer(duration, ref.invalidateSelf);
         ref.onDispose(timer.cancel);
       }
