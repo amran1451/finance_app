@@ -154,7 +154,7 @@ final canCloseCurrentPeriodProvider = Provider<bool>((ref) {
 
 final payoutSuggestedTypeProvider = Provider<PayoutType>((ref) {
   final sel = ref.watch(selectedPeriodRefProvider);
-  return sel.half == HalfPeriod.first ? PayoutType.salary : PayoutType.advance;
+  return allowedPayoutTypeForHalf(sel.half);
 });
 
 String payoutTypeLabel(PayoutType type) =>
