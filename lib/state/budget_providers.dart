@@ -285,10 +285,6 @@ final periodToCloseProvider = Provider<PeriodRef?>((ref) {
   if (_canClosePeriodRef(ref, selected)) {
     return selected;
   }
-  final previous = selected.prevHalf();
-  if (_canClosePeriodRef(ref, previous)) {
-    return previous;
-  }
   return null;
 });
 
