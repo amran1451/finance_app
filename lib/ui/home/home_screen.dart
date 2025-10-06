@@ -212,6 +212,8 @@ class HomeScreen extends ConsumerWidget {
                           bumpDbTick(ref);
                           ref.invalidate(periodStatusProvider(periodRef));
                           ref.invalidate(periodToCloseProvider);
+                          await read(settingsRepoProvider)
+                              .setPeriodCloseBannerHiddenUntil(null);
                           if (!context.mounted) {
                             return;
                           }
@@ -262,7 +264,15 @@ class HomeScreen extends ConsumerWidget {
                       child: const Text('Закрыть'),
                     ),
                     TextButton(
-                      onPressed: () {},
+                      onPressed: () async {
+                        final repository = ref.read(settingsRepoProvider);
+                        final tomorrow = DateUtils.dateOnly(
+                          DateTime.now().add(const Duration(days: 1)),
+                        );
+                        await repository
+                            .setPeriodCloseBannerHiddenUntil(tomorrow);
+                        bumpDbTick(ref);
+                      },
                       child: const Text('Позже'),
                     ),
                   ],

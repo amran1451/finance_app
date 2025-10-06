@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:math' as math;
 
 import 'package:flutter/foundation.dart';
@@ -255,8 +256,31 @@ final periodLabelProvider = Provider<String>((ref) {
   );
 });
 
+final periodCloseBannerHiddenUntilProvider =
+    FutureProvider<DateTime?>((ref) async {
+  ref.watch(dbTickProvider);
+  final repository = ref.watch(settingsRepoProvider);
+  return repository.getPeriodCloseBannerHiddenUntil();
+});
+
 final periodToCloseProvider = Provider<PeriodRef?>((ref) {
   ref.watch(dbTickProvider);
+  final hiddenUntilAsync = ref.watch(periodCloseBannerHiddenUntilProvider);
+  final hiddenUntil = hiddenUntilAsync.maybeWhen(
+    data: (value) => value,
+    orElse: () => null,
+  );
+  if (hiddenUntil != null) {
+    final now = DateTime.now();
+    if (now.isBefore(hiddenUntil)) {
+      final duration = hiddenUntil.difference(now);
+      if (duration.isPositive) {
+        final timer = Timer(duration, ref.invalidateSelf);
+        ref.onDispose(timer.cancel);
+      }
+      return null;
+    }
+  }
   final selected = ref.watch(selectedPeriodRefProvider);
   if (_canClosePeriodRef(ref, selected)) {
     return selected;
