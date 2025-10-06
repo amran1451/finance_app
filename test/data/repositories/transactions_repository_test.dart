@@ -6,6 +6,7 @@ import 'package:sqflite/sqflite.dart';
 
 import 'package:finance_app/data/db/app_database.dart';
 import 'package:finance_app/data/repositories/transactions_repository.dart';
+import 'package:finance_app/utils/period_utils.dart';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
@@ -143,5 +144,76 @@ void main() {
     expect(records, hasLength(2));
     expect(records.every((record) => record.includedInPeriod), isTrue);
     expect(records.map((record) => record.amountMinor).toList(), [450, 250]);
+  });
+
+  test('sumExpensesOnDateWithinPeriod counts only included operations', () async {
+    final periodStart = DateTime(2024, 1, 1);
+    final periodEndExclusive = DateTime(2024, 2, 1);
+    final targetDate = DateTime(2024, 1, 15);
+
+    await insertTransaction(
+      date: targetDate,
+      amountMinor: 1_500,
+      included: true,
+    );
+    await insertTransaction(
+      date: targetDate,
+      amountMinor: 2_000,
+      included: false,
+    );
+    await insertTransaction(
+      date: targetDate.add(const Duration(days: 1)),
+      amountMinor: 3_000,
+      included: true,
+    );
+
+    final total = await repository.sumExpensesOnDateWithinPeriod(
+      date: targetDate,
+      periodStart: periodStart,
+      periodEndExclusive: periodEndExclusive,
+    );
+
+    expect(total, 1_500);
+  });
+
+  test('sumActualExpenses excludes transactions not included in period', () async {
+    const period = PeriodRef(year: 2024, month: 1, half: HalfPeriod.first);
+    final periodStart = DateTime(2024, 1, 1);
+    final periodEndExclusive = DateTime(2024, 2, 1);
+
+    await insertTransaction(
+      date: DateTime(2024, 1, 5),
+      amountMinor: 800,
+      included: true,
+    );
+    await insertTransaction(
+      date: DateTime(2024, 1, 12),
+      amountMinor: 1_200,
+      included: false,
+    );
+    await insertTransaction(
+      date: DateTime(2024, 1, 20),
+      amountMinor: 600,
+      included: true,
+      planned: true,
+    );
+    await insertTransaction(
+      date: DateTime(2024, 1, 25),
+      amountMinor: 500,
+      included: true,
+    );
+    await insertTransaction(
+      date: DateTime(2024, 2, 1),
+      amountMinor: 700,
+      included: true,
+    );
+
+    final total = await repository.sumActualExpenses(
+      period: period,
+      start: periodStart,
+      endExclusive: periodEndExclusive,
+    );
+
+    expect(total, 1_300);
   });
 }
