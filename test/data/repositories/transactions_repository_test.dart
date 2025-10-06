@@ -5,6 +5,7 @@ import 'package:path/path.dart' as p;
 import 'package:sqflite/sqflite.dart';
 
 import 'package:finance_app/data/db/app_database.dart';
+import 'package:finance_app/data/repositories/accounts_repository.dart';
 import 'package:finance_app/data/repositories/transactions_repository.dart';
 
 void main() {
@@ -15,6 +16,7 @@ void main() {
   late TransactionsRepository repository;
   late int accountId;
   late int categoryId;
+  late AccountsRepository accountsRepository;
 
   String formatDate(DateTime date) {
     final month = date.month.toString().padLeft(2, '0');
@@ -49,6 +51,7 @@ void main() {
 
     db = await AppDatabase.instance.database;
     repository = SqliteTransactionsRepository();
+    accountsRepository = SqliteAccountsRepository();
 
     accountId = await db.insert('accounts', {
       'name': 'Wallet',
@@ -64,6 +67,61 @@ void main() {
       'parent_id': null,
       'archived': 0,
     });
+  });
+
+  test(
+      'assignMasterToPeriod stores account id and inclusion updates account balance',
+      () async {
+    final masterId = await db.insert('planned_master', {
+      'type': 'expense',
+      'title': 'Groceries Plan',
+      'default_amount_minor': 1000,
+      'category_id': categoryId,
+      'note': null,
+      'archived': 0,
+    });
+    final start = DateTime(2024, 1, 1);
+    final endExclusive = DateTime(2024, 2, 1);
+
+    await repository.assignMasterToPeriod(
+      masterId: masterId,
+      start: start,
+      endExclusive: endExclusive,
+      categoryId: categoryId,
+      amountMinor: 1500,
+      included: false,
+      accountId: accountId,
+    );
+
+    final plannedRows = await db.query(
+      'transactions',
+      where: 'planned_id = ?',
+      whereArgs: [masterId],
+      limit: 1,
+    );
+    expect(plannedRows, hasLength(1));
+    final planned = plannedRows.first;
+    expect(planned['account_id'], accountId);
+    expect(planned['is_planned'], 1);
+
+    final plannedId = planned['id'] as int;
+
+    final balanceBefore = await accountsRepository.getComputedBalanceMinor(accountId);
+    expect(balanceBefore, 0);
+
+    await repository.setPlannedIncluded(plannedId, true);
+
+    final actualRows = await db.query(
+      'transactions',
+      where: 'plan_instance_id = ? AND is_planned = 0',
+      whereArgs: [plannedId],
+      limit: 1,
+    );
+    expect(actualRows, hasLength(1));
+    expect(actualRows.first['account_id'], accountId);
+
+    final balanceAfter = await accountsRepository.getComputedBalanceMinor(accountId);
+    expect(balanceAfter, -1500);
   });
 
   tearDown(() async {

@@ -5,6 +5,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 
+import '../../data/models/account.dart';
 import '../../data/models/category.dart';
 import '../../data/repositories/necessity_repository.dart' as necessity_repo;
 import '../../data/repositories/planned_master_repository.dart';
@@ -947,6 +948,7 @@ class _SelectFromMasterSheetState
         included: result.include,
         necessityId: master.necessityId,
         note: result.note,
+        accountId: result.accountId,
       );
       bumpDbTick(ref);
       if (!mounted) {
@@ -965,25 +967,33 @@ class _SelectFromMasterSheetState
 }
 
 class _AssignConfirmationResult {
-  const _AssignConfirmationResult({required this.include, this.note});
+  const _AssignConfirmationResult({
+    required this.include,
+    required this.accountId,
+    this.note,
+  });
 
   final bool include;
+  final int accountId;
   final String? note;
 }
 
-class _AssignConfirmationSheet extends StatefulWidget {
+class _AssignConfirmationSheet extends ConsumerStatefulWidget {
   const _AssignConfirmationSheet({required this.master});
 
   final PlannedMasterView master;
 
   @override
-  State<_AssignConfirmationSheet> createState() =>
+  ConsumerState<_AssignConfirmationSheet> createState() =>
       _AssignConfirmationSheetState();
 }
 
-class _AssignConfirmationSheetState extends State<_AssignConfirmationSheet> {
+class _AssignConfirmationSheetState
+    extends ConsumerState<_AssignConfirmationSheet> {
   late final TextEditingController _noteController;
   bool _include = true;
+  int? _accountId;
+  bool _accountInitialized = false;
 
   @override
   void initState() {
@@ -998,8 +1008,40 @@ class _AssignConfirmationSheetState extends State<_AssignConfirmationSheet> {
   }
 
   @override
+  void didUpdateWidget(covariant _AssignConfirmationSheet oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.master.id != widget.master.id) {
+      _accountInitialized = false;
+    }
+  }
+
+  @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final accountsAsync = ref.watch(accountsDbProvider);
+
+    accountsAsync.whenData((accounts) {
+      if (_accountInitialized || accounts.isEmpty) {
+        return;
+      }
+      final defaultAccount = accounts.firstWhere(
+        (account) => account.name.trim().toLowerCase() == 'карта',
+        orElse: () => accounts.first,
+      );
+      if (defaultAccount.id == null) {
+        return;
+      }
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) {
+          return;
+        }
+        setState(() {
+          _accountId = defaultAccount.id;
+          _accountInitialized = true;
+        });
+      });
+    });
+
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
       child: Column(
@@ -1032,6 +1074,34 @@ class _AssignConfirmationSheetState extends State<_AssignConfirmationSheet> {
             style: theme.textTheme.bodyMedium,
           ),
           const SizedBox(height: 16),
+          accountsAsync.when(
+            data: (accounts) {
+              if (accounts.isEmpty) {
+                return const Text(
+                  'Нет доступных счетов. Добавьте счёт в настройках.',
+                );
+              }
+              return DropdownButtonFormField<int>(
+                key: const Key('assign_plan_account'),
+                value: _accountId,
+                decoration: const InputDecoration(
+                  labelText: 'Счёт',
+                ),
+                items: [
+                  for (final Account account in accounts)
+                    if (account.id != null)
+                      DropdownMenuItem<int>(
+                        value: account.id,
+                        child: Text(account.name),
+                      ),
+                ],
+                onChanged: (value) => setState(() => _accountId = value),
+              );
+            },
+            loading: () => const Center(child: CircularProgressIndicator()),
+            error: (error, _) => Text('Не удалось загрузить счета: $error'),
+          ),
+          const SizedBox(height: 16),
           CheckboxListTile(
             value: _include,
             onChanged: (value) {
@@ -1059,15 +1129,18 @@ class _AssignConfirmationSheetState extends State<_AssignConfirmationSheet> {
               ),
               const Spacer(),
               FilledButton(
-                onPressed: () {
-                  final note = _noteController.text.trim();
-                  Navigator.of(context).pop(
-                    _AssignConfirmationResult(
-                      include: _include,
-                      note: note.isEmpty ? null : note,
-                    ),
-                  );
-                },
+                onPressed: _accountId == null
+                    ? null
+                    : () {
+                        final note = _noteController.text.trim();
+                        Navigator.of(context).pop(
+                          _AssignConfirmationResult(
+                            include: _include,
+                            accountId: _accountId!,
+                            note: note.isEmpty ? null : note,
+                          ),
+                        );
+                      },
                 child: const Text('Назначить'),
               ),
             ],
