@@ -127,53 +127,20 @@ class HomeScreen extends ConsumerWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              if (periodClosed) ...[
-                MaterialBanner(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                  content: const Text(
-                    'Период закрыт. Откройте его, чтобы продолжить редактировать данные.',
-                  ),
-                  actions: [
-                    TextButton(
-                      onPressed: () async {
-                        final read = ref.read;
-                        final periodRef = read(selectedPeriodRefProvider);
-                        final periodLabel = read(periodLabelProvider);
-                        try {
-                          await read(periodsRepoProvider).reopen(periodRef);
-                          ref.invalidate(periodStatusProvider(periodRef));
-                          ref.invalidate(periodToCloseProvider);
-                          bumpDbTick(ref);
-                          if (!context.mounted) {
-                            return;
-                          }
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            SnackBar(
-                              content: Text(
-                                'Период $periodLabel открыт для редактирования',
-                              ),
-                            ),
-                          );
-                        } catch (error) {
-                          if (!context.mounted) {
-                            return;
-                          }
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            SnackBar(
-                              content: Text(
-                                'Не удалось открыть период: $error',
-                              ),
-                            ),
-                          );
-                        }
-                      },
-                      child: const Text('Открыть период'),
-                    ),
-                  ],
+              AnimatedSize(
+                duration: const Duration(milliseconds: 200),
+                alignment: Alignment.topCenter,
+                child: AnimatedSwitcher(
+                  duration: const Duration(milliseconds: 200),
+                  child: periodClosed
+                      ? _OpenPeriodBanner(
+                          key: ValueKey(period.id),
+                          period: period,
+                          periodLabel: label,
+                        )
+                      : const SizedBox.shrink(),
                 ),
-                const SizedBox(height: 16),
-              ],
+              ),
               AnimatedSize(
                 duration: const Duration(milliseconds: 200),
                 alignment: Alignment.topCenter,
@@ -511,6 +478,65 @@ class _ClosePeriodBanner extends ConsumerWidget {
                 ref.read(homeUiStateProvider.notifier).hideCloseBanner();
               },
               child: const Text('Позже'),
+            ),
+          ],
+        ),
+        const SizedBox(height: 16),
+      ],
+    );
+  }
+}
+
+class _OpenPeriodBanner extends ConsumerWidget {
+  const _OpenPeriodBanner({
+    super.key,
+    required this.period,
+    required this.periodLabel,
+  });
+
+  final PeriodRef period;
+  final String periodLabel;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    return Column(
+      children: [
+        MaterialBanner(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+          content: const Text(
+            'Период закрыт. Откройте его, чтобы продолжить редактировать данные.',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () async {
+                final read = ref.read;
+                try {
+                  await read(periodsRepoProvider).reopen(period);
+                  ref.invalidate(periodStatusProvider(period));
+                  ref.invalidate(periodToCloseProvider);
+                  bumpDbTick(ref);
+                  if (!context.mounted) {
+                    return;
+                  }
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      content: Text(
+                        'Период $periodLabel открыт для редактирования',
+                      ),
+                    ),
+                  );
+                } catch (error) {
+                  if (!context.mounted) {
+                    return;
+                  }
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      content: Text('Не удалось открыть период: $error'),
+                    ),
+                  );
+                }
+              },
+              child: const Text('Открыть период'),
             ),
           ],
         ),
