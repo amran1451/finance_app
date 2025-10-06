@@ -9,6 +9,7 @@ class Payout {
     this.accountId,
     this.dailyLimitMinor = 0,
     this.dailyLimitFromToday = false,
+    this.assignedPeriodId,
   });
 
   final int? id;
@@ -18,6 +19,7 @@ class Payout {
   final int? accountId;
   final int dailyLimitMinor;
   final bool dailyLimitFromToday;
+  final String? assignedPeriodId;
 
   Payout copyWith({
     int? id,
@@ -27,6 +29,7 @@ class Payout {
     int? accountId,
     int? dailyLimitMinor,
     bool? dailyLimitFromToday,
+    Object? assignedPeriodId = _unset,
   }) {
     return Payout(
       id: id ?? this.id,
@@ -37,8 +40,13 @@ class Payout {
       dailyLimitMinor: dailyLimitMinor ?? this.dailyLimitMinor,
       dailyLimitFromToday:
           dailyLimitFromToday ?? this.dailyLimitFromToday,
+      assignedPeriodId: assignedPeriodId == _unset
+          ? this.assignedPeriodId
+          : assignedPeriodId as String?,
     );
   }
+
+  static const Object _unset = Object();
 
   factory Payout.fromMap(Map<String, Object?> map) {
     return Payout(
@@ -50,6 +58,7 @@ class Payout {
       dailyLimitMinor: map['daily_limit_minor'] as int? ?? 0,
       dailyLimitFromToday:
           (map['daily_limit_from_today'] as int? ?? 0) == 1,
+      assignedPeriodId: map['assigned_period_id'] as String?,
     );
   }
 
@@ -62,6 +71,7 @@ class Payout {
       'account_id': accountId,
       'daily_limit_minor': dailyLimitMinor,
       'daily_limit_from_today': dailyLimitFromToday ? 1 : 0,
+      'assigned_period_id': assignedPeriodId,
     };
   }
 

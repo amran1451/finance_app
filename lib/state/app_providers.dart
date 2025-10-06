@@ -250,6 +250,7 @@ class _TransactionsRepositoryWithDbTick
     transaction_models.TransactionType? type,
     bool? isPlanned,
     bool? includedInPeriod,
+    String? periodId,
   }) {
     return _delegate.getByPeriod(
       from,
@@ -259,6 +260,7 @@ class _TransactionsRepositoryWithDbTick
       type: type,
       isPlanned: isPlanned,
       includedInPeriod: includedInPeriod,
+      periodId: periodId,
     );
   }
 
@@ -273,6 +275,7 @@ class _TransactionsRepositoryWithDbTick
     bool? isPlanned,
     bool? includedInPeriod,
     bool aggregateSavingPairs = false,
+    String? periodId,
   }) {
     return _delegate.getOperationItemsByPeriod(
       from,
@@ -283,6 +286,7 @@ class _TransactionsRepositoryWithDbTick
       isPlanned: isPlanned,
       includedInPeriod: includedInPeriod,
       aggregateSavingPairs: aggregateSavingPairs,
+      periodId: periodId,
     );
   }
 
@@ -492,9 +496,14 @@ class _PayoutsRepositoryWithDbTick implements payouts_repo.PayoutsRepository {
   @override
   Future<payout_models.Payout?> findInRange(
     DateTime start,
-    DateTime endExclusive,
-  ) {
-    return _delegate.findInRange(start, endExclusive);
+    DateTime endExclusive, {
+    String? assignedPeriodId,
+  }) {
+    return _delegate.findInRange(
+      start,
+      endExclusive,
+      assignedPeriodId: assignedPeriodId,
+    );
   }
 
   @override
