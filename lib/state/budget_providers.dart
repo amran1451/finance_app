@@ -22,6 +22,47 @@ typedef BudgetPeriodInfo = ({
   int days,
 });
 
+@immutable
+class PeriodVm {
+  const PeriodVm({
+    required this.ref,
+    required this.label,
+    required this.isClosed,
+    this.closedAt,
+  });
+
+  final PeriodRef ref;
+  final String label;
+  final bool isClosed;
+  final DateTime? closedAt;
+}
+
+enum PeriodCta { open, close }
+
+@immutable
+class PeriodBannerVm {
+  const PeriodBannerVm._({
+    required this.isVisible,
+    this.text,
+    this.cta,
+    this.label,
+  });
+
+  const PeriodBannerVm.hidden()
+      : this._(isVisible: false, text: null, cta: null, label: null);
+
+  const PeriodBannerVm.show({
+    required String text,
+    required PeriodCta cta,
+    required String label,
+  }) : this._(isVisible: true, text: text, cta: cta, label: label);
+
+  final bool isVisible;
+  final String? text;
+  final PeriodCta? cta;
+  final String? label;
+}
+
 int calculateMaxDailyLimitMinor({
   required int remainingBudgetMinor,
   required DateTime periodStart,
@@ -113,6 +154,18 @@ final periodStatusProvider = FutureProvider.family<PeriodStatus, PeriodRef>((ref
   await ref.watch(periodEntryProvider(period).future);
   final repository = ref.watch(periodsRepoProvider);
   return repository.getStatus(period);
+});
+
+final periodProvider = FutureProvider.family<PeriodVm?, PeriodRef>((ref, period) async {
+  final label = ref.watch(periodLabelForRefProvider(period));
+  final entry = await ref.watch(periodEntryProvider(period).future);
+  final status = await ref.watch(periodStatusProvider(period).future);
+  return PeriodVm(
+    ref: period,
+    label: label,
+    isClosed: status.isClosed,
+    closedAt: status.closedAt ?? entry.closedAt,
+  );
 });
 
 final plannedIncludedAmountForEntryProvider =
@@ -286,6 +339,32 @@ final periodToCloseProvider = Provider<PeriodRef?>((ref) {
     return selected;
   }
   return null;
+});
+
+final periodBannerVmProvider = Provider.family<PeriodBannerVm, PeriodRef>((ref, refId) {
+  final periodAsync = ref.watch(periodProvider(refId));
+  final period = periodAsync.value;
+  if (period == null) {
+    return const PeriodBannerVm.hidden();
+  }
+  if (period.isClosed) {
+    return PeriodBannerVm.show(
+      text: 'Период ${period.label} закрыт. Открыть?',
+      cta: PeriodCta.open,
+      label: period.label,
+    );
+  }
+
+  final closable = ref.watch(periodToCloseProvider);
+  if (closable == null || closable.id != refId.id) {
+    return const PeriodBannerVm.hidden();
+  }
+
+  return PeriodBannerVm.show(
+    text: 'Период ${period.label} завершён. Закрыть?',
+    cta: PeriodCta.close,
+    label: period.label,
+  );
 });
 
 extension PeriodNav on StateController<PeriodRef> {
@@ -735,7 +814,7 @@ bool _isMissingRepoMethod(Object error) {
 bool _canClosePeriodRef(Ref ref, PeriodRef period) {
   final statusAsync = ref.watch(periodStatusProvider(period));
   final isClosed = statusAsync.maybeWhen(
-    data: (status) => status.closed,
+    data: (status) => status.isClosed,
     orElse: () => false,
   );
   if (isClosed) {

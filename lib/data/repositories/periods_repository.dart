@@ -11,7 +11,7 @@ class PeriodEntry {
     required this.half,
     required this.start,
     required this.endExclusive,
-    required this.closed,
+    required this.isClosed,
     this.closedAt,
   });
 
@@ -21,7 +21,7 @@ class PeriodEntry {
   final HalfPeriod half;
   final DateTime start;
   final DateTime endExclusive;
-  final bool closed;
+  final bool isClosed;
   final DateTime? closedAt;
 }
 
@@ -43,16 +43,16 @@ class PeriodSnapshot {
 
 class PeriodStatus {
   const PeriodStatus({
-    required this.closed,
+    required this.isClosed,
     this.closedAt,
     this.snapshot,
   });
 
-  final bool closed;
+  final bool isClosed;
   final DateTime? closedAt;
   final PeriodSnapshot? snapshot;
 
-  static const PeriodStatus empty = PeriodStatus(closed: false);
+  static const PeriodStatus empty = PeriodStatus(isClosed: false);
 }
 
 abstract class PeriodsRepository {
@@ -83,6 +83,12 @@ abstract class PeriodsRepository {
   });
 
   Future<void> reopenLast({DatabaseExecutor? executor});
+
+  Future<void> setPeriodClosed(
+    PeriodRef ref, {
+    required bool closed,
+    DateTime? at,
+  });
 }
 
 class SqlitePeriodsRepository implements PeriodsRepository {
@@ -176,6 +182,7 @@ class SqlitePeriodsRepository implements PeriodsRepository {
           );
         }
 
+        final now = DateTime.now();
         await txn.update(
           'periods',
           {
@@ -185,7 +192,9 @@ class SqlitePeriodsRepository implements PeriodsRepository {
             'planned_included_minor': plannedIncludedMinor,
             'carryover_minor': carryoverMinor ?? 0,
             'closed': 1,
-            'closed_at': DateTime.now().toIso8601String(),
+            'closed_at': now.toIso8601String(),
+            'isClosed': 1,
+            'closedAt': now.millisecondsSinceEpoch,
           },
           where: 'id = ?',
           whereArgs: [existing['id']],
@@ -240,6 +249,7 @@ class SqlitePeriodsRepository implements PeriodsRepository {
       'end_exclusive': _formatDate(normalizedEndExclusive),
       'carryover_minor': 0,
       'closed': 0,
+      'isClosed': 0,
     });
 
     final inserted = await _findById(executor, id);
@@ -306,6 +316,8 @@ class SqlitePeriodsRepository implements PeriodsRepository {
           {
             'closed': 0,
             'closed_at': null,
+            'isClosed': 0,
+            'closedAt': null,
           },
           where: 'id = ?',
           whereArgs: [id],
@@ -329,11 +341,11 @@ class SqlitePeriodsRepository implements PeriodsRepository {
       return PeriodStatus.empty;
     }
     final row = rows.first;
-    final closed = (row['closed'] as int? ?? 0) != 0;
-    final closedAt = _parseDateTime(row['closed_at'] as String?);
+    final closed = _readClosed(row);
+    final closedAt = _readClosedAt(row);
     final snapshot = _mapSnapshot(row);
     return PeriodStatus(
-      closed: closed,
+      isClosed: closed,
       closedAt: closedAt,
       snapshot: snapshot,
     );
@@ -345,7 +357,7 @@ class SqlitePeriodsRepository implements PeriodsRepository {
       (txn) async {
         final rows = await txn.query(
           'periods',
-          where: 'closed = 1',
+          where: 'isClosed = 1',
           orderBy: 'start DESC, id DESC',
           limit: 1,
         );
@@ -361,6 +373,8 @@ class SqlitePeriodsRepository implements PeriodsRepository {
           {
             'closed': 0,
             'closed_at': null,
+            'isClosed': 0,
+            'closedAt': null,
           },
           where: 'id = ?',
           whereArgs: [id],
@@ -368,6 +382,39 @@ class SqlitePeriodsRepository implements PeriodsRepository {
       },
       executor: executor,
       debugContext: 'periods.reopenLast',
+    );
+  }
+
+  @override
+  Future<void> setPeriodClosed(
+    PeriodRef ref, {
+    required bool closed,
+    DateTime? at,
+  }) async {
+    await _runWrite<void>(
+      (txn) async {
+        final existing =
+            await _findPeriod(txn, ref.year, ref.month, ref.half);
+        final id = existing?['id'] as int?;
+        if (id == null) {
+          throw StateError(
+            'Period ${ref.year}-${ref.month} ${ref.half} not initialized',
+          );
+        }
+        final closedAt = closed ? (at ?? DateTime.now()) : null;
+        await txn.update(
+          'periods',
+          {
+            'isClosed': closed ? 1 : 0,
+            'closedAt': closedAt?.millisecondsSinceEpoch,
+            'closed': closed ? 1 : 0,
+            'closed_at': closedAt?.toIso8601String(),
+          },
+          where: 'id = ?',
+          whereArgs: [id],
+        );
+      },
+      debugContext: 'periods.setPeriodClosed',
     );
   }
 
@@ -417,8 +464,8 @@ class SqlitePeriodsRepository implements PeriodsRepository {
       start: _parseDate(startRaw) ?? DateTime.fromMillisecondsSinceEpoch(0),
       endExclusive:
           _parseDate(endRaw) ?? DateTime.fromMillisecondsSinceEpoch(0),
-      closed: (row['closed'] as int? ?? 0) != 0,
-      closedAt: _parseDateTime(row['closed_at'] as String?),
+      isClosed: _readClosed(row),
+      closedAt: _readClosedAt(row),
     );
   }
 
@@ -487,6 +534,48 @@ class SqlitePeriodsRepository implements PeriodsRepository {
       return int.tryParse(value) ?? 0;
     }
     return 0;
+  }
+
+  bool _readClosed(Map<String, Object?> row) {
+    final value = row['isClosed'];
+    if (value is int) {
+      return value != 0;
+    }
+    if (value is num) {
+      return value.toInt() != 0;
+    }
+    if (value is bool) {
+      return value;
+    }
+    final legacy = row['closed'];
+    if (legacy is int) {
+      return legacy != 0;
+    }
+    if (legacy is num) {
+      return legacy.toInt() != 0;
+    }
+    if (legacy is bool) {
+      return legacy;
+    }
+    return false;
+  }
+
+  DateTime? _readClosedAt(Map<String, Object?> row) {
+    final value = row['closedAt'];
+    if (value is int) {
+      return DateTime.fromMillisecondsSinceEpoch(value);
+    }
+    if (value is num) {
+      return DateTime.fromMillisecondsSinceEpoch(value.toInt());
+    }
+    final legacy = row['closed_at'];
+    if (legacy is int) {
+      return DateTime.fromMillisecondsSinceEpoch(legacy);
+    }
+    if (legacy is String) {
+      return _parseDateTime(legacy);
+    }
+    return null;
   }
 }
 
