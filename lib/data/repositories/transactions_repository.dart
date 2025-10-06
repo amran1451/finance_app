@@ -747,6 +747,7 @@ class SqliteTransactionsRepository implements TransactionsRepository {
       'SELECT COALESCE(SUM(amount_minor), 0) AS total '
       'FROM transactions '
       "WHERE type = 'expense' AND is_planned = 0 "
+      'AND included_in_period = 1 '
       'AND date = ? AND date >= ? AND date < ?',
       [
         _formatDate(normalizedDate),
@@ -821,6 +822,7 @@ class SqliteTransactionsRepository implements TransactionsRepository {
       'SELECT COALESCE(SUM(amount_minor), 0) AS total '
       'FROM transactions '
       "WHERE type = 'expense' AND is_planned = 0 "
+      'AND included_in_period = 1 '
       'AND date >= ? AND date < ?',
       [_formatDate(start), _formatDate(endExclusive)],
     );
