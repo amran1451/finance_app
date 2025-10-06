@@ -389,6 +389,7 @@ class SqlitePayoutsRepository implements PayoutsRepository {
       'tags': null,
       'payout_id': payoutId,
       'payout_period_id': assignedPeriodId,
+      'period_id': assignedPeriodId,
     };
 
     if (existing.isEmpty) {

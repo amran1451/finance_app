@@ -18,6 +18,7 @@ void main() {
   late int accountId;
   late int categoryId;
   late AccountsRepository accountsRepository;
+  const anchors = (1, 15);
 
   String formatDate(DateTime date) {
     final month = date.month.toString().padLeft(2, '0');
@@ -30,7 +31,10 @@ void main() {
     required int amountMinor,
     required bool included,
     bool planned = false,
+    PeriodRef? period,
   }) async {
+    final resolvedPeriod =
+        period ?? periodRefForDate(date, anchors.$1, anchors.$2);
     await db.insert('transactions', {
       'account_id': accountId,
       'category_id': categoryId,
@@ -39,6 +43,7 @@ void main() {
       'date': formatDate(date),
       'is_planned': planned ? 1 : 0,
       'included_in_period': included ? 1 : 0,
+      'period_id': resolvedPeriod.id,
     });
   }
 
@@ -86,6 +91,7 @@ void main() {
 
     await repository.assignMasterToPeriod(
       masterId: masterId,
+      period: const PeriodRef(year: 2024, month: 1, half: HalfPeriod.first),
       start: start,
       endExclusive: endExclusive,
       categoryId: categoryId,
@@ -164,9 +170,11 @@ void main() {
       planned: true,
     );
 
+    const period = PeriodRef(year: 2024, month: 1, half: HalfPeriod.first);
     final total = await repository.sumUnplannedExpensesInRange(
       start,
       start.add(const Duration(days: 3)),
+      periodId: period.id,
     );
 
     expect(total, 1200);
@@ -225,10 +233,12 @@ void main() {
       included: true,
     );
 
+    const period = PeriodRef(year: 2024, month: 1, half: HalfPeriod.first);
     final total = await repository.sumExpensesOnDateWithinPeriod(
       date: targetDate,
       periodStart: periodStart,
       periodEndExclusive: periodEndExclusive,
+      periodId: period.id,
     );
 
     expect(total, 1_500);
@@ -270,6 +280,7 @@ void main() {
       period: period,
       start: periodStart,
       endExclusive: periodEndExclusive,
+      periodId: period.id,
     );
 
     expect(total, 1_300);

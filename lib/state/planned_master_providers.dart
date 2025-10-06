@@ -274,6 +274,7 @@ class PlannedFacade {
       }
       await _instancesRepository.assignMasterToPeriod(
         masterId: masterId,
+        period: period,
         start: bounds.start,
         endExclusive: bounds.endExclusive,
         categoryId: categoryId,
