@@ -98,25 +98,28 @@ class _PayoutEditSheetState extends ConsumerState<_PayoutEditSheet> {
     _amountController = TextEditingController(text: amountText);
   }
 
-  PayoutType _resolveType() {
+  PayoutType _resolveType(PayoutType allowedType) {
     final cached = _type;
-    if (cached != null) {
+    if (cached != null && cached == allowedType) {
       return cached;
     }
     final initial = widget.initial;
-    if (initial != null) {
-      final value = initial.type;
-      _type = value;
-      return value;
+    if (initial != null && initial.type == allowedType) {
+      _type = initial.type;
+      return initial.type;
     }
     final forced = widget.forcedType;
-    if (forced != null) {
+    if (forced != null && forced == allowedType) {
       _type = forced;
       return forced;
     }
     final suggested = ref.read(payoutSuggestedTypeProvider);
-    _type = suggested;
-    return suggested;
+    if (suggested == allowedType) {
+      _type = suggested;
+      return suggested;
+    }
+    _type = allowedType;
+    return allowedType;
   }
 
   @override
@@ -161,7 +164,9 @@ class _PayoutEditSheetState extends ConsumerState<_PayoutEditSheet> {
     final theme = Theme.of(context);
     final bottomInset = MediaQuery.of(context).viewInsets.bottom;
     final isEditMode = widget.initial?.id != null;
-    final type = _resolveType();
+    final selectedPeriod = ref.watch(selectedPeriodRefProvider);
+    final allowedType = allowedPayoutTypeForHalf(selectedPeriod.half);
+    final type = _resolveType(allowedType);
     final titlePrefix = isEditMode ? 'Редактировать выплату' : 'Добавить выплату';
     final title = '$titlePrefix (${payoutTypeLabel(type)})';
 
@@ -192,14 +197,16 @@ class _PayoutEditSheetState extends ConsumerState<_PayoutEditSheet> {
             Text(title, style: theme.textTheme.titleMedium, textAlign: TextAlign.center),
             const SizedBox(height: 16),
             SegmentedButton<PayoutType>(
-              segments: const [
+              segments: [
                 ButtonSegment(
                   value: PayoutType.advance,
                   label: Text('Аванс'),
+                  enabled: allowedType == PayoutType.advance,
                 ),
                 ButtonSegment(
                   value: PayoutType.salary,
                   label: Text('Зарплата'),
+                  enabled: allowedType == PayoutType.salary,
                 ),
               ],
               selected: <PayoutType>{type},

@@ -503,6 +503,20 @@ class SqlitePayoutsRepository implements PayoutsRepository {
       );
     }
 
+    final actualPeriod = periodRefForDate(normalizedPicked, anchor1, anchor2);
+    final expectedPeriod = _resolveEffectivePeriod(
+      selectedPeriod: selectedPeriod,
+      actualPeriod: actualPeriod,
+    );
+    final allowedType = allowedPayoutTypeForHalf(expectedPeriod.half);
+    if (type != allowedType) {
+      throw ArgumentError.value(
+        type,
+        'type',
+        'Недопустимый тип выплаты для выбранного полупериода',
+      );
+    }
+
     final resolvedExisting = existing ??
         (existingId != null ? await _loadPayoutById(executor, existingId) : null);
 
@@ -555,8 +569,7 @@ class SqlitePayoutsRepository implements PayoutsRepository {
       );
     }
 
-    final actualPeriod = periodRefForDate(normalizedPicked, anchor1, anchor2);
-    var effectivePeriod = selectedPeriod;
+    var effectivePeriod = expectedPeriod;
     if (actualPeriod != selectedPeriod) {
       if (actualPeriod == selectedPeriod.nextHalf()) {
         await _updatePeriodEnd(
@@ -584,6 +597,16 @@ class SqlitePayoutsRepository implements PayoutsRepository {
       payout: payout.copyWith(id: payoutId),
       period: effectivePeriod,
     );
+  }
+
+  PeriodRef _resolveEffectivePeriod({
+    required PeriodRef selectedPeriod,
+    required PeriodRef actualPeriod,
+  }) {
+    if (actualPeriod == selectedPeriod.nextHalf()) {
+      return actualPeriod;
+    }
+    return selectedPeriod;
   }
 
   Future<void> _updatePeriodStart(
