@@ -207,6 +207,8 @@ class HomeScreen extends ConsumerWidget {
                             plannedIncludedMinor: planned,
                             carryoverMinor: 0,
                           );
+                          await ref
+                              .refresh(periodStatusProvider(periodRef).future);
                           read(selectedPeriodRefProvider.notifier).state =
                               periodRef.nextHalf();
                           bumpDbTick(ref);
