@@ -22,6 +22,7 @@ import 'planned_assign_to_period_sheet.dart';
 Future<void> showPlannedMasterEditSheet(
   BuildContext context, {
   PlannedMaster? initial,
+  String? successMessage,
 }) {
   return showModalBottomSheet(
     context: context,
@@ -38,16 +39,20 @@ Future<void> showPlannedMasterEditSheet(
           top: 16,
           bottom: 16 + MediaQuery.of(modalContext).viewInsets.bottom,
         ),
-        child: _PlannedMasterEditForm(initial: initial),
+        child: _PlannedMasterEditForm(
+          initial: initial,
+          successMessage: successMessage,
+        ),
       );
     },
   );
 }
 
 class _PlannedMasterEditForm extends ConsumerStatefulWidget {
-  const _PlannedMasterEditForm({this.initial});
+  const _PlannedMasterEditForm({this.initial, this.successMessage});
 
   final PlannedMaster? initial;
+  final String? successMessage;
 
   @override
   ConsumerState<_PlannedMasterEditForm> createState() =>
@@ -354,7 +359,7 @@ class _PlannedMasterEditFormState
           return;
         }
         bumpDbTick(ref);
-        _showSnack('Сохранено');
+        _showSnack(widget.successMessage ?? 'Сохранено');
         Navigator.of(context).pop(true);
         return;
       }
@@ -376,7 +381,7 @@ class _PlannedMasterEditFormState
       }
       if (rows > 0) {
         bumpDbTick(ref);
-        _showSnack('Сохранено');
+        _showSnack(widget.successMessage ?? 'Сохранено');
         Navigator.of(context).pop(true);
       }
     } on ControlledOperationException catch (error) {
