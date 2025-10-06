@@ -414,15 +414,31 @@ class SqlitePlannedMasterRepository implements PlannedMasterRepository {
         if (rowsUpdated <= 0) {
           throw const ControlledOperationException('Ничего не изменилось');
         }
+        final (necessityLabel, necessityCriticality) =
+            await _loadNecessityMeta(db, necessityId);
+        final plannedUpdateValues = <String, Object?>{
+          'category_id': categoryId,
+          'amount_minor': amountMinor,
+          'necessity_id': necessityId,
+          'necessity_label': necessityLabel,
+          'criticality': necessityCriticality,
+          'note': sanitizedNote,
+        };
         await db.update(
           'transactions',
-          {'category_id': categoryId},
+          plannedUpdateValues,
           where: 'is_planned = 1 AND planned_id = ?',
           whereArgs: [id],
         );
+        final actualUpdateValues = <String, Object?>{
+          'category_id': categoryId,
+          'necessity_id': necessityId,
+          'necessity_label': necessityLabel,
+          'criticality': necessityCriticality,
+        };
         await db.update(
           'transactions',
-          {'category_id': categoryId},
+          actualUpdateValues,
           where: "source = 'plan' AND planned_id = ?",
           whereArgs: [id],
         );
@@ -878,5 +894,33 @@ class SqlitePlannedMasterRepository implements PlannedMasterRepository {
       return int.tryParse(value) ?? 0;
     }
     return 0;
+  }
+
+  Future<(String?, int)> _loadNecessityMeta(
+    DatabaseExecutor executor,
+    int? necessityId,
+  ) async {
+    if (necessityId == null) {
+      return (null, 0);
+    }
+    final rows = await executor.query(
+      'necessity_labels',
+      columns: ['name', 'sort_order'],
+      where: 'id = ?',
+      whereArgs: [necessityId],
+      limit: 1,
+    );
+    if (rows.isEmpty) {
+      return (null, 0);
+    }
+    final row = rows.first;
+    final label = row['name'] as String?;
+    final sortOrderRaw = row['sort_order'];
+    final criticality = sortOrderRaw is int
+        ? sortOrderRaw
+        : sortOrderRaw is num
+            ? sortOrderRaw.toInt()
+            : 0;
+    return (label, criticality);
   }
 }

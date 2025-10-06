@@ -14,8 +14,9 @@ import '../../state/db_refresh.dart';
 import '../../utils/formatting.dart';
 import '../../utils/period_utils.dart';
 import '../../utils/ru_plural.dart';
-import '../planned/planned_add_form.dart';
 import '../planned/expense_plan_sheets.dart';
+import '../planned/planned_add_form.dart';
+import '../planned/planned_master_edit_sheet.dart';
 import '../payouts/payout_edit_sheet.dart';
 import 'daily_limit_sheet.dart';
 import '../widgets/callout_card.dart';
@@ -892,12 +893,18 @@ class _PlannedExpensesList extends ConsumerWidget {
                         type: PlannedType.expense,
                         initialRecord: item.record,
                       ),
-                      onLongPress: () => showPlannedAddForm(
-                        context,
-                        type: PlannedType.expense,
-                        initialRecord: item.record,
-                        initialTitle: item.master?.title,
-                      ),
+                      onLongPress: () async {
+                        final master = item.master;
+                        if (master == null) {
+                          return;
+                        }
+                        await showPlannedMasterEditSheet(
+                          context,
+                          initial: master,
+                          successMessage:
+                              'План обновлён, периоды пересчитаны',
+                        );
+                      },
                     ),
                     if (index != items.length - 1) const Divider(height: 0),
                   ],
