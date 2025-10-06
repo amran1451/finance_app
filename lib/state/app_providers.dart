@@ -181,6 +181,7 @@ class _TransactionsRepositoryWithDbTick
     required bool included,
     int? necessityId,
     String? note,
+    required int accountId,
     DatabaseExecutor? executor,
   }) async {
     await _delegate.assignMasterToPeriod(
@@ -192,6 +193,7 @@ class _TransactionsRepositoryWithDbTick
       included: included,
       necessityId: necessityId,
       note: note,
+      accountId: accountId,
       executor: executor,
     );
     if (executor == null) {

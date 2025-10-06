@@ -96,6 +96,7 @@ abstract class TransactionsRepository {
     required bool included,
     int? necessityId,
     String? note,
+    required int accountId,
     DatabaseExecutor? executor,
   });
 
@@ -498,6 +499,7 @@ class SqliteTransactionsRepository implements TransactionsRepository {
     required bool included,
     int? necessityId,
     String? note,
+    required int accountId,
     DatabaseExecutor? executor,
   }) async {
     await _runWrite<void>(
@@ -520,7 +522,7 @@ class SqliteTransactionsRepository implements TransactionsRepository {
         final values = <String, Object?>{
           'planned_id': masterId,
           'type': type,
-          'account_id': 0,
+          'account_id': accountId,
           'category_id': categoryId,
           'amount_minor': amountMinor,
           'date': _formatDate(instanceDate),
@@ -689,6 +691,7 @@ class SqliteTransactionsRepository implements TransactionsRepository {
           final plannedDate = DateTime(now.year, now.month, now.day);
           final operation = planned.copyWith(
             id: null,
+            accountId: planned.accountId,
             isPlanned: false,
             includedInPeriod: true,
             planInstanceId: plannedId,
