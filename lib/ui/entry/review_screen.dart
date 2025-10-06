@@ -407,6 +407,7 @@ class _ReviewScreenState extends ConsumerState<ReviewScreen> {
         return;
       }
       final inCurrent = ref.read(isInCurrentPeriodProvider(normalizedDate));
+      final includeInPeriod = entryState.includeInPeriod && inCurrent;
 
       final normalizedOriginalDate = isEditingOperation
           ? DateTime(
@@ -425,7 +426,7 @@ class _ReviewScreenState extends ConsumerState<ReviewScreen> {
               date: normalizedDate,
               note: note,
               isPlanned: isPlannedExpense,
-              includedInPeriod: isPlannedExpense ? false : inCurrent,
+              includedInPeriod: isPlannedExpense ? false : includeInPeriod,
               criticality: necessityCriticality,
               necessityId: necessityId,
               necessityLabel: necessityLabel,
@@ -440,7 +441,7 @@ class _ReviewScreenState extends ConsumerState<ReviewScreen> {
               date: normalizedDate,
               note: note,
               isPlanned: isPlannedExpense,
-              includedInPeriod: isPlannedExpense ? false : inCurrent,
+              includedInPeriod: isPlannedExpense ? false : includeInPeriod,
               criticality: necessityCriticality,
               necessityId: necessityId,
               necessityLabel: necessityLabel,
@@ -483,7 +484,7 @@ class _ReviewScreenState extends ConsumerState<ReviewScreen> {
       if (isEditingOperation) {
         await transactionsRepository.update(
           record,
-          includedInPeriod: isPlannedExpense ? null : inCurrent,
+          includedInPeriod: isPlannedExpense ? null : includeInPeriod,
         );
         if (editingCounterpart != null) {
           final updatedCounterpart = editingCounterpart.copyWith(
@@ -491,7 +492,7 @@ class _ReviewScreenState extends ConsumerState<ReviewScreen> {
             date: normalizedDate,
             note: note,
             isPlanned: isPlannedExpense,
-            includedInPeriod: isPlannedExpense ? false : inCurrent,
+            includedInPeriod: isPlannedExpense ? false : includeInPeriod,
             criticality: necessityCriticality,
             necessityId: necessityId,
             necessityLabel: necessityLabel,
@@ -500,14 +501,14 @@ class _ReviewScreenState extends ConsumerState<ReviewScreen> {
           );
           await transactionsRepository.update(
             updatedCounterpart,
-            includedInPeriod: isPlannedExpense ? null : inCurrent,
+            includedInPeriod: isPlannedExpense ? null : includeInPeriod,
           );
         }
       } else {
         await transactionsRepository.add(
           record,
           asSavingPair: entryState.type == CategoryType.saving,
-          includedInPeriod: isPlannedExpense ? null : inCurrent,
+          includedInPeriod: isPlannedExpense ? null : includeInPeriod,
         );
       }
       await _maybePromptToClosePeriod(operationPeriod);

@@ -52,6 +52,7 @@ class EntryFlowState {
     this.editingCounterpart,
     this.reasonId,
     this.reasonLabel,
+    this.includeInPeriod = false,
   }) : selectedDate = selectedDate ?? _today;
 
   final String expression;
@@ -71,6 +72,7 @@ class EntryFlowState {
   final TransactionRecord? editingCounterpart;
   final int? reasonId;
   final String? reasonLabel;
+  final bool includeInPeriod;
 
   static DateTime get _today {
     final now = DateTime.now();
@@ -101,6 +103,7 @@ class EntryFlowState {
     Object? editingCounterpart = _entryFlowUnset,
     Object? reasonId = _entryFlowUnset,
     Object? reasonLabel = _entryFlowUnset,
+    Object? includeInPeriod = _entryFlowUnset,
   }) {
     return EntryFlowState(
       expression:
@@ -139,6 +142,9 @@ class EntryFlowState {
       reasonLabel: reasonLabel == _entryFlowUnset
           ? this.reasonLabel
           : reasonLabel as String?,
+      includeInPeriod: includeInPeriod == _entryFlowUnset
+          ? this.includeInPeriod
+          : includeInPeriod as bool,
     );
   }
 
@@ -150,8 +156,14 @@ class EntryFlowState {
 class EntryFlowController extends StateNotifier<EntryFlowState> {
   EntryFlowController() : super(EntryFlowState());
 
-  void startNew({CategoryType type = CategoryType.expense}) {
-    state = EntryFlowState(type: type);
+  void startNew({
+    CategoryType type = CategoryType.expense,
+    bool includeInPeriod = false,
+  }) {
+    state = EntryFlowState(
+      type: type,
+      includeInPeriod: includeInPeriod,
+    );
   }
 
   void appendDigit(String digit) {
@@ -302,6 +314,7 @@ class EntryFlowController extends StateNotifier<EntryFlowState> {
       necessityId: state.necessityId,
       necessityLabel: state.necessityLabel,
       necessityResolved: state.necessityResolved,
+      includeInPeriod: state.includeInPeriod,
     );
   }
 
@@ -382,6 +395,7 @@ class EntryFlowController extends StateNotifier<EntryFlowState> {
       editingCounterpart: savingCounterpart,
       reasonId: record.reasonId,
       reasonLabel: record.reasonLabel,
+      includeInPeriod: record.includedInPeriod,
     );
   }
 
@@ -401,7 +415,10 @@ class EntryFlowController extends StateNotifier<EntryFlowState> {
 
 extension EntryFlowQuickReset on EntryFlowController {
   void resetForQuickAdd(OperationKind kind) {
-    state = EntryFlowState(type: operationTypeFromKind(kind));
+    state = EntryFlowState(
+      type: operationTypeFromKind(kind),
+      includeInPeriod: true,
+    );
   }
 }
 

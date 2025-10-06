@@ -37,9 +37,20 @@ class _FakeTransactionsRepository implements TransactionsRepository {
     bool? isPlanned,
     bool? includedInPeriod,
     bool aggregateSavingPairs = false,
+    String? periodId,
   }) async {
     final key = requestKey(from, to);
-    return responses[key] ?? const [];
+    final items = responses[key];
+    if (items == null) {
+      return const [];
+    }
+    if (includedInPeriod == true) {
+      return [
+        for (final item in items)
+          if (item.record.includedInPeriod) item,
+      ];
+    }
+    return items;
   }
 
   @override
@@ -121,5 +132,64 @@ void main() {
 
     expect(actualPeriodResult, hasLength(1));
     expect(actualPeriodResult.first.record.id, payoutRecord.id);
+  });
+
+  test('operations not included in period are filtered out', () async {
+    const anchors = (5, 20);
+    const selectedPeriod =
+        PeriodRef(year: 2024, month: 6, half: HalfPeriod.second);
+    final bounds = selectedPeriod.bounds(anchors.$1, anchors.$2);
+
+    final includedRecord = TransactionRecord(
+      id: 1,
+      accountId: 1,
+      categoryId: 1,
+      type: TransactionType.expense,
+      amountMinor: 1000,
+      date: bounds.start,
+      includedInPeriod: true,
+    );
+    final excludedRecord = includedRecord.copyWith(
+      id: 2,
+      includedInPeriod: false,
+    );
+
+    final repository = _FakeTransactionsRepository(
+      responses: {
+        _FakeTransactionsRepository.requestKey(
+          bounds.start,
+          _FakeTransactionsRepository.requestEnd(
+            bounds.start,
+            bounds.endExclusive,
+          ),
+        ): [
+          TransactionListItem(record: includedRecord),
+          TransactionListItem(record: excludedRecord),
+        ],
+      },
+      payoutRecords: const {},
+    );
+
+    final container = ProviderContainer(
+      overrides: [
+        anchorDaysProvider.overrideWithValue(anchors),
+        selectedPeriodRefProvider.overrideWith(
+          (ref) => StateController<PeriodRef>(selectedPeriod),
+        ),
+        transactionsRepoProvider.overrideWithValue(repository),
+        savingPairEnabledProvider.overrideWith((ref) async => false),
+        payoutForSelectedPeriodProvider.overrideWith((ref) async => null),
+      ],
+    );
+    addTearDown(container.dispose);
+
+    final result = await container.read(
+      periodOperationsProvider(
+        (start: bounds.start, endExclusive: bounds.endExclusive),
+      ).future,
+    );
+
+    expect(result, hasLength(1));
+    expect(result.first.record.id, includedRecord.id);
   });
 }
