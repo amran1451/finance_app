@@ -753,13 +753,13 @@ class _PlannedMasterEditFormState
   void _refreshBudgetSummaries(DateTime date) {
     final selectedPeriod = ref.read(selectedPeriodRefProvider);
     ref.invalidate(plannedPoolRemainingProvider(selectedPeriod));
-    ref.invalidate(sumIncludedPlannedExpensesProvider(selectedPeriod));
+    ref.invalidate(sumPlannedExpensesProvider(selectedPeriod));
 
     final anchors = ref.read(anchorDaysProvider);
     final period = periodRefForDate(date, anchors.$1, anchors.$2);
     if (!_isSamePeriod(period, selectedPeriod)) {
       ref.invalidate(plannedPoolRemainingProvider(period));
-      ref.invalidate(sumIncludedPlannedExpensesProvider(period));
+      ref.invalidate(sumPlannedExpensesProvider(period));
     }
   }
 

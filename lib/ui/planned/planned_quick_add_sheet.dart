@@ -48,7 +48,7 @@ class _PlannedQuickAddSheetState extends ConsumerState<_PlannedQuickAddSheet> {
   late final TextEditingController _noteController;
   int? _selectedCategoryId;
   int? _selectedNecessityId;
-  bool _included = true;
+  bool _included = false;
   bool _reuseExisting = true;
   bool _isSaving = false;
 
@@ -274,7 +274,7 @@ class _PlannedQuickAddSheetState extends ConsumerState<_PlannedQuickAddSheet> {
                         onChanged: _isSaving
                             ? null
                             : (value) {
-                                setState(() => _included = value ?? true);
+                                setState(() => _included = value ?? false);
                               },
                         title: const Text('Учитывать в расчёте'),
                         contentPadding: EdgeInsets.zero,

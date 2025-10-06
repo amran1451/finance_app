@@ -165,7 +165,7 @@ class _RecordingTransactionsRepository implements TransactionsRepository {
       _unsupported();
 
   @override
-  Future<int> sumIncludedPlannedExpenses({
+  Future<int> sumPlannedExpenses({
     required PeriodRef period,
     required DateTime start,
     required DateTime endExclusive,
