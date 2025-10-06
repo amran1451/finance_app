@@ -352,12 +352,12 @@ class _TransactionsRepositoryWithDbTick
   }
 
   @override
-  Future<int> sumIncludedPlannedExpenses({
+  Future<int> sumPlannedExpenses({
     required PeriodRef period,
     required DateTime start,
     required DateTime endExclusive,
   }) {
-    return _delegate.sumIncludedPlannedExpenses(
+    return _delegate.sumPlannedExpenses(
       period: period,
       start: start,
       endExclusive: endExclusive,

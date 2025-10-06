@@ -136,7 +136,7 @@ class _QuickAddExpensePlanFormState
   late final TextEditingController _noteController;
   int? _categoryId;
   int? _necessityId;
-  bool _include = true;
+  bool _include = false;
   bool _isSaving = false;
   bool _restoredFromStorage = false;
 
@@ -400,7 +400,7 @@ class _QuickAddExpensePlanFormState
                   onChanged: _isSaving
                       ? null
                       : (value) {
-                          setState(() => _include = value ?? true);
+                          setState(() => _include = value ?? false);
                         },
                   title: const Text('Учитывать в расчёте'),
                   contentPadding: EdgeInsets.zero,
@@ -505,7 +505,7 @@ class _QuickAddExpensePlanFormState
     _noteController.text = (restored['note'] as String?) ?? '';
     _categoryId = restored['categoryId'] as int?;
     _necessityId = restored['necessityId'] as int?;
-    _include = restored['include'] as bool? ?? true;
+    _include = restored['include'] as bool? ?? false;
   }
 
   void _clearStoredFormState() {
@@ -991,7 +991,7 @@ class _AssignConfirmationSheet extends ConsumerStatefulWidget {
 class _AssignConfirmationSheetState
     extends ConsumerState<_AssignConfirmationSheet> {
   late final TextEditingController _noteController;
-  bool _include = true;
+  bool _include = false;
   int? _accountId;
   bool _accountInitialized = false;
 
@@ -1105,7 +1105,7 @@ class _AssignConfirmationSheetState
           CheckboxListTile(
             value: _include,
             onChanged: (value) {
-              setState(() => _include = value ?? true);
+              setState(() => _include = value ?? false);
             },
             title: const Text('Учитывать в расчёте'),
             contentPadding: EdgeInsets.zero,

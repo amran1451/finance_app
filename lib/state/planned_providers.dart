@@ -228,13 +228,13 @@ final plannedActionsProvider = Provider<PlannedActions>((ref) {
   return PlannedActions(repo);
 });
 
-final sumIncludedPlannedExpensesProvider =
+final sumPlannedExpensesProvider =
     FutureProvider.family<int, PeriodRef>((ref, period) async {
   ref.watch(dbTickProvider);
   ref.watch(selectedPeriodRefProvider);
   final entry = await ref.watch(periodEntryProvider(period).future);
   final repository = ref.watch(transactionsRepoProvider);
-  return repository.sumIncludedPlannedExpenses(
+  return repository.sumPlannedExpenses(
     period: period,
     start: entry.start,
     endExclusive: entry.endExclusive,
@@ -246,7 +246,7 @@ final plannedPoolRemainingProvider =
   ref.watch(dbTickProvider);
   ref.watch(selectedPeriodRefProvider);
   final base = await ref.watch(plannedPoolBaseProvider.future);
-  final used = await ref.watch(sumIncludedPlannedExpensesProvider(period).future);
+  final used = await ref.watch(sumPlannedExpensesProvider(period).future);
   final remaining = base - used;
   return math.max(remaining, 0);
 });

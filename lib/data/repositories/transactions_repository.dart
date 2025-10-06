@@ -120,7 +120,7 @@ abstract class TransactionsRepository {
     DatabaseExecutor? executor,
   });
 
-  Future<int> sumIncludedPlannedExpenses({
+  Future<int> sumPlannedExpenses({
     required PeriodRef period,
     required DateTime start,
     required DateTime endExclusive,
@@ -650,7 +650,7 @@ class SqliteTransactionsRepository implements TransactionsRepository {
   }
 
   @override
-  Future<int> sumIncludedPlannedExpenses({
+  Future<int> sumPlannedExpenses({
     required PeriodRef period,
     required DateTime start,
     required DateTime endExclusive,
@@ -660,7 +660,7 @@ class SqliteTransactionsRepository implements TransactionsRepository {
     final rows = await db.rawQuery(
       'SELECT COALESCE(SUM(amount_minor), 0) AS total '
       'FROM transactions '
-      "WHERE is_planned = 1 AND included_in_period = 1 "
+      "WHERE is_planned = 1 "
       "AND type = 'expense' AND date >= ? AND date < ?",
       [_formatDate(start), _formatDate(endExclusive)],
     );

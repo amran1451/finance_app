@@ -737,7 +737,7 @@ class _PlannedOverviewState extends ConsumerState<_PlannedOverview> {
     final period = ref.watch(selectedPeriodRefProvider);
     final baseAsync = ref.watch(plannedPoolBaseProvider);
     final remainingAsync = ref.watch(plannedPoolRemainingProvider(period));
-    final usedAsync = ref.watch(sumIncludedPlannedExpensesProvider(period));
+    final usedAsync = ref.watch(sumPlannedExpensesProvider(period));
     return payoutAsync.when(
       data: (payout) {
         if (payout == null) {
