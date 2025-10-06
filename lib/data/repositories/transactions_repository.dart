@@ -56,12 +56,14 @@ abstract class TransactionsRepository {
     TransactionRecord record, {
     bool asSavingPair = false,
     bool? includedInPeriod,
+    PeriodRef? uiPeriod,
     DatabaseExecutor? executor,
   });
 
   Future<void> update(
     TransactionRecord record, {
     bool? includedInPeriod,
+    PeriodRef? uiPeriod,
     DatabaseExecutor? executor,
   });
 
@@ -86,11 +88,13 @@ abstract class TransactionsRepository {
     String? necessityLabel,
     bool includedInPeriod = false,
     int criticality = 0,
+    PeriodRef? period,
     DatabaseExecutor? executor,
   });
 
   Future<void> assignMasterToPeriod({
     required int masterId,
+    required PeriodRef period,
     required DateTime start,
     required DateTime endExclusive,
     required int categoryId,
@@ -107,6 +111,7 @@ abstract class TransactionsRepository {
     required DateTime endExclusive,
     String? type,
     bool? onlyIncluded,
+    String? periodId,
   });
 
   Future<int> deleteInstancesByPlannedId(int plannedId, {DatabaseExecutor? executor});
@@ -124,6 +129,7 @@ abstract class TransactionsRepository {
     required PeriodRef period,
     required DateTime start,
     required DateTime endExclusive,
+    String? periodId,
   });
 
   Future<void> setPlannedIncluded(int plannedId, bool included,
@@ -133,7 +139,11 @@ abstract class TransactionsRepository {
   Future<int> sumUnplannedExpensesOnDate(DateTime date);
 
   /// Сумма внеплановых расходов в интервале [from, toExclusive)
-  Future<int> sumUnplannedExpensesInRange(DateTime from, DateTime toExclusive);
+  Future<int> sumUnplannedExpensesInRange(
+    DateTime from,
+    DateTime toExclusive, {
+    String? periodId,
+  });
 
   /// Сумма фактических расходов (type = 'expense', is_planned = 0)
   /// на конкретную дату с защитой от выхода за границы периода.
@@ -141,6 +151,7 @@ abstract class TransactionsRepository {
     required DateTime date,
     required DateTime periodStart,
     required DateTime periodEndExclusive,
+    String? periodId,
   });
 
   /// Сумма фактических расходов (type = 'expense', is_planned = 0)
@@ -149,6 +160,7 @@ abstract class TransactionsRepository {
     required PeriodRef period,
     required DateTime start,
     required DateTime endExclusive,
+    String? periodId,
   });
 }
 
@@ -194,6 +206,7 @@ class SqliteTransactionsRepository implements TransactionsRepository {
     TransactionRecord record, {
     bool asSavingPair = false,
     bool? includedInPeriod,
+    PeriodRef? uiPeriod,
     DatabaseExecutor? executor,
   }) async {
     return _runWrite<int>(
@@ -205,9 +218,12 @@ class SqliteTransactionsRepository implements TransactionsRepository {
               ? TransactionType.saving
               : record.type,
         );
-        final primaryValues = Map<String, Object?>.from(adjustedRecord.toMap())
+        final resolvedRecord = uiPeriod != null
+            ? adjustedRecord.copyWith(periodId: uiPeriod.id)
+            : adjustedRecord;
+        final primaryValues = Map<String, Object?>.from(resolvedRecord.toMap())
           ..remove('id');
-        if (adjustedRecord.type == TransactionType.income) {
+        if (resolvedRecord.type == TransactionType.income) {
           primaryValues['necessity_id'] = null;
           primaryValues['necessity_label'] = null;
           primaryValues['reason_id'] = null;
@@ -216,9 +232,9 @@ class SqliteTransactionsRepository implements TransactionsRepository {
         }
         if (includedInPeriod != null) {
           primaryValues['included_in_period'] = includedInPeriod ? 1 : 0;
-        } else if (adjustedRecord.isPlanned) {
+        } else if (resolvedRecord.isPlanned) {
           primaryValues['included_in_period'] =
-              adjustedRecord.includedInPeriod ? 1 : 0;
+              resolvedRecord.includedInPeriod ? 1 : 0;
         }
         final primaryId = await db.insert('transactions', primaryValues);
 
@@ -230,7 +246,7 @@ class SqliteTransactionsRepository implements TransactionsRepository {
             );
           }
           if (savingsAccountId != record.accountId) {
-            final pairRecord = adjustedRecord.copyWith(
+            final pairRecord = resolvedRecord.copyWith(
               id: null,
               accountId: savingsAccountId,
             );
@@ -238,9 +254,9 @@ class SqliteTransactionsRepository implements TransactionsRepository {
               ..remove('id');
             if (includedInPeriod != null) {
               pairValues['included_in_period'] = includedInPeriod ? 1 : 0;
-            } else if (adjustedRecord.isPlanned) {
+            } else if (resolvedRecord.isPlanned) {
               pairValues['included_in_period'] =
-                  adjustedRecord.includedInPeriod ? 1 : 0;
+                  resolvedRecord.includedInPeriod ? 1 : 0;
             }
             await db.insert('transactions', pairValues);
           }
@@ -323,13 +339,8 @@ class SqliteTransactionsRepository implements TransactionsRepository {
     final args = <Object?>[];
 
     if (periodId != null) {
-      where.write('(('
-          'payout_period_id IS NULL AND date >= ? AND date <= ?'
-          ') OR payout_period_id = ?)');
-      args
-        ..add(_formatDate(from))
-        ..add(_formatDate(to))
-        ..add(periodId);
+      where.write('period_id = ?');
+      args.add(periodId);
     } else {
       where.write('date >= ? AND date <= ?');
       args
@@ -357,11 +368,6 @@ class SqliteTransactionsRepository implements TransactionsRepository {
       where.write(' AND included_in_period = ?');
       args.add(includedInPeriod ? 1 : 0);
     }
-    if (periodId != null) {
-      where.write(' AND (payout_period_id IS NULL OR payout_period_id = ?)');
-      args.add(periodId);
-    }
-
     final rows = await db.query(
       'transactions',
       where: where.toString(),
@@ -414,6 +420,7 @@ class SqliteTransactionsRepository implements TransactionsRepository {
   Future<void> update(
     TransactionRecord record, {
     bool? includedInPeriod,
+    PeriodRef? uiPeriod,
     DatabaseExecutor? executor,
   }) async {
     final id = record.id;
@@ -422,9 +429,11 @@ class SqliteTransactionsRepository implements TransactionsRepository {
     }
     await _runWrite<void>(
       (db) async {
-        final values = Map<String, Object?>.from(record.toMap());
+        final resolvedRecord =
+            uiPeriod != null ? record.copyWith(periodId: uiPeriod.id) : record;
+        final values = Map<String, Object?>.from(resolvedRecord.toMap());
         values.remove('id');
-        if (record.type == TransactionType.income) {
+        if (resolvedRecord.type == TransactionType.income) {
           values['necessity_id'] = null;
           values['necessity_label'] = null;
           values['reason_id'] = null;
@@ -483,6 +492,7 @@ class SqliteTransactionsRepository implements TransactionsRepository {
     String? necessityLabel,
     bool includedInPeriod = false,
     int criticality = 0,
+    PeriodRef? period,
     DatabaseExecutor? executor,
   }) async {
     return _runWrite<int>(
@@ -505,6 +515,7 @@ class SqliteTransactionsRepository implements TransactionsRepository {
           'reason_id': null,
           'reason_label': null,
           'payout_id': null,
+          'period_id': period?.id,
         };
         return db.insert('transactions', values);
       },
@@ -516,6 +527,7 @@ class SqliteTransactionsRepository implements TransactionsRepository {
   @override
   Future<void> assignMasterToPeriod({
     required int masterId,
+    required PeriodRef period,
     required DateTime start,
     required DateTime endExclusive,
     required int categoryId,
@@ -561,6 +573,7 @@ class SqliteTransactionsRepository implements TransactionsRepository {
           'reason_id': null,
           'reason_label': null,
           'payout_id': null,
+          'period_id': period.id,
         };
         await db.insert('transactions', values);
       },
@@ -575,10 +588,20 @@ class SqliteTransactionsRepository implements TransactionsRepository {
     required DateTime endExclusive,
     String? type,
     bool? onlyIncluded,
+    String? periodId,
   }) async {
     final db = await _db;
-    final where = StringBuffer('is_planned = 1 AND date >= ? AND date < ?');
-    final args = <Object?>[_formatDate(start), _formatDate(endExclusive)];
+    final where = StringBuffer('is_planned = 1');
+    final args = <Object?>[];
+    if (periodId != null) {
+      where.write(' AND period_id = ?');
+      args.add(periodId);
+    } else {
+      where.write(' AND date >= ? AND date < ?');
+      args
+        ..add(_formatDate(start))
+        ..add(_formatDate(endExclusive));
+    }
     if (type != null) {
       where.write(' AND type = ?');
       args.add(type);
@@ -654,16 +677,27 @@ class SqliteTransactionsRepository implements TransactionsRepository {
     required PeriodRef period,
     required DateTime start,
     required DateTime endExclusive,
+    String? periodId,
   }) async {
     assert(start.isBefore(endExclusive), 'Empty period bounds for $period');
     final db = await _db;
-    final rows = await db.rawQuery(
+    final query = StringBuffer(
       'SELECT COALESCE(SUM(amount_minor), 0) AS total '
       'FROM transactions '
       "WHERE is_planned = 1 "
-      "AND type = 'expense' AND date >= ? AND date < ?",
-      [_formatDate(start), _formatDate(endExclusive)],
+      "AND type = 'expense' ",
     );
+    final args = <Object?>[];
+    if (periodId != null) {
+      query.write('AND period_id = ?');
+      args.add(periodId);
+    } else {
+      query.write('AND date >= ? AND date < ?');
+      args
+        ..add(_formatDate(start))
+        ..add(_formatDate(endExclusive));
+    }
+    final rows = await db.rawQuery(query.toString(), args);
     if (rows.isEmpty) {
       return 0;
     }
@@ -770,18 +804,23 @@ class SqliteTransactionsRepository implements TransactionsRepository {
     }
 
     final db = await _db;
-    final rows = await db.rawQuery(
+    final query = StringBuffer(
       'SELECT COALESCE(SUM(amount_minor), 0) AS total '
       'FROM transactions '
       "WHERE type = 'expense' AND is_planned = 0 "
       'AND included_in_period = 1 '
       'AND date = ? AND date >= ? AND date < ?',
-      [
-        _formatDate(normalizedDate),
-        _formatDate(normalizedStart),
-        _formatDate(normalizedEndExclusive),
-      ],
     );
+    final args = <Object?>[
+      _formatDate(normalizedDate),
+      _formatDate(normalizedStart),
+      _formatDate(normalizedEndExclusive),
+    ];
+    if (periodId != null) {
+      query.write(' AND period_id = ?');
+      args.add(periodId);
+    }
+    final rows = await db.rawQuery(query.toString(), args);
 
     if (rows.isEmpty) {
       return 0;
@@ -800,8 +839,31 @@ class SqliteTransactionsRepository implements TransactionsRepository {
   @override
   Future<int> sumUnplannedExpensesInRange(
     DateTime from,
-    DateTime toExclusive,
-  ) async {
+    DateTime toExclusive, {
+    String? periodId,
+  }) async {
+    if (periodId != null) {
+      final db = await _db;
+      final rows = await db.rawQuery(
+        'SELECT COALESCE(SUM(amount_minor), 0) AS total '
+        'FROM transactions '
+        "WHERE type = 'expense' AND is_planned = 0 "
+        'AND included_in_period = 1 AND period_id = ?',
+        [periodId],
+      );
+      if (rows.isEmpty) {
+        return 0;
+      }
+      final value = rows.first['total'];
+      if (value is int) {
+        return value;
+      }
+      if (value is num) {
+        return value.toInt();
+      }
+      return 0;
+    }
+
     final normalizedFrom = DateTime(from.year, from.month, from.day);
     final normalizedTo = DateTime(toExclusive.year, toExclusive.month, toExclusive.day);
     if (!normalizedFrom.isBefore(normalizedTo)) {
@@ -841,18 +903,28 @@ class SqliteTransactionsRepository implements TransactionsRepository {
     required PeriodRef period,
     required DateTime start,
     required DateTime endExclusive,
+    String? periodId,
   }) async {
     assert(start.isBefore(endExclusive), 'Empty period bounds for $period');
 
     final db = await _db;
-    final rows = await db.rawQuery(
+    final query = StringBuffer(
       'SELECT COALESCE(SUM(amount_minor), 0) AS total '
       'FROM transactions '
       "WHERE type = 'expense' AND is_planned = 0 "
-      'AND included_in_period = 1 '
-      'AND date >= ? AND date < ?',
-      [_formatDate(start), _formatDate(endExclusive)],
+      'AND included_in_period = 1 ',
     );
+    final args = <Object?>[];
+    if (periodId != null) {
+      query.write('AND period_id = ?');
+      args.add(periodId);
+    } else {
+      query.write('AND date >= ? AND date < ?');
+      args
+        ..add(_formatDate(start))
+        ..add(_formatDate(endExclusive));
+    }
+    final rows = await db.rawQuery(query.toString(), args);
 
     if (rows.isEmpty) {
       return 0;

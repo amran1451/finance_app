@@ -1,11 +1,13 @@
 import 'package:sqflite/sqflite.dart';
 
+import '../../utils/period_utils.dart';
+
 /// Defines all database migrations for the application.
 class AppMigrations {
   AppMigrations._();
 
   /// Latest schema version supported by the application.
-  static const int latestVersion = 17;
+  static const int latestVersion = 18;
 
   static final Map<int, List<String>> _migrationScripts = {
     1: [
@@ -159,6 +161,10 @@ class AppMigrations {
       'CREATE INDEX IF NOT EXISTS idx_transactions_payout_period ON transactions(payout_period_id)',
     ],
     17: [],
+    18: [
+      'ALTER TABLE transactions ADD COLUMN period_id TEXT NULL',
+      'CREATE INDEX IF NOT EXISTS idx_transactions_period ON transactions(period_id)',
+    ],
   };
 
   /// Applies migrations from [oldVersion] (exclusive) up to [newVersion] (inclusive).
@@ -275,10 +281,97 @@ class AppMigrations {
             );
           }
           break;
+        case 18:
+          await _backfillTransactionPeriods(db);
+          break;
         default:
           break;
       }
     }
+  }
+
+  static Future<void> _backfillTransactionPeriods(Database db) async {
+    final anchors = await _loadAnchorDays(db);
+    final rows = await db.query(
+      'transactions',
+      columns: ['id', 'date', 'payout_period_id', 'period_id'],
+      where: 'period_id IS NULL',
+    );
+
+    if (rows.isEmpty) {
+      return;
+    }
+
+    final batch = db.batch();
+    for (final row in rows) {
+      final id = row['id'] as int?;
+      if (id == null) {
+        continue;
+      }
+
+      final assignedPeriodId = row['payout_period_id'] as String?;
+      String? periodId;
+      if (assignedPeriodId != null && assignedPeriodId.isNotEmpty) {
+        periodId = assignedPeriodId;
+      } else {
+        final rawDate = row['date'] as String?;
+        if (rawDate == null || rawDate.isEmpty) {
+          continue;
+        }
+        DateTime? parsedDate;
+        try {
+          parsedDate = DateTime.parse(rawDate);
+        } catch (_) {
+          parsedDate = null;
+        }
+        if (parsedDate == null) {
+          continue;
+        }
+        final period = periodRefForDate(parsedDate, anchors.$1, anchors.$2);
+        periodId = period.id;
+      }
+
+      if (periodId == null) {
+        continue;
+      }
+
+      batch.update(
+        'transactions',
+        {'period_id': periodId},
+        where: 'id = ?',
+        whereArgs: [id],
+      );
+    }
+
+    await batch.commit(noResult: true);
+  }
+
+  static Future<(int, int)> _loadAnchorDays(Database db) async {
+    const anchorDay1Key = 'anchor_day_1';
+    const anchorDay2Key = 'anchor_day_2';
+
+    final rows = await db.query(
+      'settings',
+      columns: ['key', 'value'],
+      where: 'key IN (?, ?)',
+      whereArgs: [anchorDay1Key, anchorDay2Key],
+    );
+
+    int day1 = 1;
+    int day2 = 15;
+    for (final row in rows) {
+      final key = row['key'] as String?;
+      final value = int.tryParse(row['value'] as String? ?? '');
+      if (key == anchorDay1Key && value != null) {
+        day1 = value;
+      } else if (key == anchorDay2Key && value != null) {
+        day2 = value;
+      }
+    }
+
+    int normalize(int value) => value.clamp(1, 31);
+    final sorted = [normalize(day1), normalize(day2)]..sort();
+    return (sorted[0], sorted[1]);
   }
 
   static Future<void> _executeStatements(Database db, List<String> statements) async {

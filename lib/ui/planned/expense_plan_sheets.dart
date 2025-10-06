@@ -941,6 +941,7 @@ class _SelectFromMasterSheetState
       final entry = await ref.read(periodEntryProvider(widget.period).future);
       await transactionsRepo.assignMasterToPeriod(
         masterId: master.id,
+        period: widget.period,
         start: entry.start,
         endExclusive: entry.endExclusive,
         categoryId: categoryId,

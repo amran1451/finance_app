@@ -172,11 +172,17 @@ final plannedIncludedAmountForEntryProvider =
     FutureProvider.family<int, PeriodEntry>((ref, entry) async {
   ref.watch(dbTickProvider);
   final repository = ref.watch(transactionsRepoProvider);
+  final periodId = PeriodRef(
+    year: entry.year,
+    month: entry.month,
+    half: entry.half,
+  ).id;
   final items = await repository.listPlannedByPeriod(
     start: entry.start,
     endExclusive: entry.endExclusive,
     type: 'expense',
     onlyIncluded: true,
+    periodId: periodId,
   );
   if (items.isEmpty) {
     return 0;
@@ -197,6 +203,7 @@ final spentForPeriodProvider = FutureProvider.family<int, PeriodRef>((ref, perio
   final unplanned = await repository.sumUnplannedExpensesInRange(
     entry.start,
     entry.endExclusive,
+    periodId: period.id,
   );
   final planned = await ref.watch(plannedIncludedAmountForEntryProvider(entry).future);
   return unplanned + planned;
@@ -561,6 +568,7 @@ class MetricsController extends AsyncNotifier<MetricsSnapshot> {
       date: today,
       periodStart: normalizedStart,
       periodEndExclusive: normalizedEndExclusive,
+      periodId: period.id,
     );
 
     final dailyLeft = math.max(0, dailyLimit - todaySpent);
@@ -571,6 +579,7 @@ class MetricsController extends AsyncNotifier<MetricsSnapshot> {
         period: period,
         start: normalizedStart,
         endExclusive: normalizedEndExclusive,
+        periodId: period.id,
       );
       periodBudgetLeft = math.max(0, periodBudgetBase - spent);
     }
@@ -650,6 +659,7 @@ final sumActualExpensesProvider =
     period: period,
     start: entry.start,
     endExclusive: entry.endExclusive,
+    periodId: period.id,
   );
 });
 
@@ -668,6 +678,7 @@ final remainingBudgetForPeriodProvider =
     period: period,
     start: periodStart,
     endExclusive: periodEndExclusive,
+    periodId: period.id,
   );
   final remaining = payout.amountMinor - spent;
   return remaining > 0 ? remaining : 0;
@@ -771,6 +782,7 @@ class BudgetLimitManager {
       period: period,
       start: bounds.start,
       endExclusive: bounds.endExclusive,
+      periodId: period.id,
     );
     final remainingBudget = payout.amountMinor - spent;
     final today = DateUtils.dateOnly(DateTime.now());

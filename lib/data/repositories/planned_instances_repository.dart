@@ -1,10 +1,12 @@
 import 'package:sqflite/sqflite.dart';
 
+import '../../utils/period_utils.dart';
 import '../db/app_database.dart';
 
 abstract class PlannedInstancesRepository {
   Future<void> assignMasterToPeriod({
     required int masterId,
+    required PeriodRef period,
     required DateTime start,
     required DateTime endExclusive,
     required int categoryId,
@@ -55,6 +57,7 @@ class SqlitePlannedInstancesRepository implements PlannedInstancesRepository {
   @override
   Future<void> assignMasterToPeriod({
     required int masterId,
+    required PeriodRef period,
     required DateTime start,
     required DateTime endExclusive,
     required int categoryId,
@@ -90,6 +93,7 @@ class SqlitePlannedInstancesRepository implements PlannedInstancesRepository {
           'reason_id': null,
           'reason_label': null,
           'payout_id': null,
+          'period_id': period.id,
         };
         await db.insert('transactions', values);
       },

@@ -37,6 +37,7 @@ class _FakeTransactionsRepository implements TransactionsRepository {
     bool? isPlanned,
     bool? includedInPeriod,
     bool aggregateSavingPairs = false,
+    String? periodId,
   }) async {
     final key = requestKey(from, to);
     return responses[key] ?? const [];

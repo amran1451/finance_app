@@ -516,6 +516,7 @@ class _PlannedAssignToPeriodFormState
           necessityLabel: necessityLabel,
           includedInPeriod: _included,
           criticality: criticality,
+          period: ref.read(selectedPeriodRefProvider),
         );
       } else {
         final updated = existing.copyWith(
@@ -529,7 +530,10 @@ class _PlannedAssignToPeriodFormState
           necessityLabel: necessityLabel,
           criticality: criticality,
         );
-        await repo.update(updated);
+        await repo.update(
+          updated,
+          uiPeriod: ref.read(selectedPeriodRefProvider),
+        );
       }
       if (!mounted) {
         return;

@@ -24,6 +24,7 @@ class TransactionRecord {
     this.reasonLabel,
     this.source,
     this.payoutPeriodId,
+    this.periodId,
   });
 
   final int? id;
@@ -46,6 +47,7 @@ class TransactionRecord {
   final String? reasonLabel;
   final String? source;
   final String? payoutPeriodId;
+  final String? periodId;
 
   TransactionRecord copyWith({
     int? id,
@@ -68,6 +70,7 @@ class TransactionRecord {
     Object? reasonLabel = _unset,
     Object? source = _unset,
     Object? payoutPeriodId = _unset,
+    Object? periodId = _unset,
   }) {
     return TransactionRecord(
       id: id ?? this.id,
@@ -102,6 +105,7 @@ class TransactionRecord {
       payoutPeriodId: payoutPeriodId == _unset
           ? this.payoutPeriodId
           : payoutPeriodId as String?,
+      periodId: periodId == _unset ? this.periodId : periodId as String?,
     );
   }
 
@@ -127,6 +131,7 @@ class TransactionRecord {
       reasonLabel: map['reason_label'] as String?,
       source: map['source'] as String?,
       payoutPeriodId: map['payout_period_id'] as String?,
+      periodId: map['period_id'] as String?,
     );
   }
 
@@ -152,6 +157,7 @@ class TransactionRecord {
       'reason_label': reasonLabel,
       'source': source,
       'payout_period_id': payoutPeriodId,
+      'period_id': periodId,
     };
   }
 

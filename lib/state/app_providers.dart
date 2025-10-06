@@ -158,12 +158,14 @@ class _TransactionsRepositoryWithDbTick
     transaction_models.TransactionRecord record, {
     bool asSavingPair = false,
     bool? includedInPeriod,
+    PeriodRef? uiPeriod,
     DatabaseExecutor? executor,
   }) async {
     final result = await _delegate.add(
       record,
       asSavingPair: asSavingPair,
       includedInPeriod: includedInPeriod,
+      uiPeriod: uiPeriod,
       executor: executor,
     );
     if (executor == null) {
@@ -175,6 +177,7 @@ class _TransactionsRepositoryWithDbTick
   @override
   Future<void> assignMasterToPeriod({
     required int masterId,
+    required PeriodRef period,
     required DateTime start,
     required DateTime endExclusive,
     required int categoryId,
@@ -187,6 +190,7 @@ class _TransactionsRepositoryWithDbTick
   }) async {
     await _delegate.assignMasterToPeriod(
       masterId: masterId,
+      period: period,
       start: start,
       endExclusive: endExclusive,
       categoryId: categoryId,
@@ -308,12 +312,14 @@ class _TransactionsRepositoryWithDbTick
     required DateTime endExclusive,
     String? type,
     bool? onlyIncluded,
+    String? periodId,
   }) {
     return _delegate.listPlannedByPeriod(
       start: start,
       endExclusive: endExclusive,
       type: type,
       onlyIncluded: onlyIncluded,
+      periodId: periodId,
     );
   }
 
@@ -330,6 +336,7 @@ class _TransactionsRepositoryWithDbTick
     String? necessityLabel,
     bool includedInPeriod = false,
     int criticality = 0,
+    PeriodRef? period,
     DatabaseExecutor? executor,
   }) async {
     final result = await _delegate.createPlannedInstance(
@@ -344,6 +351,7 @@ class _TransactionsRepositoryWithDbTick
       necessityLabel: necessityLabel,
       includedInPeriod: includedInPeriod,
       criticality: criticality,
+      period: period,
       executor: executor,
     );
     if (executor == null) {
@@ -357,11 +365,13 @@ class _TransactionsRepositoryWithDbTick
     required PeriodRef period,
     required DateTime start,
     required DateTime endExclusive,
+    String? periodId,
   }) {
     return _delegate.sumPlannedExpenses(
       period: period,
       start: start,
       endExclusive: endExclusive,
+      periodId: periodId,
     );
   }
 
@@ -417,11 +427,13 @@ class _TransactionsRepositoryWithDbTick
     required DateTime date,
     required DateTime periodStart,
     required DateTime periodEndExclusive,
+    String? periodId,
   }) {
     return _delegate.sumExpensesOnDateWithinPeriod(
       date: date,
       periodStart: periodStart,
       periodEndExclusive: periodEndExclusive,
+      periodId: periodId,
     );
   }
 
@@ -429,8 +441,13 @@ class _TransactionsRepositoryWithDbTick
   Future<int> sumUnplannedExpensesInRange(
     DateTime from,
     DateTime toExclusive,
+    {String? periodId,}
   ) {
-    return _delegate.sumUnplannedExpensesInRange(from, toExclusive);
+    return _delegate.sumUnplannedExpensesInRange(
+      from,
+      toExclusive,
+      periodId: periodId,
+    );
   }
 
   @override
@@ -438,11 +455,13 @@ class _TransactionsRepositoryWithDbTick
     required PeriodRef period,
     required DateTime start,
     required DateTime endExclusive,
+    String? periodId,
   }) {
     return _delegate.sumActualExpenses(
       period: period,
       start: start,
       endExclusive: endExclusive,
+      periodId: periodId,
     );
   }
 
@@ -450,11 +469,13 @@ class _TransactionsRepositoryWithDbTick
   Future<void> update(
     transaction_models.TransactionRecord record, {
     bool? includedInPeriod,
+    PeriodRef? uiPeriod,
     DatabaseExecutor? executor,
   }) async {
     await _delegate.update(
       record,
       includedInPeriod: includedInPeriod,
+      uiPeriod: uiPeriod,
       executor: executor,
     );
     if (executor == null) {

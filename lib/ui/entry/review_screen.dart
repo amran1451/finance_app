@@ -31,6 +31,8 @@ class ReviewScreen extends ConsumerStatefulWidget {
   ConsumerState<ReviewScreen> createState() => _ReviewScreenState();
 }
 
+enum _ClosedPeriodAction { reopen, chooseOther }
+
 class _ReviewScreenState extends ConsumerState<ReviewScreen> {
   static const int _kUnselectedAccountId = -1;
 
@@ -391,20 +393,54 @@ class _ReviewScreenState extends ConsumerState<ReviewScreen> {
       final operationDate = selectedDate.value;
       final normalizedDate =
           DateTime(operationDate.year, operationDate.month, operationDate.day);
-      final (anchor1, anchor2) = ref.read(anchorDaysProvider);
-      final operationPeriod = periodRefForDate(normalizedDate, anchor1, anchor2);
+      final selectedPeriod = ref.read(selectedPeriodRefProvider);
       final periodStatus =
-          await ref.read(periodStatusProvider(operationPeriod).future);
+          await ref.read(periodStatusProvider(selectedPeriod).future);
       if (periodStatus.isClosed) {
         if (!mounted) {
           return;
         }
+        final action = await showDialog<_ClosedPeriodAction>(
+          context: context,
+          builder: (context) {
+            return AlertDialog(
+              content: const Text(
+                'Период закрыт. Откройте период или выберите другой.',
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.of(context)
+                      .pop(_ClosedPeriodAction.chooseOther),
+                  child: const Text('Выбрать другой период'),
+                ),
+                FilledButton(
+                  onPressed: () => Navigator.of(context)
+                      .pop(_ClosedPeriodAction.reopen),
+                  child: const Text('Открыть период'),
+                ),
+              ],
+            );
+          },
+        );
+        if (action != _ClosedPeriodAction.reopen) {
+          return;
+        }
+        await ref.read(periodsRepoProvider).reopen(selectedPeriod);
+        bumpDbTick(ref);
+      }
+      final bounds = ref.read(periodBoundsProvider);
+      final normalizedStart = DateUtils.dateOnly(bounds.$1);
+      final normalizedEndExclusive = DateUtils.dateOnly(bounds.$2);
+      final isDateOutside = normalizedDate.isBefore(normalizedStart) ||
+          !normalizedDate.isBefore(normalizedEndExclusive);
+      if (isDateOutside && mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
-            content: Text('Период закрыт. Откройте период для редактирования.'),
+            content: Text(
+              'Дата вне границ периода, запись будет привязана к текущему периоду.',
+            ),
           ),
         );
-        return;
       }
       final inCurrent = ref.read(isInCurrentPeriodProvider(normalizedDate));
 
@@ -431,6 +467,7 @@ class _ReviewScreenState extends ConsumerState<ReviewScreen> {
               necessityLabel: necessityLabel,
               reasonId: reasonId,
               reasonLabel: reasonLabel,
+              periodId: selectedPeriod.id,
             )
           : TransactionRecord(
               accountId: accountId,
@@ -446,6 +483,7 @@ class _ReviewScreenState extends ConsumerState<ReviewScreen> {
               necessityLabel: necessityLabel,
               reasonId: reasonId,
               reasonLabel: reasonLabel,
+              periodId: selectedPeriod.id,
             );
 
       final shouldConfirmUpdate = isEditingOperation &&
@@ -484,6 +522,7 @@ class _ReviewScreenState extends ConsumerState<ReviewScreen> {
         await transactionsRepository.update(
           record,
           includedInPeriod: isPlannedExpense ? null : inCurrent,
+          uiPeriod: selectedPeriod,
         );
         if (editingCounterpart != null) {
           final updatedCounterpart = editingCounterpart.copyWith(
@@ -497,10 +536,12 @@ class _ReviewScreenState extends ConsumerState<ReviewScreen> {
             necessityLabel: necessityLabel,
             reasonId: reasonId,
             reasonLabel: reasonLabel,
+            periodId: selectedPeriod.id,
           );
           await transactionsRepository.update(
             updatedCounterpart,
             includedInPeriod: isPlannedExpense ? null : inCurrent,
+            uiPeriod: selectedPeriod,
           );
         }
       } else {
@@ -508,9 +549,10 @@ class _ReviewScreenState extends ConsumerState<ReviewScreen> {
           record,
           asSavingPair: entryState.type == CategoryType.saving,
           includedInPeriod: isPlannedExpense ? null : inCurrent,
+          uiPeriod: selectedPeriod,
         );
       }
-      await _maybePromptToClosePeriod(operationPeriod);
+      await _maybePromptToClosePeriod(selectedPeriod);
       bumpDbTick(ref);
       controller.reset();
       if (!mounted) {

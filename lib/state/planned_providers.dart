@@ -238,6 +238,7 @@ final sumPlannedExpensesProvider =
     period: period,
     start: entry.start,
     endExclusive: entry.endExclusive,
+    periodId: period.id,
   );
 });
 

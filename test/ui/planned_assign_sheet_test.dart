@@ -25,6 +25,7 @@ class _RecordingTransactionsRepository implements TransactionsRepository {
   @override
   Future<void> assignMasterToPeriod({
     required int masterId,
+    required PeriodRef period,
     required DateTime start,
     required DateTime endExclusive,
     required int categoryId,
@@ -47,6 +48,7 @@ class _RecordingTransactionsRepository implements TransactionsRepository {
     TransactionRecord record, {
     bool asSavingPair = false,
     bool? includedInPeriod,
+    PeriodRef? uiPeriod,
     DatabaseExecutor? executor,
   }) => _unsupported();
 
@@ -81,6 +83,7 @@ class _RecordingTransactionsRepository implements TransactionsRepository {
     TransactionType? type,
     bool? isPlanned,
     bool? includedInPeriod,
+    String? periodId,
   }) =>
       _unsupported();
 
@@ -94,6 +97,7 @@ class _RecordingTransactionsRepository implements TransactionsRepository {
     bool? isPlanned,
     bool? includedInPeriod,
     bool aggregateSavingPairs = false,
+    String? periodId,
   }) =>
       _unsupported();
 
@@ -110,6 +114,7 @@ class _RecordingTransactionsRepository implements TransactionsRepository {
     required DateTime endExclusive,
     String? type,
     bool? onlyIncluded,
+    String? periodId,
   }) =>
       _unsupported();
 
@@ -126,6 +131,7 @@ class _RecordingTransactionsRepository implements TransactionsRepository {
     String? necessityLabel,
     bool includedInPeriod = false,
     int criticality = 0,
+    PeriodRef? period,
     DatabaseExecutor? executor,
   }) =>
       _unsupported();
@@ -153,6 +159,7 @@ class _RecordingTransactionsRepository implements TransactionsRepository {
     required PeriodRef period,
     required DateTime start,
     required DateTime endExclusive,
+    String? periodId,
   }) =>
       _unsupported();
 
@@ -161,6 +168,7 @@ class _RecordingTransactionsRepository implements TransactionsRepository {
     required DateTime date,
     required DateTime periodStart,
     required DateTime periodEndExclusive,
+    String? periodId,
   }) =>
       _unsupported();
 
@@ -169,12 +177,14 @@ class _RecordingTransactionsRepository implements TransactionsRepository {
     required PeriodRef period,
     required DateTime start,
     required DateTime endExclusive,
+    String? periodId,
   }) =>
       _unsupported();
 
   @override
   Future<int> sumUnplannedExpensesInRange(
-          DateTime from, DateTime toExclusive) =>
+          DateTime from, DateTime toExclusive,
+          {String? periodId}) =>
       _unsupported();
 
   @override
