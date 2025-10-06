@@ -28,7 +28,11 @@ abstract class PayoutsRepository {
   Future<Payout?> getLast();
 
   /// Выплата, попадающая в указанный диапазон дат [start; endExclusive)
-  Future<Payout?> findInRange(DateTime start, DateTime endExclusive);
+  Future<Payout?> findInRange(
+    DateTime start,
+    DateTime endExclusive, {
+    String? assignedPeriodId,
+  });
 
   /// Список выплат в диапазоне (для будущих экранов истории)
   Future<List<Payout>> listInRange(DateTime start, DateTime endExclusive);
@@ -205,15 +209,44 @@ class SqlitePayoutsRepository implements PayoutsRepository {
   }
 
   @override
-  Future<Payout?> findInRange(DateTime start, DateTime endExclusive) async {
+  Future<Payout?> findInRange(
+    DateTime start,
+    DateTime endExclusive, {
+    String? assignedPeriodId,
+  }) async {
     final db = await _db;
+    final normalizedStart = _formatDate(normalizeDate(start));
+    final normalizedEndExclusive = _formatDate(normalizeDate(endExclusive));
+
+    if (assignedPeriodId != null) {
+      final assignedRows = await db.query(
+        'payouts',
+        where: 'assigned_period_id = ?',
+        whereArgs: [assignedPeriodId],
+        orderBy: 'date DESC, id DESC',
+        limit: 1,
+      );
+      if (assignedRows.isNotEmpty) {
+        return Payout.fromMap(assignedRows.first);
+      }
+
+      final fallbackRows = await db.query(
+        'payouts',
+        where: 'assigned_period_id IS NULL AND date >= ? AND date < ?',
+        whereArgs: [normalizedStart, normalizedEndExclusive],
+        orderBy: 'date DESC, id DESC',
+        limit: 1,
+      );
+      if (fallbackRows.isNotEmpty) {
+        return Payout.fromMap(fallbackRows.first);
+      }
+      return null;
+    }
+
     final rows = await db.query(
       'payouts',
       where: 'date >= ? AND date < ?',
-      whereArgs: [
-        _formatDate(normalizeDate(start)),
-        _formatDate(normalizeDate(endExclusive)),
-      ],
+      whereArgs: [normalizedStart, normalizedEndExclusive],
       orderBy: 'date DESC, id DESC',
       limit: 1,
     );
@@ -331,6 +364,7 @@ class SqlitePayoutsRepository implements PayoutsRepository {
     required DateTime date,
     required int amountMinor,
     required int accountId,
+    String? assignedPeriodId,
   }) async {
     final categoryId = await _ensureIncomeCategory(executor, type);
     final dateString = _formatDate(date);
@@ -354,6 +388,7 @@ class SqlitePayoutsRepository implements PayoutsRepository {
       'included_in_period': 1,
       'tags': null,
       'payout_id': payoutId,
+      'payout_period_id': assignedPeriodId,
     };
 
     if (existing.isEmpty) {
@@ -519,6 +554,7 @@ class SqlitePayoutsRepository implements PayoutsRepository {
 
     final resolvedExisting = existing ??
         (existingId != null ? await _loadPayoutById(executor, existingId) : null);
+    final assignedPeriodId = selectedPeriod.id;
 
     final payout = (resolvedExisting ??
             Payout(
@@ -527,6 +563,7 @@ class SqlitePayoutsRepository implements PayoutsRepository {
               date: normalizedPicked,
               amountMinor: amountMinor,
               accountId: accountId,
+              assignedPeriodId: assignedPeriodId,
             ))
         .copyWith(
       id: existingId,
@@ -534,6 +571,7 @@ class SqlitePayoutsRepository implements PayoutsRepository {
       date: normalizedPicked,
       amountMinor: amountMinor,
       accountId: accountId,
+      assignedPeriodId: assignedPeriodId,
     );
     final payoutValues = _payoutValues(payout);
     late final int payoutId;
@@ -556,6 +594,7 @@ class SqlitePayoutsRepository implements PayoutsRepository {
       date: normalizedPicked,
       amountMinor: amountMinor,
       accountId: accountId,
+      assignedPeriodId: assignedPeriodId,
     );
 
     if (shiftPeriodStart) {

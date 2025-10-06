@@ -37,6 +37,7 @@ abstract class TransactionsRepository {
     TransactionType? type,
     bool? isPlanned,
     bool? includedInPeriod,
+    String? periodId,
   });
 
   Future<List<TransactionListItem>> getOperationItemsByPeriod(
@@ -48,6 +49,7 @@ abstract class TransactionsRepository {
     bool? isPlanned,
     bool? includedInPeriod,
     bool aggregateSavingPairs = false,
+    String? periodId,
   });
 
   Future<int> add(
@@ -314,10 +316,26 @@ class SqliteTransactionsRepository implements TransactionsRepository {
     TransactionType? type,
     bool? isPlanned,
     bool? includedInPeriod,
+    String? periodId,
   }) async {
     final db = await _db;
-    final where = StringBuffer('date >= ? AND date <= ?');
-    final args = <Object?>[_formatDate(from), _formatDate(to)];
+    final where = StringBuffer();
+    final args = <Object?>[];
+
+    if (periodId != null) {
+      where.write('(('
+          'payout_period_id IS NULL AND date >= ? AND date <= ?'
+          ') OR payout_period_id = ?)');
+      args
+        ..add(_formatDate(from))
+        ..add(_formatDate(to))
+        ..add(periodId);
+    } else {
+      where.write('date >= ? AND date <= ?');
+      args
+        ..add(_formatDate(from))
+        ..add(_formatDate(to));
+    }
 
     if (accountId != null) {
       where.write(' AND account_id = ?');
@@ -339,6 +357,10 @@ class SqliteTransactionsRepository implements TransactionsRepository {
       where.write(' AND included_in_period = ?');
       args.add(includedInPeriod ? 1 : 0);
     }
+    if (periodId != null) {
+      where.write(' AND (payout_period_id IS NULL OR payout_period_id = ?)');
+      args.add(periodId);
+    }
 
     final rows = await db.query(
       'transactions',
@@ -359,6 +381,7 @@ class SqliteTransactionsRepository implements TransactionsRepository {
     bool? isPlanned,
     bool? includedInPeriod,
     bool aggregateSavingPairs = false,
+    String? periodId,
   }) async {
     final records = await getByPeriod(
       from,
@@ -368,6 +391,7 @@ class SqliteTransactionsRepository implements TransactionsRepository {
       type: type,
       isPlanned: isPlanned,
       includedInPeriod: includedInPeriod,
+      periodId: periodId,
     );
     if (!aggregateSavingPairs) {
       return [

@@ -37,7 +37,12 @@ Future<void> showPayoutForSelectedPeriod(
   final container = ProviderScope.containerOf(context, listen: false);
   final read = container.read;
   final (start, endEx) = read(periodBoundsProvider);
-  final existing = await read(payoutsRepoProvider).findInRange(start, endEx);
+  final period = read(selectedPeriodRefProvider);
+  final existing = await read(payoutsRepoProvider).findInRange(
+    start,
+    endEx,
+    assignedPeriodId: period.id,
+  );
   await showPayoutEditSheet(
     context,
     forcedType: forcedType,

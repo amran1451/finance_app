@@ -20,6 +20,7 @@ final periodOperationsProvider =
     final repository = ref.watch(transactionsRepoProvider);
     final filter = ref.watch(opTypeFilterProvider);
     final savingPairEnabled = await ref.watch(savingPairEnabledProvider.future);
+    final selectedPeriod = ref.watch(selectedPeriodRefProvider);
 
     TransactionType? type;
     switch (filter) {
@@ -48,12 +49,12 @@ final periodOperationsProvider =
       type: type,
       isPlanned: false,
       aggregateSavingPairs: savingPairEnabled,
+      periodId: selectedPeriod.id,
     );
 
     final result = [...transactions];
 
     if (filter == OpTypeFilter.all || filter == OpTypeFilter.income) {
-      final selectedPeriod = ref.watch(selectedPeriodRefProvider);
       final (anchor1, anchor2) = ref.watch(anchorDaysProvider);
       final payout = await ref.watch(payoutForSelectedPeriodProvider.future);
       final payoutId = payout?.id;
@@ -71,11 +72,15 @@ final periodOperationsProvider =
           );
           final actualPeriod =
               periodRefForDate(payoutRecord.date, anchor1, anchor2);
+          final assignedPeriodId = payoutRecord.payoutPeriodId;
           final isActualPeriodSelected =
               actualPeriod.year == selectedPeriod.year &&
                   actualPeriod.month == selectedPeriod.month &&
                   actualPeriod.half == selectedPeriod.half;
-          if (!alreadyIncluded && !withinBounds && isActualPeriodSelected) {
+          final matchesAssigned = assignedPeriodId != null
+              ? assignedPeriodId == selectedPeriod.id
+              : isActualPeriodSelected;
+          if (!alreadyIncluded && !withinBounds && matchesAssigned) {
             result.add(TransactionListItem(record: payoutRecord));
             result.sort((a, b) {
               final cmp = b.record.date.compareTo(a.record.date);

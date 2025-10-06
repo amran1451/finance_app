@@ -201,7 +201,11 @@ final payoutForPeriodProvider =
   final endEx = entry.endExclusive;
   final repo = ref.watch(payoutsRepoProvider);
   try {
-    return await repo.findInRange(start, endEx);
+    return await repo.findInRange(
+      start,
+      endEx,
+      assignedPeriodId: period.id,
+    );
   } catch (error, stackTrace) {
     if (_isMissingRepoMethod(error)) {
       debugPrint(
@@ -584,6 +588,7 @@ final plannedPoolBaseProvider = FutureProvider<int>((ref) async {
 final halfPeriodTransactionsProvider = FutureProvider<List<TransactionRecord>>((ref) async {
   ref.watch(dbTickProvider);
   final (start, endExclusive) = ref.watch(periodBoundsProvider);
+  final period = ref.watch(selectedPeriodRefProvider);
   final repo = ref.watch(transactionsRepoProvider);
   var endInclusive = endExclusive.subtract(const Duration(days: 1));
   if (endInclusive.isBefore(start)) {
@@ -594,6 +599,7 @@ final halfPeriodTransactionsProvider = FutureProvider<List<TransactionRecord>>((
     endInclusive,
     isPlanned: false,
     includedInPeriod: true,
+    periodId: period.id,
   );
 });
 
