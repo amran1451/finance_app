@@ -112,7 +112,7 @@ class HomeScreen extends ConsumerWidget {
           ? null
           : _OvalFab(
               onPressed: () {
-                entryController.startNew();
+                entryController.startNew(includeInPeriod: true);
                 context.pushNamed(RouteNames.entryAmount);
               },
             ),
