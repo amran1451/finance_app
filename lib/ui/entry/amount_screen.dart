@@ -4,7 +4,6 @@ import 'package:go_router/go_router.dart';
 
 import '../../routing/app_router.dart';
 import '../../state/entry_flow_providers.dart';
-import '../../utils/category_type_extensions.dart';
 import '../../utils/formatting.dart';
 import '../widgets/amount_keypad.dart';
 
@@ -24,6 +23,14 @@ class AmountScreen extends ConsumerWidget {
     final expressionDisplay = expression.isEmpty
         ? '0'
         : expression.replaceAll('*', '×').replaceAll('/', '÷');
+    final hasOperators = expression.contains(RegExp(r'[+\-*/]'));
+    final showResultRow = hasOperators && (previewResult != null || result != null);
+    final resultDisplay = formatCurrency(result ?? previewResult ?? amountValue);
+    final quickButtonStyle = OutlinedButton.styleFrom(
+      minimumSize: const Size(0, 36),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      textStyle: const TextStyle(fontSize: 13),
+    );
 
     void handleNext() {
       final success = controller.tryFinalizeExpression();
@@ -71,7 +78,8 @@ class AmountScreen extends ConsumerWidget {
             ),
             const SizedBox(height: 12),
             Container(
-              padding: const EdgeInsets.all(24),
+              padding:
+                  const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
               decoration: BoxDecoration(
                 borderRadius: BorderRadius.circular(24),
                 color: Theme.of(context).colorScheme.surface,
@@ -84,59 +92,66 @@ class AmountScreen extends ConsumerWidget {
                 ],
               ),
               child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
                     expressionDisplay,
-                    style: Theme.of(context).textTheme.titleLarge,
-                    textAlign: TextAlign.center,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      fontSize: 14,
+                      height: 1.2,
+                      color: Theme.of(context).textTheme.bodySmall?.color,
+                    ),
                   ),
-                  const SizedBox(height: 12),
+                  const SizedBox(height: 8),
                   Text(
                     formattedAmount,
-                    style: Theme.of(context)
-                        .textTheme
-                        .displaySmall
-                        ?.copyWith(fontWeight: FontWeight.bold),
-                  ),
-                  const SizedBox(height: 12),
-                  Text(
-                    'Тип: ${entryState.type.label}',
-                    style: Theme.of(context).textTheme.bodyMedium,
+                    style: Theme.of(context).textTheme.displaySmall?.copyWith(
+                          fontSize: 30,
+                          fontWeight: FontWeight.w700,
+                        ),
                   ),
                 ],
               ),
             ),
-            const SizedBox(height: 24),
+            if (showResultRow) ...[
+              const SizedBox(height: 8),
+              Align(
+                alignment: Alignment.centerRight,
+                child: Text(
+                  '= $resultDisplay',
+                  style: const TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w500,
+                    letterSpacing: 0.2,
+                  ),
+                ),
+              ),
+            ],
+            const SizedBox(height: 12),
             Wrap(
-              spacing: 12,
+              spacing: 8,
+              runSpacing: 8,
               children: [
                 OutlinedButton(
                   onPressed: () => controller.addQuickAmount(100),
+                  style: quickButtonStyle,
                   child: const Text('+100'),
                 ),
                 OutlinedButton(
                   onPressed: () => controller.addQuickAmount(500),
+                  style: quickButtonStyle,
                   child: const Text('+500'),
                 ),
                 OutlinedButton(
                   onPressed: () => controller.addQuickAmount(1000),
+                  style: quickButtonStyle,
                   child: const Text('+1000'),
                 ),
               ],
             ),
-            const SizedBox(height: 24),
-            if (expression.isNotEmpty && previewResult != null && result == null)
-              Padding(
-                padding: const EdgeInsets.only(bottom: 12),
-                child: Text(
-                  '= ${formatCurrency(previewResult)}',
-                  textAlign: TextAlign.right,
-                  style: Theme.of(context)
-                      .textTheme
-                      .bodyMedium
-                      ?.copyWith(color: Theme.of(context).hintColor),
-                ),
-              ),
+            const SizedBox(height: 16),
             Expanded(
               child: SingleChildScrollView(
                 child: AmountKeypad(
