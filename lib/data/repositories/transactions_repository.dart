@@ -785,6 +785,7 @@ class SqliteTransactionsRepository implements TransactionsRepository {
     required DateTime date,
     required DateTime periodStart,
     required DateTime periodEndExclusive,
+    String? periodId,
   }) async {
     final normalizedDate = DateTime(date.year, date.month, date.day);
     final normalizedStart = DateTime(
