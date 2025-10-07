@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../data/models/account.dart';
 import '../../state/app_providers.dart';
 import '../../state/db_refresh.dart';
 import 'backups_settings_screen.dart';
@@ -146,6 +147,8 @@ class _OtherSettingsCard extends ConsumerWidget {
             },
           ),
           const Divider(height: 0),
+          const _DefaultAccountSettingTile(),
+          const Divider(height: 0),
           ListTile(
             title: const Text('Общий план'),
             trailing: const Icon(Icons.chevron_right),
@@ -154,6 +157,124 @@ class _OtherSettingsCard extends ConsumerWidget {
         ],
       ),
     );
+  }
+}
+
+class _DefaultAccountSettingTile extends ConsumerWidget {
+  const _DefaultAccountSettingTile();
+
+  static const int _kAutoSelectionSentinel = -1;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final accountsAsync = ref.watch(activeAccountsProvider);
+    final defaultAccountAsync = ref.watch(defaultAccountIdProvider);
+    final accounts = accountsAsync.valueOrNull;
+    final defaultAccountId = defaultAccountAsync.valueOrNull;
+    final hasAccounts = accounts != null && accounts.isNotEmpty;
+
+    final subtitle = _resolveSubtitle(
+      accountsAsync,
+      defaultAccountAsync,
+      accounts,
+      defaultAccountId,
+    );
+
+    return ListTile(
+      title: const Text('Счёт по умолчанию'),
+      subtitle: Text(subtitle),
+      trailing: hasAccounts ? const Icon(Icons.chevron_right) : null,
+      onTap: hasAccounts
+          ? () => _showAccountPicker(context, ref, accounts!, defaultAccountId)
+          : null,
+    );
+  }
+
+  String _resolveSubtitle(
+    AsyncValue<List<Account>> accountsAsync,
+    AsyncValue<int?> defaultAccountAsync,
+    List<Account>? accounts,
+    int? defaultAccountId,
+  ) {
+    if (accountsAsync.isLoading || defaultAccountAsync.isLoading) {
+      return 'Загрузка…';
+    }
+    if (accountsAsync.hasError || defaultAccountAsync.hasError) {
+      return 'Не удалось загрузить';
+    }
+    if (accounts == null || accounts.isEmpty) {
+      return 'Нет доступных счетов';
+    }
+    for (final account in accounts) {
+      if (account.id == defaultAccountId) {
+        return account.name;
+      }
+    }
+    return 'Не выбран (используется первый активный)';
+  }
+
+  Future<void> _showAccountPicker(
+    BuildContext context,
+    WidgetRef ref,
+    List<Account> accounts,
+    int? selectedAccountId,
+  ) async {
+    final result = await showModalBottomSheet<int?>(
+      context: context,
+      builder: (context) {
+        return SafeArea(
+          child: ListView(
+            shrinkWrap: true,
+            children: [
+              for (final account in accounts)
+                ListTile(
+                  title: Text(account.name),
+                  trailing: account.id == selectedAccountId
+                      ? const Icon(Icons.check)
+                      : null,
+                  onTap: () => Navigator.of(context).pop(account.id),
+                ),
+              ListTile(
+                title: const Text('Автовыбор (первый активный)'),
+                trailing:
+                    selectedAccountId == null ? const Icon(Icons.check) : null,
+                onTap: () => Navigator.of(context).pop(_kAutoSelectionSentinel),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+
+    if (result == null) {
+      return;
+    }
+
+    final newAccountId = result == _kAutoSelectionSentinel ? null : result;
+    if (newAccountId == selectedAccountId) {
+      return;
+    }
+
+    final settings = ref.read(settingsRepoProvider);
+    try {
+      await settings.setDefaultAccountId(newAccountId);
+      ref.invalidate(defaultAccountIdProvider);
+      if (!context.mounted) {
+        return;
+      }
+      final message = newAccountId == null
+          ? 'Будет выбран первый активный счёт'
+          : 'Счёт по умолчанию обновлён';
+      ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text(message)));
+    } catch (error) {
+      if (!context.mounted) {
+        return;
+      }
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Не удалось сохранить: $error')),
+      );
+    }
   }
 }
 

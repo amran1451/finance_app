@@ -91,6 +91,24 @@ class AppBootstrapper {
       'saving_pair_enabled': '1',
     };
 
+    final cardAccountId = Sqflite.firstIntValue(
+      await executor.rawQuery(
+        'SELECT id FROM accounts WHERE LOWER(name) = ? ORDER BY id LIMIT 1',
+        ['карта'],
+      ),
+    );
+
+    final fallbackAccountId = cardAccountId ??
+        Sqflite.firstIntValue(
+          await executor.rawQuery(
+            'SELECT id FROM accounts ORDER BY id LIMIT 1',
+          ),
+        );
+
+    if (fallbackAccountId != null) {
+      defaults['default_account_id'] = '$fallbackAccountId';
+    }
+
     for (final entry in defaults.entries) {
       await executor.insert(
         'settings',

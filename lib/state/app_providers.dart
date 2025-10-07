@@ -129,6 +129,11 @@ final settingsRepoProvider = Provider<settings_repo.SettingsRepository>((ref) {
   return settings_repo.SqliteSettingsRepository(database: database);
 });
 
+final defaultAccountIdProvider = FutureProvider<int?>((ref) async {
+  final repository = ref.watch(settingsRepoProvider);
+  return repository.getDefaultAccountId();
+});
+
 final necessityRepoProvider = Provider<necessity_repo.NecessityRepository>((ref) {
   final database = ref.watch(appDatabaseProvider);
   return necessity_repo.NecessityRepositorySqlite(database: database);

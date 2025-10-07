@@ -31,6 +31,10 @@ abstract class SettingsRepository {
   Future<DateTime?> getPeriodCloseBannerHiddenUntil();
 
   Future<void> setPeriodCloseBannerHiddenUntil(DateTime? value);
+
+  Future<int?> getDefaultAccountId();
+
+  Future<void> setDefaultAccountId(int? value);
 }
 
 class SqliteSettingsRepository implements SettingsRepository {
@@ -45,6 +49,7 @@ class SqliteSettingsRepository implements SettingsRepository {
   static const String _manualBackupHistoryKey = 'manual_backup_history';
   static const String _periodCloseBannerHiddenUntilKey =
       'period_close_banner_hidden_until';
+  static const String _defaultAccountIdKey = 'default_account_id';
 
   final AppDatabase _database;
 
@@ -131,6 +136,13 @@ class SqliteSettingsRepository implements SettingsRepository {
       value.toIso8601String(),
     );
   }
+
+  @override
+  Future<int?> getDefaultAccountId() => _getNullableInt(_defaultAccountIdKey);
+
+  @override
+  Future<void> setDefaultAccountId(int? value) =>
+      _setNullableInt(_defaultAccountIdKey, value);
 
   Future<int> _getInt(String key, {required int defaultValue}) async {
     final db = await _db;
