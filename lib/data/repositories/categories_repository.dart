@@ -2,6 +2,7 @@ import 'package:sqflite/sqflite.dart';
 
 import '../db/app_database.dart';
 import '../models/category.dart';
+import '../seed/seed_data.dart';
 
 abstract class CategoriesRepository {
   Future<List<Category>> getAll();
@@ -157,6 +158,7 @@ class SqliteCategoriesRepository implements CategoriesRepository {
   Future<void> restoreDefaults({DatabaseExecutor? executor}) async {
     await _runWrite<void>(
       (txn) async {
+        await SeedData.seedCategories(txn);
         final existingRows = await txn.query(
           'categories',
           columns: ['id', 'type', 'name', 'is_group', 'parent_id'],
@@ -177,26 +179,6 @@ class SqliteCategoriesRepository implements CategoriesRepository {
           parentId: parentId,
           isGroup: isGroup,
         )] = id;
-      }
-
-      final defaultGroups = _defaultGroups();
-      for (final group in defaultGroups) {
-        final groupId = await _ensureCategory(
-          txn,
-          type: group.type,
-          name: group.name,
-          isGroup: true,
-          cache: cache,
-        );
-        for (final child in group.children) {
-          await _ensureCategory(
-            txn,
-            type: group.type,
-            name: child,
-            parentId: groupId,
-            cache: cache,
-          );
-        }
       }
 
       for (final entry in _defaultStandalone()) {
@@ -333,18 +315,6 @@ class _CategoryKey {
   int get hashCode => Object.hash(type, name, parentId, isGroup);
 }
 
-class _DefaultCategoryGroup {
-  const _DefaultCategoryGroup(
-    this.type,
-    this.name,
-    this.children,
-  );
-
-  final CategoryType type;
-  final String name;
-  final List<String> children;
-}
-
 class _DefaultCategoryEntry {
   const _DefaultCategoryEntry(this.type, this.name);
 
@@ -352,67 +322,8 @@ class _DefaultCategoryEntry {
   final String name;
 }
 
-List<_DefaultCategoryGroup> _defaultGroups() {
-  return const [
-    _DefaultCategoryGroup(
-      CategoryType.expense,
-      'Еда',
-      [
-        'Продукты',
-        'Перекус',
-        'Сигареты',
-        'Доставка',
-        'Кафе',
-        'Рестораны',
-      ],
-    ),
-    _DefaultCategoryGroup(
-      CategoryType.expense,
-      'Транспорт',
-      ['Общественный', 'Такси', 'Топливо', 'Парковка'],
-    ),
-    _DefaultCategoryGroup(
-      CategoryType.expense,
-      'Дом',
-      [
-        'Аренда',
-        'Коммунальные',
-        'Интернет',
-        'Ремонт',
-      ],
-    ),
-    _DefaultCategoryGroup(
-      CategoryType.expense,
-      'Здоровье',
-      ['Аптека', 'Врач', 'Страховка'],
-    ),
-    _DefaultCategoryGroup(
-      CategoryType.expense,
-      'Личное/Уход',
-      ['Косметика', 'Парикмахер'],
-    ),
-    _DefaultCategoryGroup(
-      CategoryType.expense,
-      'Образование',
-      ['Курсы', 'Книги'],
-    ),
-    _DefaultCategoryGroup(
-      CategoryType.expense,
-      'Развлечения',
-      ['Кино', 'Игры', 'Прочее'],
-    ),
-  ];
-}
-
 List<_DefaultCategoryEntry> _defaultStandalone() {
   return const [
-    _DefaultCategoryEntry(CategoryType.expense, 'Подписки'),
-    _DefaultCategoryEntry(CategoryType.expense, 'Одежда/Обувь'),
-    _DefaultCategoryEntry(CategoryType.expense, 'Подарки'),
-    _DefaultCategoryEntry(CategoryType.expense, 'Питомцы'),
-    _DefaultCategoryEntry(CategoryType.expense, 'Электроника'),
-    _DefaultCategoryEntry(CategoryType.expense, 'Налоги/Сборы'),
-    _DefaultCategoryEntry(CategoryType.expense, 'Другое'),
     _DefaultCategoryEntry(CategoryType.income, 'Зарплата'),
     _DefaultCategoryEntry(CategoryType.income, 'Аванс'),
     _DefaultCategoryEntry(CategoryType.income, 'Премии/Бонусы'),
