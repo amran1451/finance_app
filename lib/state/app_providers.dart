@@ -134,6 +134,16 @@ final defaultAccountIdProvider = FutureProvider<int?>((ref) async {
   return repository.getDefaultAccountId();
 });
 
+final defaultNecessityCriticalityProvider = FutureProvider<int>((ref) async {
+  final repository = ref.watch(settingsRepoProvider);
+  return repository.getDefaultNecessityCriticality();
+});
+
+final defaultNecessityIdProvider = FutureProvider<int?>((ref) async {
+  final repository = ref.watch(settingsRepoProvider);
+  return repository.getDefaultNecessityId();
+});
+
 final necessityRepoProvider = Provider<necessity_repo.NecessityRepository>((ref) {
   final database = ref.watch(appDatabaseProvider);
   return necessity_repo.NecessityRepositorySqlite(database: database);

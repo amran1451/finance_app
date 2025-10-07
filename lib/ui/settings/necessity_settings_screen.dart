@@ -236,54 +236,63 @@ class _NecessitySettingsScreenState
 
           return Padding(
             padding: const EdgeInsets.all(16),
-            child: ReorderableListView.builder(
-              itemCount: labels.length,
-              onReorder: _handleReorder,
-              buildDefaultDragHandles: false,
-              proxyDecorator: (child, index, animation) => child,
-              itemExtent: _itemHeight,
-              itemBuilder: (context, index) {
-                final label = labels[index];
-                final hasColor = label.color?.trim().isNotEmpty == true;
-                final color = hexToColor(label.color);
-                return SizedBox(
-                  key: ValueKey(label.id),
-                  height: _itemHeight,
-                  child: Card(
-                    margin: EdgeInsets.zero,
-                    child: ListTile(
-                      leading: CircleAvatar(
-                        backgroundColor: color ??
-                            Theme.of(context).colorScheme.surfaceVariant,
-                        child: hasColor
-                            ? null
-                            : const Icon(Icons.block, size: 16),
-                      ),
-                      title: Text(label.name),
-                      trailing: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          ReorderableDragStartListener(
-                            index: index,
-                            child: const Icon(Icons.drag_handle),
+            child: Column(
+              children: [
+                _buildDefaultsCard(context, labels),
+                const SizedBox(height: 12),
+                Expanded(
+                  child: ReorderableListView.builder(
+                    itemCount: labels.length,
+                    onReorder: _handleReorder,
+                    buildDefaultDragHandles: false,
+                    proxyDecorator: (child, index, animation) => child,
+                    itemExtent: _itemHeight,
+                    itemBuilder: (context, index) {
+                      final label = labels[index];
+                      final hasColor = label.color?.trim().isNotEmpty == true;
+                      final color = hexToColor(label.color);
+                      return SizedBox(
+                        key: ValueKey(label.id),
+                        height: _itemHeight,
+                        child: Card(
+                          margin: EdgeInsets.zero,
+                          child: ListTile(
+                            leading: CircleAvatar(
+                              backgroundColor: color ??
+                                  Theme.of(context).colorScheme.surfaceVariant,
+                              child:
+                                  hasColor ? null : const Icon(Icons.block, size: 16),
+                            ),
+                            title: Text(label.name),
+                            trailing: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                ReorderableDragStartListener(
+                                  index: index,
+                                  child: const Icon(Icons.drag_handle),
+                                ),
+                                IconButton(
+                                  tooltip: 'Переименовать',
+                                  onPressed: () => showNecessityEditSheet(
+                                    context,
+                                    initial: label,
+                                  ),
+                                  icon: const Icon(Icons.edit),
+                                ),
+                                IconButton(
+                                  tooltip: 'Скрыть',
+                                  onPressed: () => _archiveLabel(label),
+                                  icon: const Icon(Icons.archive),
+                                ),
+                              ],
+                            ),
                           ),
-                          IconButton(
-                            tooltip: 'Переименовать',
-                            onPressed: () =>
-                                showNecessityEditSheet(context, initial: label),
-                            icon: const Icon(Icons.edit),
-                          ),
-                          IconButton(
-                            tooltip: 'Скрыть',
-                            onPressed: () => _archiveLabel(label),
-                            icon: const Icon(Icons.archive),
-                          ),
-                        ],
-                      ),
-                    ),
+                        ),
+                      );
+                    },
                   ),
-                );
-              },
+                ),
+              ],
             ),
           );
         },
@@ -355,6 +364,253 @@ class _NecessitySettingsScreenState
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(content: Text('Метка "${label.name}" скрыта')),
     );
+  }
+
+  Widget _buildDefaultsCard(
+    BuildContext context,
+    List<NecessityLabel> labels,
+  ) {
+    final theme = Theme.of(context);
+    final defaultCriticalityAsync = ref.watch(defaultNecessityCriticalityProvider);
+    final defaultNecessityIdAsync = ref.watch(defaultNecessityIdProvider);
+    final defaultCriticality = defaultCriticalityAsync.valueOrNull ?? 0;
+    final defaultNecessityId = defaultNecessityIdAsync.valueOrNull;
+
+    String resolveCriticalitySubtitle() {
+      return defaultCriticalityAsync.when(
+        data: (value) {
+          if (labels.isEmpty) {
+            return 'Добавьте метки, чтобы выбрать критичность по умолчанию';
+          }
+          if (value < 0 || value >= labels.length) {
+            return 'Значение $value вне диапазона';
+          }
+          final label = labels[value];
+          return label.name;
+        },
+        loading: () => 'Загрузка…',
+        error: (error, _) => 'Не удалось загрузить: $error',
+      );
+    }
+
+    String resolveNecessitySubtitle() {
+      return defaultNecessityIdAsync.when(
+        data: (value) {
+          if (value == null) {
+            return 'Не выбрано';
+          }
+          final label = _findLabelById(labels, value);
+          if (label != null) {
+            return label.name;
+          }
+          return 'Метка недоступна';
+        },
+        loading: () => 'Загрузка…',
+        error: (error, _) => 'Не удалось загрузить: $error',
+      );
+    }
+
+    final canEditCriticality = labels.isNotEmpty && defaultCriticalityAsync.hasValue;
+    final canEditNecessity = labels.isNotEmpty && defaultNecessityIdAsync.hasValue;
+
+    return Card(
+      margin: EdgeInsets.zero,
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          ListTile(
+            title: const Text('Критичность по умолчанию'),
+            subtitle: Text(resolveCriticalitySubtitle()),
+            trailing: canEditCriticality ? const Icon(Icons.chevron_right) : null,
+            enabled: canEditCriticality,
+            onTap: canEditCriticality
+                ? () => _showDefaultCriticalityPicker(
+                      context,
+                      labels,
+                      defaultCriticality,
+                    )
+                : null,
+          ),
+          Divider(height: 0, color: theme.colorScheme.outlineVariant),
+          ListTile(
+            title: const Text('Необходимость по умолчанию'),
+            subtitle: Text(resolveNecessitySubtitle()),
+            enabled: canEditNecessity,
+            trailing: canEditNecessity
+                ? Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      if (defaultNecessityId != null)
+                        IconButton(
+                          tooltip: 'Сбросить',
+                          onPressed: () => _clearDefaultNecessity(context),
+                          icon: const Icon(Icons.clear),
+                        ),
+                      const Icon(Icons.chevron_right),
+                    ],
+                  )
+                : null,
+            onTap: canEditNecessity
+                ? () => _showDefaultNecessityPicker(
+                      context,
+                      labels,
+                      defaultNecessityId,
+                    )
+                : null,
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _showDefaultCriticalityPicker(
+    BuildContext context,
+    List<NecessityLabel> labels,
+    int initial,
+  ) async {
+    if (labels.isEmpty) {
+      return;
+    }
+    final repository = ref.read(settingsRepoProvider);
+    final clampedInitial = initial.clamp(0, labels.length - 1);
+    var selectedIndex = clampedInitial;
+    final result = await showDialog<int>(
+      context: context,
+      builder: (dialogContext) {
+        return StatefulBuilder(
+          builder: (context, setState) {
+            return AlertDialog(
+              title: const Text('Критичность по умолчанию'),
+              content: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    for (var i = 0; i < labels.length; i++)
+                      RadioListTile<int>(
+                        title: Text(labels[i].name),
+                        value: i,
+                        groupValue: selectedIndex,
+                        onChanged: (value) {
+                          if (value != null) {
+                            setState(() => selectedIndex = value);
+                          }
+                        },
+                      ),
+                  ],
+                ),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.of(context).pop(),
+                  child: const Text('Отмена'),
+                ),
+                FilledButton(
+                  onPressed: () => Navigator.of(context).pop(selectedIndex),
+                  child: const Text('Выбрать'),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
+    if (result == null) {
+      return;
+    }
+    await repository.setDefaultNecessityCriticality(result);
+    ref.invalidate(defaultNecessityCriticalityProvider);
+    if (!mounted) {
+      return;
+    }
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('Критичность по умолчанию обновлена')),
+    );
+  }
+
+  Future<void> _showDefaultNecessityPicker(
+    BuildContext context,
+    List<NecessityLabel> labels,
+    int? initialId,
+  ) async {
+    if (labels.isEmpty) {
+      return;
+    }
+    final repository = ref.read(settingsRepoProvider);
+    var selectedId = initialId;
+    final result = await showDialog<int>(
+      context: context,
+      builder: (dialogContext) {
+        return StatefulBuilder(
+          builder: (context, setState) {
+            return AlertDialog(
+              title: const Text('Необходимость по умолчанию'),
+              content: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    for (final label in labels)
+                      RadioListTile<int>(
+                        title: Text(label.name),
+                        value: label.id,
+                        groupValue: selectedId,
+                        onChanged: (value) {
+                          if (value != null) {
+                            setState(() => selectedId = value);
+                          }
+                        },
+                      ),
+                  ],
+                ),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.of(context).pop(),
+                  child: const Text('Отмена'),
+                ),
+                FilledButton(
+                  onPressed: selectedId == null
+                      ? null
+                      : () => Navigator.of(context).pop(selectedId),
+                  child: const Text('Выбрать'),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
+    if (result == null) {
+      return;
+    }
+    await repository.setDefaultNecessityId(result);
+    ref.invalidate(defaultNecessityIdProvider);
+    if (!mounted) {
+      return;
+    }
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('Необходимость по умолчанию обновлена')),
+    );
+  }
+
+  Future<void> _clearDefaultNecessity(BuildContext context) async {
+    final repository = ref.read(settingsRepoProvider);
+    await repository.setDefaultNecessityId(null);
+    ref.invalidate(defaultNecessityIdProvider);
+    if (!mounted) {
+      return;
+    }
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('Необходимость по умолчанию сброшена')),
+    );
+  }
+
+  NecessityLabel? _findLabelById(List<NecessityLabel> labels, int id) {
+    for (final label in labels) {
+      if (label.id == id) {
+        return label;
+      }
+    }
+    return null;
   }
 
 }
