@@ -20,6 +20,9 @@ import '../../utils/plan_formatting.dart';
 import '../../utils/period_utils.dart';
 import '../settings/necessity_settings_screen.dart';
 
+const EdgeInsets _fieldContentPadding =
+    EdgeInsets.symmetric(horizontal: 12, vertical: 14);
+
 enum ExpensePlanResult { none, created, assigned }
 
 enum _ExpensePlanEntryAction { fromMaster, newPlan }
@@ -110,7 +113,7 @@ Future<bool> showQuickAddExpensePlanSheet(
     ),
     builder: (modalContext) {
       final viewInsets = MediaQuery.of(modalContext).viewInsets;
-      return Padding(
+      return SingleChildScrollView(
         padding: EdgeInsets.only(bottom: viewInsets.bottom),
         child: _QuickAddExpensePlanForm(period: period),
       );
@@ -234,7 +237,7 @@ class _QuickAddExpensePlanFormState
                   controller: _titleController,
                   decoration: const InputDecoration(
                     labelText: 'Название',
-                  ),
+                  ).copyWith(contentPadding: _fieldContentPadding),
                   textCapitalization: TextCapitalization.sentences,
                   validator: (value) {
                     if (value == null || value.trim().isEmpty) {
@@ -265,29 +268,37 @@ class _QuickAddExpensePlanFormState
                         ),
                       );
                     }
-                    return DropdownButtonFormField<int>(
-                      value: _categoryId,
-                      items: [
-                        for (final category in categories)
-                          DropdownMenuItem<int>(
-                            value: category.id,
-                            child: Text(category.name),
-                          ),
-                      ],
-                      onChanged: _isSaving
-                          ? null
-                          : (value) {
-                              setState(() => _categoryId = value);
-                            },
-                      decoration: const InputDecoration(
-                        labelText: 'Категория',
+                    return SizedBox(
+                      height: 56,
+                      width: double.infinity,
+                      child: DropdownButtonFormField<int>(
+                        value: _categoryId,
+                        isExpanded: true,
+                        items: [
+                          for (final category in categories)
+                            DropdownMenuItem<int>(
+                              value: category.id,
+                              child: Text(
+                                category.name,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ),
+                        ],
+                        onChanged: _isSaving
+                            ? null
+                            : (value) {
+                                setState(() => _categoryId = value);
+                              },
+                        decoration: const InputDecoration(
+                          labelText: 'Категория',
+                        ).copyWith(contentPadding: _fieldContentPadding),
+                        validator: (value) {
+                          if (value == null) {
+                            return 'Выберите категорию';
+                          }
+                          return null;
+                        },
                       ),
-                      validator: (value) {
-                        if (value == null) {
-                          return 'Выберите категорию';
-                        }
-                        return null;
-                      },
                     );
                   },
                 ),
@@ -297,7 +308,7 @@ class _QuickAddExpensePlanFormState
                   decoration: const InputDecoration(
                     labelText: 'Сумма',
                     prefixText: '₽ ',
-                  ),
+                  ).copyWith(contentPadding: _fieldContentPadding),
                   keyboardType: TextInputType.number,
                   inputFormatters: [
                     _RublesInputFormatter(),
@@ -350,37 +361,53 @@ class _QuickAddExpensePlanFormState
                         });
                       });
                     }
-                    return DropdownButtonFormField<int>(
-                      value: _necessityId,
-                      items: [
-                        for (final label in sorted)
-                          DropdownMenuItem<int>(
-                            value: label.id,
-                            child: Row(
-                              children: [
-                                _NecessityColorBadge(
-                                  color: hexToColor(label.color),
-                                ),
-                                const SizedBox(width: 8),
-                                Expanded(child: Text(label.name)),
-                              ],
+                    return SizedBox(
+                      height: 56,
+                      width: double.infinity,
+                      child: DropdownButtonFormField<int>(
+                        value: _necessityId,
+                        isExpanded: true,
+                        items: [
+                          for (final label in sorted)
+                            DropdownMenuItem<int>(
+                              value: label.id,
+                              child: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  SizedBox(
+                                    width: 16,
+                                    height: 16,
+                                    child: _NecessityColorBadge(
+                                      color: hexToColor(label.color),
+                                    ),
+                                  ),
+                                  const SizedBox(width: 8),
+                                  Flexible(
+                                    fit: FlexFit.loose,
+                                    child: Text(
+                                      label.name,
+                                      overflow: TextOverflow.ellipsis,
+                                    ),
+                                  ),
+                                ],
+                              ),
                             ),
-                          ),
-                      ],
-                      onChanged: _isSaving
-                          ? null
-                          : (value) {
-                              setState(() => _necessityId = value);
-                            },
-                      decoration: const InputDecoration(
-                        labelText: 'Критичность/необходимость',
+                        ],
+                        onChanged: _isSaving
+                            ? null
+                            : (value) {
+                                setState(() => _necessityId = value);
+                              },
+                        decoration: const InputDecoration(
+                          labelText: 'Критичность/необходимость',
+                        ).copyWith(contentPadding: _fieldContentPadding),
+                        validator: (value) {
+                          if (value == null) {
+                            return 'Укажите критичность';
+                          }
+                          return null;
+                        },
                       ),
-                      validator: (value) {
-                        if (value == null) {
-                          return 'Укажите критичность';
-                        }
-                        return null;
-                      },
                     );
                   },
                   loading: () => const LinearProgressIndicator(),
@@ -411,7 +438,7 @@ class _QuickAddExpensePlanFormState
                   controller: _noteController,
                   decoration: const InputDecoration(
                     labelText: 'Заметка (опционально)',
-                  ),
+                  ).copyWith(contentPadding: _fieldContentPadding),
                   textCapitalization: TextCapitalization.sentences,
                   maxLines: 3,
                 ),
@@ -831,7 +858,10 @@ class _SelectFromMasterSheetState
                             .map(
                               (cat) => DropdownMenuItem<int?>(
                                 value: cat.id,
-                                child: Text(cat.name),
+                                child: Text(
+                                  cat.name,
+                                  overflow: TextOverflow.ellipsis,
+                                ),
                               ),
                             ),
                       ];
@@ -861,7 +891,10 @@ class _SelectFromMasterSheetState
                         ...labels.map(
                           (label) => DropdownMenuItem<int?>(
                             value: label.id,
-                            child: Text(label.name),
+                            child: Text(
+                              label.name,
+                              overflow: TextOverflow.ellipsis,
+                            ),
                           ),
                         ),
                       ];
@@ -922,12 +955,13 @@ class _SelectFromMasterSheetState
     final result = await showModalBottomSheet<_AssignConfirmationResult>(
       context: context,
       isScrollControlled: true,
+      useSafeArea: true,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
       ),
       builder: (modalContext) {
         final viewInsets = MediaQuery.of(modalContext).viewInsets;
-        return Padding(
+        return SingleChildScrollView(
           padding: EdgeInsets.only(bottom: viewInsets.bottom),
           child: _AssignConfirmationSheet(master: master),
         );
@@ -1082,21 +1116,29 @@ class _AssignConfirmationSheetState
                   'Нет доступных счетов. Добавьте счёт в настройках.',
                 );
               }
-              return DropdownButtonFormField<int>(
-                key: const Key('assign_plan_account'),
-                value: _accountId,
-                decoration: const InputDecoration(
-                  labelText: 'Счёт',
+              return SizedBox(
+                height: 56,
+                width: double.infinity,
+                child: DropdownButtonFormField<int>(
+                  key: const Key('assign_plan_account'),
+                  value: _accountId,
+                  isExpanded: true,
+                  decoration: const InputDecoration(
+                    labelText: 'Счёт',
+                  ).copyWith(contentPadding: _fieldContentPadding),
+                  items: [
+                    for (final Account account in accounts)
+                      if (account.id != null)
+                        DropdownMenuItem<int>(
+                          value: account.id,
+                          child: Text(
+                            account.name,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                  ],
+                  onChanged: (value) => setState(() => _accountId = value),
                 ),
-                items: [
-                  for (final Account account in accounts)
-                    if (account.id != null)
-                      DropdownMenuItem<int>(
-                        value: account.id,
-                        child: Text(account.name),
-                      ),
-                ],
-                onChanged: (value) => setState(() => _accountId = value),
               );
             },
             loading: () => const Center(child: CircularProgressIndicator()),
@@ -1118,7 +1160,7 @@ class _AssignConfirmationSheetState
             textCapitalization: TextCapitalization.sentences,
             decoration: const InputDecoration(
               labelText: 'Заметка (опционально)',
-            ),
+            ).copyWith(contentPadding: _fieldContentPadding),
             maxLines: 3,
           ),
           const SizedBox(height: 16),
