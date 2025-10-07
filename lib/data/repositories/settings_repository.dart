@@ -28,6 +28,14 @@ abstract class SettingsRepository {
 
   Future<void> addManualBackupEntry(ManualBackupEntry entry);
 
+  Future<int> getDefaultNecessityCriticality();
+
+  Future<void> setDefaultNecessityCriticality(int value);
+
+  Future<int?> getDefaultNecessityId();
+
+  Future<void> setDefaultNecessityId(int? value);
+
   Future<DateTime?> getPeriodCloseBannerHiddenUntil();
 
   Future<void> setPeriodCloseBannerHiddenUntil(DateTime? value);
@@ -50,6 +58,9 @@ class SqliteSettingsRepository implements SettingsRepository {
   static const String _periodCloseBannerHiddenUntilKey =
       'period_close_banner_hidden_until';
   static const String _defaultAccountIdKey = 'default_account_id';
+  static const String _defaultNecessityCriticalityKey =
+      'default_necessity_criticality';
+  static const String _defaultNecessityIdKey = 'default_necessity_id';
 
   final AppDatabase _database;
 
@@ -143,6 +154,22 @@ class SqliteSettingsRepository implements SettingsRepository {
   @override
   Future<void> setDefaultAccountId(int? value) =>
       _setNullableInt(_defaultAccountIdKey, value);
+
+  @override
+  Future<int> getDefaultNecessityCriticality() =>
+      _getInt(_defaultNecessityCriticalityKey, defaultValue: 0);
+
+  @override
+  Future<void> setDefaultNecessityCriticality(int value) =>
+      _setInt(_defaultNecessityCriticalityKey, value);
+
+  @override
+  Future<int?> getDefaultNecessityId() =>
+      _getNullableInt(_defaultNecessityIdKey);
+
+  @override
+  Future<void> setDefaultNecessityId(int? value) =>
+      _setNullableInt(_defaultNecessityIdKey, value);
 
   Future<int> _getInt(String key, {required int defaultValue}) async {
     final db = await _db;
