@@ -222,15 +222,33 @@ class _OperationsSection extends ConsumerWidget {
     final necessityMap = necessityMapAsync.value ?? const <int, necessity_repo.NecessityLabel>{};
     final reasonMapAsync = ref.watch(reasonMapProvider);
     final reasonMap = reasonMapAsync.value ?? const <int, reason_repo.ReasonLabel>{};
+    final dailyTotalMinor = _calculateDailyTotalMinor(transactions);
+    final dailySummaryLabel = _formatDailyTotalLabel(dailyTotalMinor);
+    final dailySummaryColor = _colorForDailyTotal(dailyTotalMinor);
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Padding(
           padding: const EdgeInsets.symmetric(vertical: 12),
-          child: Text(
-            title,
-            style: Theme.of(context).textTheme.titleMedium,
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.baseline,
+            textBaseline: TextBaseline.alphabetic,
+            children: [
+              Expanded(
+                child: Text(
+                  title,
+                  style: Theme.of(context).textTheme.titleMedium,
+                ),
+              ),
+              Text(
+                dailySummaryLabel,
+                style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                      color: dailySummaryColor,
+                      fontWeight: FontWeight.w600,
+                    ),
+              ),
+            ],
           ),
         ),
         ...transactions.map(
@@ -479,6 +497,43 @@ Map<DateTime, List<TransactionListItem>> _groupByDate(
     grouped.putIfAbsent(date, () => []).add(item);
   }
   return grouped;
+}
+
+int _calculateDailyTotalMinor(List<TransactionListItem> transactions) {
+  var total = 0;
+  for (final item in transactions) {
+    total += _signedAmountMinor(item.record);
+  }
+  return total;
+}
+
+String _formatDailyTotalLabel(int totalMinor) {
+  if (totalMinor == 0) {
+    return formatCurrencyMinor(0);
+  }
+  final sign = totalMinor > 0 ? '+' : '−';
+  return '$sign${formatCurrencyMinor(totalMinor.abs())}';
+}
+
+Color? _colorForDailyTotal(int totalMinor) {
+  if (totalMinor > 0) {
+    return _colorForType(TransactionType.income);
+  }
+  if (totalMinor < 0) {
+    return _colorForType(TransactionType.expense);
+  }
+  return null;
+}
+
+int _signedAmountMinor(TransactionRecord record) {
+  switch (record.type) {
+    case TransactionType.income:
+      return record.amountMinor;
+    case TransactionType.expense:
+      return -record.amountMinor;
+    case TransactionType.saving:
+      return record.amountMinor;
+  }
 }
 
 Color _colorForType(TransactionType type) {
