@@ -1,6 +1,8 @@
 import 'package:flutter/foundation.dart';
 import 'package:sqflite/sqflite.dart';
 
+import 'seed_criticalities.dart';
+
 /// Seeds default reference data for the application.
 class SeedData {
   SeedData._();
@@ -12,7 +14,7 @@ class SeedData {
     }());
 
     await seedCategories(db);
-    await seedCriticalities(db);
+    await SeedCriticalities.run(db);
     await seedReasons(db);
   }
 
@@ -159,54 +161,6 @@ class SeedData {
     }
   }
 
-  static Future<void> seedCriticalities(DatabaseExecutor executor) async {
-    assert(() {
-      debugPrint('[seed] criticalities');
-      return true;
-    }());
-
-    final hasColor = await _hasColumn(executor, 'necessity_labels', 'color');
-    final hasSortOrder = await _hasColumn(executor, 'necessity_labels', 'sort_order');
-
-    const items = <_LabelDefinition>[
-      _LabelDefinition('Точно', '#546E7A'),
-      _LabelDefinition('Надо', '#607D8B'),
-      _LabelDefinition('Можно отложить', '#78909C'),
-      _LabelDefinition('Заморожено', '#90A4AE'),
-      _LabelDefinition('Уже не надо', '#B0BEC5'),
-      _LabelDefinition('Хочу', '#CFD8DC'),
-    ];
-
-    for (var i = 0; i < items.length; i++) {
-      final item = items[i];
-      final existingId = await _getSimpleId(
-        executor,
-        table: 'necessity_labels',
-        name: item.name,
-      );
-      if (existingId != null) {
-        continue;
-      }
-
-      final values = <String, Object?>{
-        'name': item.name,
-        'archived': 0,
-      };
-      if (hasColor) {
-        values['color'] = item.color;
-      }
-      if (hasSortOrder) {
-        values['sort_order'] = (i + 1) * 10;
-      }
-
-      await executor.insert(
-        'necessity_labels',
-        values,
-        conflictAlgorithm: ConflictAlgorithm.ignore,
-      );
-    }
-  }
-
   static Future<void> seedReasons(DatabaseExecutor executor) async {
     assert(() {
       debugPrint('[seed] reasons');
@@ -287,11 +241,4 @@ class _FolderDefinition {
 
   final String name;
   final List<String> children;
-}
-
-class _LabelDefinition {
-  const _LabelDefinition(this.name, this.color);
-
-  final String name;
-  final String color;
 }
