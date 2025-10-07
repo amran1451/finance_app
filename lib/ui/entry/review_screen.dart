@@ -41,6 +41,7 @@ class _ReviewScreenState extends ConsumerState<ReviewScreen> {
   bool _forcePlanned = false;
   bool _reasonValidationError = false;
   bool _accountInitialized = false;
+  bool _accountSelectedManually = false;
   int? _defaultAccountId;
   List<Account> _latestAccounts = const [];
 
@@ -67,6 +68,7 @@ class _ReviewScreenState extends ConsumerState<ReviewScreen> {
         entryState.accountId ?? entryState.editingRecord?.accountId;
     if (initialAccountId != null) {
       _accountInitialized = true;
+      _accountSelectedManually = true;
     }
     selectedAccountId =
         ValueNotifier<int>(initialAccountId ?? _kUnselectedAccountId);
@@ -136,6 +138,7 @@ class _ReviewScreenState extends ConsumerState<ReviewScreen> {
     if (accounts.isEmpty) {
       selectedAccountId.value = _kUnselectedAccountId;
       _accountInitialized = false;
+      _accountSelectedManually = false;
       ref.read(entryFlowControllerProvider.notifier).setAccount(null);
       return;
     }
@@ -146,7 +149,8 @@ class _ReviewScreenState extends ConsumerState<ReviewScreen> {
       _syncAccountFromState(stateAccountId);
       return;
     }
-    if (_accountInitialized && selectedAccountId.value != _kUnselectedAccountId) {
+    if (_accountSelectedManually &&
+        selectedAccountId.value != _kUnselectedAccountId) {
       return;
     }
     final preferred = _resolveDefaultAccount(accounts);
@@ -193,7 +197,8 @@ class _ReviewScreenState extends ConsumerState<ReviewScreen> {
         accounts.any((account) => account.id == stateAccountId)) {
       return;
     }
-    if (_accountInitialized && selectedAccountId.value != _kUnselectedAccountId) {
+    if (_accountSelectedManually &&
+        selectedAccountId.value != _kUnselectedAccountId) {
       return;
     }
     final preferred = _resolveDefaultAccount(accounts);
@@ -202,11 +207,14 @@ class _ReviewScreenState extends ConsumerState<ReviewScreen> {
     }
   }
 
-  void _updateAccountSelection(int accountId) {
+  void _updateAccountSelection(int accountId, {bool fromUser = false}) {
     if (selectedAccountId.value != accountId) {
       selectedAccountId.value = accountId;
     }
     _accountInitialized = true;
+    if (fromUser) {
+      _accountSelectedManually = true;
+    }
     ref.read(entryFlowControllerProvider.notifier).setAccount(accountId);
   }
 
@@ -1013,7 +1021,10 @@ class _ReviewScreenState extends ConsumerState<ReviewScreen> {
                                 ],
                                 onChanged: (newValue) {
                                   if (newValue != null) {
-                                    _updateAccountSelection(newValue);
+                                    _updateAccountSelection(
+                                      newValue,
+                                      fromUser: true,
+                                    );
                                   }
                                 },
                               );
