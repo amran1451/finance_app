@@ -54,21 +54,32 @@ class OperationsScreen extends ConsumerWidget {
     final filterTextStyle =
         Theme.of(context).textTheme.labelLarge?.copyWith(fontSize: 14);
 
-    return Scaffold(
+    final navigator = Navigator.of(context);
+
+    return PopScope(
+      canPop: navigator.canPop(),
+      onPopInvoked: (didPop) {
+        if (didPop) {
+          return;
+        }
+
+        context.goNamed(RouteNames.home);
+      },
+      child: Scaffold(
       appBar: AppBar(
         title: const Text('Операции периода'),
         leading: IconButton(
           icon: Icon(
-            Navigator.of(context).canPop() ? Icons.arrow_back : Icons.close,
+            navigator.canPop() ? Icons.arrow_back : Icons.close,
           ),
           onPressed: () {
-            if (Navigator.of(context).canPop()) {
+            if (navigator.canPop()) {
               context.pop();
             } else {
               context.goNamed(RouteNames.home);
             }
           },
-          tooltip: Navigator.of(context).canPop() ? 'Назад' : 'Закрыть',
+          tooltip: navigator.canPop() ? 'Назад' : 'Закрыть',
         ),
         actions: [
           IconButton(
@@ -184,6 +195,7 @@ class OperationsScreen extends ConsumerWidget {
             ],
           );
         },
+      ),
       ),
     );
   }
