@@ -450,6 +450,19 @@ class AppMigrations {
         .whereType<String>());
 
     if (labels.isEmpty) {
+      const defaultLabels = [
+        'Точно',
+        'Надо',
+        'Можно отложить',
+        'Заморожено',
+        'Уже не надо',
+        'Хочу',
+      ];
+
+      addUnique(defaultLabels);
+    }
+
+    if (labels.isEmpty) {
       return;
     }
 
