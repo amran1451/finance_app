@@ -142,7 +142,7 @@ class _ReviewScreenState extends ConsumerState<ReviewScreen> {
       selectedAccountId.value = _kUnselectedAccountId;
       _accountInitialized = false;
       _accountSelectedManually = false;
-      ref.read(entryFlowControllerProvider.notifier).setAccount(null);
+      _scheduleAccountUpdate(null);
       return;
     }
     final entryState = ref.read(entryFlowControllerProvider);
@@ -218,7 +218,16 @@ class _ReviewScreenState extends ConsumerState<ReviewScreen> {
     if (fromUser) {
       _accountSelectedManually = true;
     }
-    ref.read(entryFlowControllerProvider.notifier).setAccount(accountId);
+    _scheduleAccountUpdate(accountId);
+  }
+
+  void _scheduleAccountUpdate(int? accountId) {
+    Future<void>(() {
+      if (!mounted) {
+        return;
+      }
+      ref.read(entryFlowControllerProvider.notifier).setAccount(accountId);
+    });
   }
 
   String _formatDateLabel(DateTime date) {
