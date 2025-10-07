@@ -1,6 +1,7 @@
 import 'package:sqflite/sqflite.dart';
 
 import '../../utils/period_utils.dart';
+import '../seed/seed_data.dart';
 
 /// Defines all database migrations for the application.
 class AppMigrations {
@@ -288,6 +289,8 @@ class AppMigrations {
           break;
       }
     }
+
+    await SeedData.run(db);
   }
 
   static Future<void> _backfillTransactionPeriods(Database db) async {
@@ -447,19 +450,20 @@ class AppMigrations {
         .whereType<String>());
 
     if (labels.isEmpty) {
-      addUnique(_legacyDefaultNecessityLabels);
-    }
-    if (labels.isEmpty) {
-      addUnique(_fallbackNecessityLabels);
+      return;
     }
 
     for (var i = 0; i < labels.length; i++) {
-      await db.insert('necessity_labels', {
-        'name': labels[i],
-        'color': null,
-        'sort_order': i,
-        'archived': 0,
-      });
+      await db.insert(
+        'necessity_labels',
+        {
+          'name': labels[i],
+          'color': null,
+          'sort_order': i,
+          'archived': 0,
+        },
+        conflictAlgorithm: ConflictAlgorithm.ignore,
+      );
     }
   }
 
@@ -476,18 +480,6 @@ class AppMigrations {
     return 0;
   }
 
-  static const List<String> _legacyDefaultNecessityLabels = [
-    'Необходимо',
-    'Вынуждено',
-    'Эмоции',
-  ];
-
-  static const List<String> _fallbackNecessityLabels = [
-    'точно',
-    'надо',
-    'можно отложить',
-  ];
-
   static Future<void> _seedReasonLabels(Database db) async {
     final existingCountResult =
         await db.rawQuery('SELECT COUNT(*) AS count FROM reason_labels');
@@ -501,7 +493,7 @@ class AppMigrations {
     const defaultReasons = [
       'Необходимо',
       'Эмоции',
-      'Вынуждено',
+      'Вынужденно',
       'Социальное',
       'Импульс',
       'Статус',
@@ -509,12 +501,16 @@ class AppMigrations {
     ];
 
     for (var i = 0; i < defaultReasons.length; i++) {
-      await db.insert('reason_labels', {
-        'name': defaultReasons[i],
-        'color': null,
-        'sort_order': i,
-        'archived': 0,
-      });
+      await db.insert(
+        'reason_labels',
+        {
+          'name': defaultReasons[i],
+          'color': null,
+          'sort_order': i,
+          'archived': 0,
+        },
+        conflictAlgorithm: ConflictAlgorithm.ignore,
+      );
     }
   }
 }
