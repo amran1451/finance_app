@@ -435,7 +435,6 @@ class _ReviewScreenState extends ConsumerState<ReviewScreen> {
       final isDateOutside = normalizedDate.isBefore(normalizedStart) ||
           !normalizedDate.isBefore(normalizedEndExclusive);
       final (anchor1, anchor2) = ref.read(anchorDaysProvider);
-      final selectedPeriod = ref.read(selectedPeriodRefProvider);
       var targetPeriod = periodRefForDate(normalizedDate, anchor1, anchor2);
       if (isDateOutside) {
         targetPeriod = selectedPeriod;
