@@ -27,9 +27,9 @@ class AmountScreen extends ConsumerWidget {
     final showResultRow = hasOperators && (previewResult != null || result != null);
     final resultDisplay = formatCurrency(result ?? previewResult ?? amountValue);
     final quickButtonStyle = OutlinedButton.styleFrom(
-      minimumSize: const Size(0, 36),
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-      textStyle: const TextStyle(fontSize: 13),
+      minimumSize: const Size(0, 44),
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+      textStyle: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600),
     );
 
     void handleNext() {
@@ -92,12 +92,13 @@ class AmountScreen extends ConsumerWidget {
                 ],
               ),
               child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
+                crossAxisAlignment: CrossAxisAlignment.center,
                 children: [
                   Text(
                     expressionDisplay,
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
+                    textAlign: TextAlign.center,
                     style: TextStyle(
                       fontSize: 14,
                       height: 1.2,
@@ -107,6 +108,7 @@ class AmountScreen extends ConsumerWidget {
                   const SizedBox(height: 8),
                   Text(
                     formattedAmount,
+                    textAlign: TextAlign.center,
                     style: Theme.of(context).textTheme.displaySmall?.copyWith(
                           fontSize: 30,
                           fontWeight: FontWeight.w700,
@@ -131,8 +133,9 @@ class AmountScreen extends ConsumerWidget {
             ],
             const SizedBox(height: 12),
             Wrap(
-              spacing: 8,
-              runSpacing: 8,
+              spacing: 12,
+              runSpacing: 12,
+              alignment: WrapAlignment.center,
               children: [
                 OutlinedButton(
                   onPressed: () => controller.addQuickAmount(100),
