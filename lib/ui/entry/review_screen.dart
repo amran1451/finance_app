@@ -83,8 +83,11 @@ class _ReviewScreenState extends ConsumerState<ReviewScreen> {
       });
     }
     _reasonValidationError = false;
+    final accountsSnapshot = ref.read(activeAccountsProvider);
+    accountsSnapshot.whenData(_handleAccountsLoaded);
     final defaultAccountSnapshot = ref.read(defaultAccountIdProvider);
     _defaultAccountId = defaultAccountSnapshot.valueOrNull;
+    _applyDefaultAccountIfAvailable();
     _entryFlowSubscription = ref.listenManual<EntryFlowState>(
       entryFlowControllerProvider,
       (previous, next) {
