@@ -20,6 +20,7 @@ import '../../utils/category_type_extensions.dart';
 import '../../utils/formatting.dart';
 import '../../utils/color_hex.dart';
 import '../../utils/period_utils.dart';
+import '../../utils/plan_formatting.dart';
 import '../widgets/add_another_snack.dart';
 import '../widgets/amount_keypad.dart';
 import '../widgets/necessity_choice_chip.dart';
@@ -433,11 +434,19 @@ class _ReviewScreenState extends ConsumerState<ReviewScreen> {
       final normalizedEndExclusive = DateUtils.dateOnly(bounds.$2);
       final isDateOutside = normalizedDate.isBefore(normalizedStart) ||
           !normalizedDate.isBefore(normalizedEndExclusive);
+      final (anchor1, anchor2) = ref.read(anchorDaysProvider);
+      final targetPeriod = periodRefForDate(normalizedDate, anchor1, anchor2);
       if (isDateOutside && mounted) {
+        final targetBounds = targetPeriod.bounds(anchor1, anchor2);
+        final targetLabel = compactPeriodLabel(
+              targetBounds.start,
+              targetBounds.endExclusive,
+            ) ??
+            'выбранной дате';
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
+          SnackBar(
             content: Text(
-              'Дата вне границ периода, запись будет привязана к текущему периоду.',
+              'Дата вне границ выбранного периода, запись будет сохранена в период $targetLabel.',
             ),
           ),
         );
@@ -469,7 +478,7 @@ class _ReviewScreenState extends ConsumerState<ReviewScreen> {
               necessityLabel: necessityLabel,
               reasonId: reasonId,
               reasonLabel: reasonLabel,
-              periodId: selectedPeriod.id,
+              periodId: targetPeriod.id,
             )
           : TransactionRecord(
               accountId: accountId,
@@ -485,7 +494,7 @@ class _ReviewScreenState extends ConsumerState<ReviewScreen> {
               necessityLabel: necessityLabel,
               reasonId: reasonId,
               reasonLabel: reasonLabel,
-              periodId: selectedPeriod.id,
+              periodId: targetPeriod.id,
             );
 
       final shouldConfirmUpdate = isEditingOperation &&
@@ -524,7 +533,7 @@ class _ReviewScreenState extends ConsumerState<ReviewScreen> {
         await transactionsRepository.update(
           record,
           includedInPeriod: isPlannedExpense ? null : includeInPeriod,
-          uiPeriod: selectedPeriod,
+          uiPeriod: targetPeriod,
         );
         if (editingCounterpart != null) {
           final updatedCounterpart = editingCounterpart.copyWith(
@@ -538,12 +547,12 @@ class _ReviewScreenState extends ConsumerState<ReviewScreen> {
             necessityLabel: necessityLabel,
             reasonId: reasonId,
             reasonLabel: reasonLabel,
-            periodId: selectedPeriod.id,
+            periodId: targetPeriod.id,
           );
           await transactionsRepository.update(
             updatedCounterpart,
             includedInPeriod: isPlannedExpense ? null : includeInPeriod,
-            uiPeriod: selectedPeriod,
+            uiPeriod: targetPeriod,
           );
         }
       } else {
@@ -551,10 +560,10 @@ class _ReviewScreenState extends ConsumerState<ReviewScreen> {
           record,
           asSavingPair: entryState.type == CategoryType.saving,
           includedInPeriod: isPlannedExpense ? null : includeInPeriod,
-          uiPeriod: selectedPeriod,
+          uiPeriod: targetPeriod,
         );
       }
-      await _maybePromptToClosePeriod(selectedPeriod);
+      await _maybePromptToClosePeriod(targetPeriod);
       bumpDbTick(ref);
       controller.reset();
       if (!mounted) {
