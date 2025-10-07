@@ -41,6 +41,8 @@ class _ReviewScreenState extends ConsumerState<ReviewScreen> {
   bool _forcePlanned = false;
   bool _reasonValidationError = false;
   bool _accountInitialized = false;
+  int? _defaultAccountId;
+  List<Account> _latestAccounts = const [];
 
   late final ValueNotifier<DateTime> selectedDate;
   late final ValueNotifier<int> selectedAccountId;
@@ -48,6 +50,8 @@ class _ReviewScreenState extends ConsumerState<ReviewScreen> {
   late final ProviderSubscription<EntryFlowState> _entryFlowSubscription;
   late final ProviderSubscription<AsyncValue<List<Account>>>
       _accountsSubscription;
+  late final ProviderSubscription<AsyncValue<int?>>
+      _defaultAccountSubscription;
 
   @override
   void initState() {
@@ -77,6 +81,8 @@ class _ReviewScreenState extends ConsumerState<ReviewScreen> {
       });
     }
     _reasonValidationError = false;
+    final defaultAccountSnapshot = ref.read(defaultAccountIdProvider);
+    _defaultAccountId = defaultAccountSnapshot.valueOrNull;
     _entryFlowSubscription = ref.listenManual<EntryFlowState>(
       entryFlowControllerProvider,
       (previous, next) {
@@ -100,6 +106,15 @@ class _ReviewScreenState extends ConsumerState<ReviewScreen> {
         next.whenData(_handleAccountsLoaded);
       },
     );
+    _defaultAccountSubscription = ref.listenManual<AsyncValue<int?>>(
+      defaultAccountIdProvider,
+      (previous, next) {
+        next.whenData((value) {
+          _defaultAccountId = value;
+          _applyDefaultAccountIfAvailable();
+        });
+      },
+    );
   }
 
   bool _shouldForcePlanned(EntryFlowState state) {
@@ -117,6 +132,7 @@ class _ReviewScreenState extends ConsumerState<ReviewScreen> {
   }
 
   void _handleAccountsLoaded(List<Account> accounts) {
+    _latestAccounts = accounts;
     if (accounts.isEmpty) {
       selectedAccountId.value = _kUnselectedAccountId;
       _accountInitialized = false;
@@ -133,10 +149,22 @@ class _ReviewScreenState extends ConsumerState<ReviewScreen> {
     if (_accountInitialized && selectedAccountId.value != _kUnselectedAccountId) {
       return;
     }
-    final preferred = _findPreferredAccount(accounts);
+    final preferred = _resolveDefaultAccount(accounts);
     if (preferred != null && preferred.id != null) {
       _updateAccountSelection(preferred.id!);
     }
+  }
+
+  Account? _resolveDefaultAccount(List<Account> accounts) {
+    final defaultAccountId = _defaultAccountId;
+    if (defaultAccountId != null) {
+      for (final account in accounts) {
+        if (account.id == defaultAccountId) {
+          return account;
+        }
+      }
+    }
+    return _findPreferredAccount(accounts);
   }
 
   Account? _findPreferredAccount(List<Account> accounts) {
@@ -151,6 +179,27 @@ class _ReviewScreenState extends ConsumerState<ReviewScreen> {
       }
     }
     return accounts.first;
+  }
+
+  void _applyDefaultAccountIfAvailable() {
+    final accounts = _latestAccounts;
+    if (accounts.isEmpty) {
+      return;
+    }
+    final entryState = ref.read(entryFlowControllerProvider);
+    final stateAccountId =
+        entryState.accountId ?? entryState.editingRecord?.accountId;
+    if (stateAccountId != null &&
+        accounts.any((account) => account.id == stateAccountId)) {
+      return;
+    }
+    if (_accountInitialized && selectedAccountId.value != _kUnselectedAccountId) {
+      return;
+    }
+    final preferred = _resolveDefaultAccount(accounts);
+    if (preferred != null && preferred.id != null) {
+      _updateAccountSelection(preferred.id!);
+    }
   }
 
   void _updateAccountSelection(int accountId) {
@@ -186,6 +235,7 @@ class _ReviewScreenState extends ConsumerState<ReviewScreen> {
   void dispose() {
     _entryFlowSubscription.close();
     _accountsSubscription.close();
+    _defaultAccountSubscription.close();
     selectedDate.dispose();
     selectedAccountId.dispose();
     amountMinor.dispose();
