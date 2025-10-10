@@ -14,7 +14,7 @@ enum AnalyticsTab { planned, unplanned }
 
 @immutable
 class AnalyticsFilterState {
-  const AnalyticsFilterState({
+  AnalyticsFilterState({
     required this.from,
     required this.to,
     required this.interval,
