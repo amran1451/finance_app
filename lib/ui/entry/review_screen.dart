@@ -268,7 +268,9 @@ class _ReviewScreenState extends ConsumerState<ReviewScreen> {
     final controller = ref.read(entryFlowControllerProvider.notifier);
     final (periodStart, periodEndExclusive) = ref.watch(periodBoundsProvider);
     final accountsAsync = ref.watch(activeAccountsProvider);
-    final isEditing = entryState.editingRecord != null;
+    final editingRecord = entryState.editingRecord;
+    final editingCounterpart = entryState.editingCounterpart;
+    final isEditing = editingRecord != null;
 
     final operationKind = operationKindFromType(entryState.type);
     final isIncome = operationKind == OperationKind.income;
@@ -276,7 +278,10 @@ class _ReviewScreenState extends ConsumerState<ReviewScreen> {
     final isSaving = operationKind == OperationKind.saving;
     final isQuickAddKind = isExpense || isIncome || isSaving;
     final isPlannedExpense = isExpense && (_forcePlanned || _asPlanned);
-    final showPlanToggle = isExpense && !_forcePlanned;
+    final isPlanGeneratedInstance = editingRecord != null &&
+        editingRecord.planInstanceId != null &&
+        (editingRecord.source?.toLowerCase() == 'plan');
+    final showPlanToggle = isExpense && !_forcePlanned && !isPlanGeneratedInstance;
     final showNecessitySection = isSaving || isPlannedExpense;
     final showReasonSection = isExpense && !isPlannedExpense;
 
@@ -389,9 +394,9 @@ class _ReviewScreenState extends ConsumerState<ReviewScreen> {
         );
         return;
       }
-      final editingRecord = entryState.editingRecord;
-      final editingCounterpart = entryState.editingCounterpart;
       final isEditingOperation = editingRecord != null;
+      final effectiveIsPlannedExpense =
+          isPlanGeneratedInstance ? false : isPlannedExpense;
 
       final selectedAccountValue = selectedAccountId.value;
       if (selectedAccountValue == _kUnselectedAccountId) {
@@ -534,8 +539,8 @@ class _ReviewScreenState extends ConsumerState<ReviewScreen> {
             )
           : null;
 
-      final includeInPeriod = entryState.includeInPeriod &&
-          (inCurrent || isEditingOperation);
+      final includeInPeriod = isPlanGeneratedInstance ||
+          (entryState.includeInPeriod && (inCurrent || isEditingOperation));
 
       final record = isEditingOperation
           ? editingRecord!.copyWith(
@@ -545,8 +550,9 @@ class _ReviewScreenState extends ConsumerState<ReviewScreen> {
               amountMinor: currentAmountMinor,
               date: normalizedDate,
               note: note,
-              isPlanned: isPlannedExpense,
-              includedInPeriod: isPlannedExpense ? false : includeInPeriod,
+              isPlanned: effectiveIsPlannedExpense,
+              includedInPeriod:
+                  effectiveIsPlannedExpense ? false : includeInPeriod,
               criticality: necessityCriticality,
               necessityId: necessityId,
               necessityLabel: necessityLabel,
@@ -561,8 +567,9 @@ class _ReviewScreenState extends ConsumerState<ReviewScreen> {
               amountMinor: currentAmountMinor,
               date: normalizedDate,
               note: note,
-              isPlanned: isPlannedExpense,
-              includedInPeriod: isPlannedExpense ? false : includeInPeriod,
+              isPlanned: effectiveIsPlannedExpense,
+              includedInPeriod:
+                  effectiveIsPlannedExpense ? false : includeInPeriod,
               criticality: necessityCriticality,
               necessityId: necessityId,
               necessityLabel: necessityLabel,
@@ -606,7 +613,8 @@ class _ReviewScreenState extends ConsumerState<ReviewScreen> {
       if (isEditingOperation) {
         await transactionsRepository.update(
           record,
-          includedInPeriod: isPlannedExpense ? null : includeInPeriod,
+          includedInPeriod:
+              effectiveIsPlannedExpense ? null : includeInPeriod,
           uiPeriod: targetPeriod,
         );
         if (editingCounterpart != null) {
@@ -614,8 +622,9 @@ class _ReviewScreenState extends ConsumerState<ReviewScreen> {
             amountMinor: currentAmountMinor,
             date: normalizedDate,
             note: note,
-            isPlanned: isPlannedExpense,
-            includedInPeriod: isPlannedExpense ? false : includeInPeriod,
+            isPlanned: effectiveIsPlannedExpense,
+            includedInPeriod:
+                effectiveIsPlannedExpense ? false : includeInPeriod,
             criticality: necessityCriticality,
             necessityId: necessityId,
             necessityLabel: necessityLabel,
@@ -625,7 +634,8 @@ class _ReviewScreenState extends ConsumerState<ReviewScreen> {
           );
           await transactionsRepository.update(
             updatedCounterpart,
-            includedInPeriod: isPlannedExpense ? null : includeInPeriod,
+            includedInPeriod:
+                effectiveIsPlannedExpense ? null : includeInPeriod,
             uiPeriod: targetPeriod,
           );
         }
@@ -633,7 +643,8 @@ class _ReviewScreenState extends ConsumerState<ReviewScreen> {
         await transactionsRepository.add(
           record,
           asSavingPair: entryState.type == CategoryType.saving,
-          includedInPeriod: isPlannedExpense ? null : includeInPeriod,
+          includedInPeriod:
+              effectiveIsPlannedExpense ? null : includeInPeriod,
           uiPeriod: targetPeriod,
         );
       }

@@ -7,6 +7,7 @@ import 'package:sqflite/sqflite.dart';
 import 'package:finance_app/data/db/app_database.dart';
 import 'package:finance_app/data/repositories/accounts_repository.dart';
 import 'package:finance_app/data/repositories/transactions_repository.dart';
+import 'package:finance_app/data/models/transaction_record.dart';
 import 'package:finance_app/utils/period_utils.dart';
 
 void main() {
@@ -129,6 +130,80 @@ void main() {
 
     final balanceAfter = await accountsRepository.getComputedBalanceMinor(accountId);
     expect(balanceAfter, -1500);
+  });
+
+  test('updating actual plan instance keeps it linked to original planned item',
+      () async {
+    final masterId = await db.insert('planned_master', {
+      'type': 'expense',
+      'title': 'Groceries Plan',
+      'default_amount_minor': 1000,
+      'category_id': categoryId,
+      'note': null,
+      'archived': 0,
+    });
+    final start = DateTime(2024, 1, 1);
+    final endExclusive = DateTime(2024, 2, 1);
+
+    await repository.assignMasterToPeriod(
+      masterId: masterId,
+      period: const PeriodRef(year: 2024, month: 1, half: HalfPeriod.first),
+      start: start,
+      endExclusive: endExclusive,
+      categoryId: categoryId,
+      amountMinor: 1500,
+      included: false,
+      accountId: accountId,
+    );
+
+    final plannedRows = await db.query(
+      'transactions',
+      where: 'planned_id = ?',
+      whereArgs: [masterId],
+      limit: 1,
+    );
+    expect(plannedRows, hasLength(1));
+    final plannedId = plannedRows.first['id'] as int;
+
+    await repository.setPlannedIncluded(plannedId, true);
+
+    final actualRows = await db.query(
+      'transactions',
+      where: 'plan_instance_id = ? AND is_planned = 0',
+      whereArgs: [plannedId],
+      limit: 1,
+    );
+    expect(actualRows, hasLength(1));
+
+    final actual = TransactionRecord.fromMap(actualRows.first);
+    final updatedDate = DateTime(2024, 1, 15);
+
+    await repository.update(
+      actual.copyWith(date: updatedDate),
+      includedInPeriod: true,
+      uiPeriod: const PeriodRef(year: 2024, month: 1, half: HalfPeriod.first),
+    );
+
+    final updatedRows = await db.query(
+      'transactions',
+      where: 'id = ?',
+      whereArgs: [actual.id],
+      limit: 1,
+    );
+    expect(updatedRows, hasLength(1));
+    final updated = TransactionRecord.fromMap(updatedRows.first);
+    expect(updated.date, updatedDate);
+    expect(updated.planInstanceId, plannedId);
+    expect(updated.source?.toLowerCase(), 'plan');
+
+    final plannedRowsAfter = await db.query(
+      'transactions',
+      where: 'planned_id = ?',
+      whereArgs: [masterId],
+      limit: 1,
+    );
+    expect(plannedRowsAfter, hasLength(1));
+    expect(plannedRowsAfter.first['id'], plannedId);
   });
 
   tearDown(() async {
