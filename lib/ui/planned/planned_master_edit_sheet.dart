@@ -594,6 +594,7 @@ class _PlannedMasterEditFormState
             start: bounds.start,
             endExclusive: bounds.endExclusive,
             includedInPeriod: value,
+            period: period,
             necessityId: record.type == TransactionType.expense
                 ? record.necessityId
                 : null,

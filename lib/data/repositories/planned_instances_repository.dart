@@ -24,6 +24,7 @@ abstract class PlannedInstancesRepository {
     required DateTime start,
     required DateTime endExclusive,
     required bool includedInPeriod,
+    required PeriodRef period,
     int? necessityId,
     int? categoryId,
     int? amountMinor,
@@ -96,6 +97,14 @@ class SqlitePlannedInstancesRepository implements PlannedInstancesRepository {
           'period_id': period.id,
         };
         await db.insert('transactions', values);
+        await db.insert(
+          'plan_period_links',
+          {
+            'plan_id': masterId,
+            'period_id': period.id,
+          },
+          conflictAlgorithm: ConflictAlgorithm.ignore,
+        );
       },
       executor: executor,
       debugContext: 'plannedInstances.assignMaster',
@@ -108,6 +117,7 @@ class SqlitePlannedInstancesRepository implements PlannedInstancesRepository {
     required DateTime start,
     required DateTime endExclusive,
     required bool includedInPeriod,
+    required PeriodRef period,
     int? necessityId,
     int? categoryId,
     int? amountMinor,
@@ -140,6 +150,7 @@ class SqlitePlannedInstancesRepository implements PlannedInstancesRepository {
             'necessity_id': necessityId,
             'necessity_label': necessityLabel,
             'note': sanitizedNote,
+            'period_id': period.id,
           };
           if (categoryId != null) {
             updateValues['category_id'] = categoryId;
@@ -147,12 +158,21 @@ class SqlitePlannedInstancesRepository implements PlannedInstancesRepository {
           if (amountMinor != null) {
             updateValues['amount_minor'] = amountMinor;
           }
-          return db.update(
+          final updated = await db.update(
             'transactions',
             updateValues,
             where: 'id = ?',
             whereArgs: [id],
           );
+          await db.insert(
+            'plan_period_links',
+            {
+              'plan_id': masterId,
+              'period_id': period.id,
+            },
+            conflictAlgorithm: ConflictAlgorithm.ignore,
+          );
+          return updated;
         }
 
         final masterRows = await db.query(
@@ -190,8 +210,17 @@ class SqlitePlannedInstancesRepository implements PlannedInstancesRepository {
           'reason_id': null,
           'reason_label': null,
           'payout_id': null,
+          'period_id': period.id,
         };
         await db.insert('transactions', insertValues);
+        await db.insert(
+          'plan_period_links',
+          {
+            'plan_id': masterId,
+            'period_id': period.id,
+          },
+          conflictAlgorithm: ConflictAlgorithm.ignore,
+        );
         return 1;
       },
       executor: executor,

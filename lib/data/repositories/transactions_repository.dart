@@ -186,6 +186,70 @@ class SqliteTransactionsRepository implements TransactionsRepository {
     );
   }
 
+  Future<(int, int)> _loadAnchorDays(DatabaseExecutor executor) async {
+    const anchorDay1Key = 'anchor_day_1';
+    const anchorDay2Key = 'anchor_day_2';
+    final rows = await executor.query(
+      'settings',
+      columns: ['key', 'value'],
+      where: 'key IN (?, ?)',
+      whereArgs: [anchorDay1Key, anchorDay2Key],
+    );
+    var day1 = 1;
+    var day2 = 15;
+    for (final row in rows) {
+      final key = row['key'] as String?;
+      final value = int.tryParse((row['value'] as String?) ?? '');
+      if (key == anchorDay1Key && value != null) {
+        day1 = value;
+      } else if (key == anchorDay2Key && value != null) {
+        day2 = value;
+      }
+    }
+    if (day1 > day2) {
+      final tmp = day1;
+      day1 = day2;
+      day2 = tmp;
+    }
+    return (day1.clamp(1, 31), day2.clamp(1, 31));
+  }
+
+  Future<String> _resolvePeriodId(
+    DatabaseExecutor executor,
+    DateTime date,
+    PeriodRef? uiPeriod,
+    String? existingPeriodId,
+  ) async {
+    if (uiPeriod != null) {
+      return uiPeriod.id;
+    }
+    if (existingPeriodId != null && existingPeriodId.isNotEmpty) {
+      return existingPeriodId;
+    }
+    final normalizedDate = DateTime(date.year, date.month, date.day);
+    final anchors = await _loadAnchorDays(executor);
+    final period = periodRefForDate(normalizedDate, anchors.$1, anchors.$2);
+    return period.id;
+  }
+
+  Future<void> _ensurePlanPeriodLink(
+    DatabaseExecutor executor, {
+    required int planId,
+    required String periodId,
+  }) async {
+    if (periodId.isEmpty) {
+      return;
+    }
+    await executor.insert(
+      'plan_period_links',
+      {
+        'plan_id': planId,
+        'period_id': periodId,
+      },
+      conflictAlgorithm: ConflictAlgorithm.ignore,
+    );
+  }
+
   @override
   Future<TransactionRecord?> findByPayoutId(int payoutId) async {
     final db = await _db;
@@ -218,9 +282,13 @@ class SqliteTransactionsRepository implements TransactionsRepository {
               ? TransactionType.saving
               : record.type,
         );
-        final resolvedRecord = uiPeriod != null
-            ? adjustedRecord.copyWith(periodId: uiPeriod.id)
-            : adjustedRecord;
+        final periodId = await _resolvePeriodId(
+          db,
+          adjustedRecord.date,
+          uiPeriod,
+          adjustedRecord.periodId,
+        );
+        final resolvedRecord = adjustedRecord.copyWith(periodId: periodId);
         final primaryValues = Map<String, Object?>.from(resolvedRecord.toMap())
           ..remove('id');
         if (resolvedRecord.type == TransactionType.income) {
@@ -260,6 +328,16 @@ class SqliteTransactionsRepository implements TransactionsRepository {
             }
             await db.insert('transactions', pairValues);
           }
+        }
+
+        final planId = resolvedRecord.plannedId;
+        final linkPeriodId = resolvedRecord.periodId;
+        if (planId != null && linkPeriodId != null) {
+          await _ensurePlanPeriodLink(
+            db,
+            planId: planId,
+            periodId: linkPeriodId,
+          );
         }
 
         return primaryId;
@@ -429,8 +507,13 @@ class SqliteTransactionsRepository implements TransactionsRepository {
     }
     await _runWrite<void>(
       (db) async {
-        final resolvedRecord =
-            uiPeriod != null ? record.copyWith(periodId: uiPeriod.id) : record;
+        final periodId = await _resolvePeriodId(
+          db,
+          record.date,
+          uiPeriod,
+          record.periodId,
+        );
+        final resolvedRecord = record.copyWith(periodId: periodId);
         final values = Map<String, Object?>.from(resolvedRecord.toMap());
         values.remove('id');
         if (resolvedRecord.type == TransactionType.income) {
@@ -449,6 +532,14 @@ class SqliteTransactionsRepository implements TransactionsRepository {
           where: 'id = ?',
           whereArgs: [id],
         );
+        final planId = resolvedRecord.plannedId;
+        if (planId != null && periodId.isNotEmpty) {
+          await _ensurePlanPeriodLink(
+            db,
+            planId: planId,
+            periodId: periodId,
+          );
+        }
       },
       executor: executor,
       debugContext: 'transactions.update',
@@ -515,9 +606,21 @@ class SqliteTransactionsRepository implements TransactionsRepository {
           'reason_id': null,
           'reason_label': null,
           'payout_id': null,
-          'period_id': period?.id,
         };
-        return db.insert('transactions', values);
+        final resolvedPeriodId = await _resolvePeriodId(
+          db,
+          date,
+          period,
+          values['period_id'] as String?,
+        );
+        values['period_id'] = resolvedPeriodId;
+        final insertedId = await db.insert('transactions', values);
+        await _ensurePlanPeriodLink(
+          db,
+          planId: plannedId,
+          periodId: resolvedPeriodId,
+        );
+        return insertedId;
       },
       executor: executor,
       debugContext: 'transactions.createPlannedInstance',
@@ -576,6 +679,11 @@ class SqliteTransactionsRepository implements TransactionsRepository {
           'period_id': period.id,
         };
         await db.insert('transactions', values);
+        await _ensurePlanPeriodLink(
+          db,
+          planId: masterId,
+          periodId: period.id,
+        );
       },
       executor: executor,
       debugContext: 'transactions.assignMasterToPeriod',
@@ -760,6 +868,15 @@ class SqliteTransactionsRepository implements TransactionsRepository {
           final values = Map<String, Object?>.from(operation.toMap())
             ..remove('id');
           await db.insert('transactions', values);
+          final planMasterId = planned.plannedId;
+          final planPeriodId = planned.periodId;
+          if (planMasterId != null && planPeriodId != null) {
+            await _ensurePlanPeriodLink(
+              db,
+              planId: planMasterId,
+              periodId: planPeriodId,
+            );
+          }
         } else {
           await db.delete(
             'transactions',

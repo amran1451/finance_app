@@ -91,8 +91,23 @@ Future<List<PlannedItemView>> _loadPlannedItemsForPeriod(
     endExclusive: entry.endExclusive,
     type: _typeToQuery(type),
     onlyIncluded: onlyIncluded ? true : null,
+    periodId: period.id,
   );
   if (records.isEmpty) {
+    return const [];
+  }
+  final deduped = <TransactionRecord>[];
+  final seenPlanIds = <int>{};
+  for (final record in records) {
+    final planId = record.plannedId;
+    if (planId != null) {
+      if (!seenPlanIds.add(planId)) {
+        continue;
+      }
+    }
+    deduped.add(record);
+  }
+  if (deduped.isEmpty) {
     return const [];
   }
   final categories = await categoriesRepo.getAll();
@@ -106,7 +121,7 @@ Future<List<PlannedItemView>> _loadPlannedItemsForPeriod(
       if (master.id != null) master.id!: master,
   };
   return [
-    for (final record in records)
+    for (final record in deduped)
       PlannedItemView(
         record: record,
         category: categoriesById[record.categoryId],
