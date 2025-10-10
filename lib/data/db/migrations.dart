@@ -8,7 +8,7 @@ class AppMigrations {
   AppMigrations._();
 
   /// Latest schema version supported by the application.
-  static const int latestVersion = 18;
+  static const int latestVersion = 19;
 
   static final Map<int, List<String>> _migrationScripts = {
     1: [
@@ -166,6 +166,13 @@ class AppMigrations {
       'ALTER TABLE transactions ADD COLUMN period_id TEXT NULL',
       'CREATE INDEX IF NOT EXISTS idx_transactions_period ON transactions(period_id)',
     ],
+    19: [
+      'CREATE TABLE IF NOT EXISTS plan_period_links('
+          'id INTEGER PRIMARY KEY AUTOINCREMENT, '
+          'plan_id INTEGER NOT NULL, '
+          'period_id TEXT NOT NULL'
+          ')',
+    ],
   };
 
   /// Applies migrations from [oldVersion] (exclusive) up to [newVersion] (inclusive).
@@ -284,6 +291,18 @@ class AppMigrations {
           break;
         case 18:
           await _backfillTransactionPeriods(db);
+          break;
+        case 19:
+          await db.execute(
+            'DELETE FROM plan_period_links '
+            'WHERE rowid NOT IN ('
+            'SELECT MIN(rowid) FROM plan_period_links GROUP BY plan_id, period_id'
+            ')',
+          );
+          await db.execute(
+            'CREATE UNIQUE INDEX IF NOT EXISTS uniq_plan_period '
+            'ON plan_period_links(plan_id, period_id)',
+          );
           break;
         default:
           break;
