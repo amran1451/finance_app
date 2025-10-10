@@ -587,17 +587,22 @@ String _subtitleForRecord(
   Map<int, necessity_repo.NecessityLabel> necessityMap,
   Map<int, reason_repo.ReasonLabel> reasonMap,
 ) {
+  final isPlanOperation = record.isPlanned ||
+      (record.planInstanceId != null &&
+          (record.source?.toLowerCase() == 'plan'));
+
+  if (isPlanOperation) {
+    return record.necessityLabel ??
+        necessityMap[record.necessityId]?.name ??
+        'Без комментария';
+  }
+
   final note = record.note?.trim();
   if (note != null && note.isNotEmpty) {
     return note;
   }
 
   if (record.type == TransactionType.expense) {
-    if (record.isPlanned) {
-      return record.necessityLabel ??
-          necessityMap[record.necessityId]?.name ??
-          'Без комментария';
-    }
     return record.reasonLabel ??
         reasonMap[record.reasonId]?.name ??
         'Без комментария';
