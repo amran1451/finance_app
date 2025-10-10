@@ -899,34 +899,58 @@ class SqliteTransactionsRepository implements TransactionsRepository {
   }) async {
     assert(start.isBefore(endExclusive), 'Empty period bounds for $period');
     final db = await _db;
+    if (periodId != null && periodId.isNotEmpty) {
+      final rows = await db.rawQuery(
+        '''
+        SELECT COALESCE(SUM(amount_minor), 0) AS total
+        FROM (
+          SELECT
+            ppl.plan_id,
+            COALESCE(
+              MAX(plan_tx.amount_minor),
+              pm.default_amount_minor,
+              0
+            ) AS amount_minor
+          FROM plan_period_links ppl
+          JOIN planned_master pm
+            ON pm.id = ppl.plan_id
+          LEFT JOIN transactions plan_tx
+            ON plan_tx.planned_id = ppl.plan_id
+           AND plan_tx.period_id = ppl.period_id
+           AND plan_tx.is_planned = 1
+           AND plan_tx.type = 'expense'
+          WHERE ppl.period_id = ?
+            AND ppl.included = 1
+            AND pm.type = 'expense'
+            AND pm.archived = 0
+          GROUP BY ppl.plan_id, ppl.period_id
+        ) AS plan_amounts
+        ''',
+        [periodId],
+      );
+      if (rows.isEmpty) {
+        return 0;
+      }
+      return _readInt(rows.first['total']);
+    }
+
     final query = StringBuffer(
       'SELECT COALESCE(SUM(amount_minor), 0) AS total '
       'FROM transactions '
       "WHERE is_planned = 1 "
-      "AND type = 'expense' ",
+      "AND type = 'expense' "
+      'AND included_in_period = 1 '
+      'AND date >= ? AND date < ?',
     );
-    final args = <Object?>[];
-    if (periodId != null) {
-      query.write('AND period_id = ?');
-      args.add(periodId);
-    } else {
-      query.write('AND date >= ? AND date < ?');
-      args
-        ..add(_formatDate(start))
-        ..add(_formatDate(endExclusive));
-    }
+    final args = <Object?>[
+      _formatDate(start),
+      _formatDate(endExclusive),
+    ];
     final rows = await db.rawQuery(query.toString(), args);
     if (rows.isEmpty) {
       return 0;
     }
-    final value = rows.first['total'];
-    if (value is int) {
-      return value;
-    }
-    if (value is num) {
-      return value.toInt();
-    }
-    return 0;
+    return _readInt(rows.first['total']);
   }
 
   @override
