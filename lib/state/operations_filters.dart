@@ -54,6 +54,39 @@ final periodOperationsProvider =
 
     final result = [...transactions];
 
+    final plannedTransactions = await repository.getOperationItemsByPeriod(
+      bounds.start,
+      endInclusive,
+      type: type,
+      isPlanned: true,
+      aggregateSavingPairs: false,
+      periodId: selectedPeriod.id,
+    );
+
+    final plannedIdsWithActual = <int>{
+      for (final item in transactions)
+        if (item.record.planInstanceId != null)
+          item.record.planInstanceId!,
+    };
+
+    for (final planned in plannedTransactions) {
+      final plannedId = planned.record.id;
+      if (plannedId != null && plannedIdsWithActual.contains(plannedId)) {
+        continue;
+      }
+      result.add(planned);
+    }
+
+    result.sort((a, b) {
+      final cmp = b.record.date.compareTo(a.record.date);
+      if (cmp != 0) {
+        return cmp;
+      }
+      final aId = a.record.id ?? 0;
+      final bId = b.record.id ?? 0;
+      return bId.compareTo(aId);
+    });
+
     if (filter == OpTypeFilter.all || filter == OpTypeFilter.income) {
       final (anchor1, anchor2) = ref.watch(anchorDaysProvider);
       final payout = await ref.watch(payoutForSelectedPeriodProvider.future);

@@ -267,8 +267,9 @@ class _OperationsSection extends ConsumerWidget {
           (item) {
             final record = item.record;
             final category = categories[record.categoryId];
-            final isPlanOperation =
-                record.planInstanceId != null && (record.source?.toLowerCase() == 'plan');
+            final isPlanOperation = record.isPlanned ||
+                (record.planInstanceId != null &&
+                    (record.source?.toLowerCase() == 'plan'));
             return Card(
               margin: const EdgeInsets.only(bottom: 12),
               child: ListTile(
