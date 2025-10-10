@@ -132,6 +132,76 @@ void main() {
     expect(balanceAfter, -1500);
   });
 
+  test('sumPlannedExpenses counts only plans marked as included', () async {
+    final period = const PeriodRef(year: 2024, month: 1, half: HalfPeriod.first);
+    final start = DateTime(2024, 1, 1);
+    final endExclusive = DateTime(2024, 2, 1);
+
+    final masterId = await db.insert('planned_master', {
+      'type': 'expense',
+      'title': 'Groceries Plan',
+      'default_amount_minor': 1000,
+      'category_id': categoryId,
+      'note': null,
+      'archived': 0,
+    });
+
+    await repository.assignMasterToPeriod(
+      masterId: masterId,
+      period: period,
+      start: start,
+      endExclusive: endExclusive,
+      categoryId: categoryId,
+      amountMinor: 1500,
+      included: true,
+      accountId: accountId,
+    );
+
+    final plannedRows = await db.query(
+      'transactions',
+      where: 'is_planned = 1 AND planned_id = ?',
+      whereArgs: [masterId],
+      limit: 1,
+    );
+    expect(plannedRows, hasLength(1));
+    final plannedId = plannedRows.first['id'] as int;
+
+    final initialTotal = await repository.sumPlannedExpenses(
+      period: period,
+      start: start,
+      endExclusive: endExclusive,
+      periodId: period.id,
+    );
+    expect(initialTotal, 1500);
+
+    await repository.setPlannedIncluded(plannedId, false);
+
+    final afterToggleOff = await repository.sumPlannedExpenses(
+      period: period,
+      start: start,
+      endExclusive: endExclusive,
+      periodId: period.id,
+    );
+    expect(afterToggleOff, 0);
+
+    await repository.setPlannedIncluded(plannedId, true);
+
+    await db.update(
+      'transactions',
+      {'amount_minor': 2000},
+      where: 'id = ?',
+      whereArgs: [plannedId],
+    );
+
+    final afterAmountChange = await repository.sumPlannedExpenses(
+      period: period,
+      start: start,
+      endExclusive: endExclusive,
+      periodId: period.id,
+    );
+    expect(afterAmountChange, 2000);
+  });
+
   test('updating actual plan instance keeps it linked to original planned item',
       () async {
     final masterId = await db.insert('planned_master', {
