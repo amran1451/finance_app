@@ -102,8 +102,9 @@ class SqlitePlannedInstancesRepository implements PlannedInstancesRepository {
           {
             'plan_id': masterId,
             'period_id': period.id,
+            'included': includedInPeriod ? 1 : 0,
           },
-          conflictAlgorithm: ConflictAlgorithm.ignore,
+          conflictAlgorithm: ConflictAlgorithm.replace,
         );
       },
       executor: executor,
@@ -169,8 +170,9 @@ class SqlitePlannedInstancesRepository implements PlannedInstancesRepository {
             {
               'plan_id': masterId,
               'period_id': period.id,
+              'included': includedInPeriod ? 1 : 0,
             },
-            conflictAlgorithm: ConflictAlgorithm.ignore,
+            conflictAlgorithm: ConflictAlgorithm.replace,
           );
           return updated;
         }
@@ -218,8 +220,9 @@ class SqlitePlannedInstancesRepository implements PlannedInstancesRepository {
           {
             'plan_id': masterId,
             'period_id': period.id,
+            'included': includedInPeriod ? 1 : 0,
           },
-          conflictAlgorithm: ConflictAlgorithm.ignore,
+          conflictAlgorithm: ConflictAlgorithm.replace,
         );
         return 1;
       },

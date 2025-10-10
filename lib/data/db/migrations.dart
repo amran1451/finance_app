@@ -8,7 +8,7 @@ class AppMigrations {
   AppMigrations._();
 
   /// Latest schema version supported by the application.
-  static const int latestVersion = 19;
+  static const int latestVersion = 20;
 
   static final Map<int, List<String>> _migrationScripts = {
     1: [
@@ -173,6 +173,7 @@ class AppMigrations {
           'period_id TEXT NOT NULL'
           ')',
     ],
+    20: [],
   };
 
   /// Applies migrations from [oldVersion] (exclusive) up to [newVersion] (inclusive).
@@ -302,6 +303,15 @@ class AppMigrations {
           await db.execute(
             'CREATE UNIQUE INDEX IF NOT EXISTS uniq_plan_period '
             'ON plan_period_links(plan_id, period_id)',
+          );
+          break;
+        case 20:
+          await _ensureColumnExists(
+            db,
+            tableName: 'plan_period_links',
+            columnName: 'included',
+            alterStatement:
+                'ALTER TABLE plan_period_links ADD COLUMN included INTEGER NOT NULL DEFAULT 1',
           );
           break;
         default:
