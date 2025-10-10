@@ -372,6 +372,9 @@ class EntryFlowController extends StateNotifier<EntryFlowState> {
   }) {
     final amount = record.amountMinor / 100;
     final normalizedExpression = _formatExpressionValue(amount);
+    final isPlanOperation = record.isPlanned ||
+        (record.planInstanceId != null &&
+            (record.source?.toLowerCase() == 'plan'));
     state = EntryFlowState(
       expression: normalizedExpression,
       result: amount,
@@ -380,7 +383,7 @@ class EntryFlowController extends StateNotifier<EntryFlowState> {
       category: category,
       selectedDate: DateTime(record.date.year, record.date.month, record.date.day),
       note: record.note ?? '',
-      attachToPlanned: record.isPlanned,
+      attachToPlanned: isPlanOperation,
       necessityCriticality: record.criticality,
       necessityId: record.necessityId,
       necessityLabel: record.necessityLabel,
