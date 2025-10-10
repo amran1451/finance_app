@@ -59,6 +59,7 @@ final periodOperationsProvider =
       endInclusive,
       type: type,
       isPlanned: true,
+      includedInPeriod: true,
       aggregateSavingPairs: false,
       periodId: selectedPeriod.id,
     );
