@@ -100,7 +100,7 @@ void main() {
 
     final analyticsFilterOverride = analyticsFilterProvider.overrideWith((ref) {
       return AnalyticsFilterNotifier(
-        const AnalyticsFilterState(
+        AnalyticsFilterState(
           from: DateTime(2024, 1, 1),
           to: DateTime(2024, 1, 31),
           interval: AnalyticsInterval.days,
