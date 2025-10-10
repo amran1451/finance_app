@@ -534,7 +534,8 @@ class _ReviewScreenState extends ConsumerState<ReviewScreen> {
             )
           : null;
 
-      final includeInPeriod = entryState.includeInPeriod && inCurrent;
+      final includeInPeriod = entryState.includeInPeriod &&
+          (inCurrent || isEditingOperation);
 
       final record = isEditingOperation
           ? editingRecord!.copyWith(
