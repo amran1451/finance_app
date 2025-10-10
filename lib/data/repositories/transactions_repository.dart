@@ -362,14 +362,14 @@ class SqliteTransactionsRepository implements TransactionsRepository {
         }
         final record = TransactionRecord.fromMap(rows.first);
         final planInstanceId = record.planInstanceId;
-        final source = record.source?.toLowerCase();
+        final source = record.source?.trim().toLowerCase();
 
         if (record.isPlanned && record.id != null) {
           await deletePlannedInstance(record.id!, executor: db);
           return;
         }
 
-        if (planInstanceId != null && source == 'plan') {
+        if (planInstanceId != null && (source == null || source == 'plan')) {
           await setPlannedIncluded(
             planInstanceId,
             false,
