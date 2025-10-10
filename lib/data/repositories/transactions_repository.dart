@@ -351,6 +351,29 @@ class SqliteTransactionsRepository implements TransactionsRepository {
   Future<void> delete(int id, {DatabaseExecutor? executor}) async {
     await _runWrite<void>(
       (db) async {
+        final rows = await db.query(
+          'transactions',
+          where: 'id = ?',
+          whereArgs: [id],
+          limit: 1,
+        );
+        if (rows.isEmpty) {
+          return;
+        }
+        final record = TransactionRecord.fromMap(rows.first);
+        final planInstanceId = record.planInstanceId;
+        final source = record.source?.toLowerCase();
+
+        if (record.isPlanned && record.id != null) {
+          await deletePlannedInstance(record.id!, executor: db);
+          return;
+        }
+
+        if (planInstanceId != null && source == 'plan') {
+          await deletePlannedInstance(planInstanceId, executor: db);
+          return;
+        }
+
         await db.delete('transactions', where: 'id = ?', whereArgs: [id]);
       },
       executor: executor,
