@@ -370,7 +370,11 @@ class SqliteTransactionsRepository implements TransactionsRepository {
         }
 
         if (planInstanceId != null && source == 'plan') {
-          await deletePlannedInstance(planInstanceId, executor: db);
+          await setPlannedIncluded(
+            planInstanceId,
+            false,
+            executor: db,
+          );
           return;
         }
 
