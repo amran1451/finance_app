@@ -270,6 +270,77 @@ void main() {
     expect(actualAfterDeletion, isEmpty);
   });
 
+  test('deleting plan instance without explicit source resets inclusion',
+      () async {
+    final masterId = await db.insert('planned_master', {
+      'type': 'expense',
+      'title': 'Groceries Plan',
+      'default_amount_minor': 1000,
+      'category_id': categoryId,
+      'note': null,
+      'archived': 0,
+    });
+    final start = DateTime(2024, 1, 1);
+    final endExclusive = DateTime(2024, 2, 1);
+
+    await repository.assignMasterToPeriod(
+      masterId: masterId,
+      period: const PeriodRef(year: 2024, month: 1, half: HalfPeriod.first),
+      start: start,
+      endExclusive: endExclusive,
+      categoryId: categoryId,
+      amountMinor: 1500,
+      included: false,
+      accountId: accountId,
+    );
+
+    final plannedRows = await db.query(
+      'transactions',
+      where: 'planned_id = ?',
+      whereArgs: [masterId],
+      limit: 1,
+    );
+    expect(plannedRows, hasLength(1));
+    final plannedId = plannedRows.first['id'] as int;
+
+    await repository.setPlannedIncluded(plannedId, true);
+
+    final actualRows = await db.query(
+      'transactions',
+      where: 'plan_instance_id = ? AND is_planned = 0',
+      whereArgs: [plannedId],
+      limit: 1,
+    );
+    expect(actualRows, hasLength(1));
+    final actualId = actualRows.first['id'] as int;
+
+    // Simulate legacy data with trimmed/uppercase source values.
+    await db.update(
+      'transactions',
+      {'source': ' PLAN  '},
+      where: 'id = ?',
+      whereArgs: [actualId],
+    );
+
+    await repository.delete(actualId);
+
+    final plannedAfterDeletion = await db.query(
+      'transactions',
+      where: 'id = ?',
+      whereArgs: [plannedId],
+      limit: 1,
+    );
+    expect(plannedAfterDeletion, hasLength(1));
+    expect(plannedAfterDeletion.first['included_in_period'], 0);
+
+    final actualAfterDeletion = await db.query(
+      'transactions',
+      where: 'plan_instance_id = ?',
+      whereArgs: [plannedId],
+    );
+    expect(actualAfterDeletion, isEmpty);
+  });
+
   tearDown(() async {
     await AppDatabase.instance.close();
     final dbPath = p.join(dbDir.path, 'finance_app.db');
