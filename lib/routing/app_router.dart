@@ -5,7 +5,7 @@ import 'package:go_router/go_router.dart';
 import '../ui/accounts/account_create_stub.dart';
 import '../ui/accounts/account_edit_stub.dart';
 import '../ui/accounts/accounts_list_stub.dart';
-import '../ui/analytics/analytics_placeholder.dart';
+import '../ui/analytics/analytics_screen.dart';
 import '../ui/categories/category_create_stub.dart';
 import '../ui/entry/amount_screen.dart';
 import '../ui/entry/category_screen.dart';
@@ -44,7 +44,7 @@ final appRouterProvider = Provider<GoRouter>((ref) {
               GoRoute(
                 path: '/analytics',
                 name: RouteNames.analytics,
-                builder: (context, state) => const AnalyticsPlaceholder(),
+                builder: (context, state) => const AnalyticsScreen(),
               ),
             ],
           ),
