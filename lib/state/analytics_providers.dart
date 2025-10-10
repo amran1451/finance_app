@@ -19,7 +19,10 @@ class AnalyticsFilterState {
     required this.to,
     required this.interval,
     required this.preset,
-  }) : assert(!to.isBefore(from), 'Invalid analytics range: [$from; $to]');
+  }) : assert(
+          to.millisecondsSinceEpoch >= from.millisecondsSinceEpoch,
+          'Invalid analytics range: [$from; $to]',
+        );
 
   final DateTime from;
   final DateTime to;
@@ -84,24 +87,27 @@ class AnalyticsFilterNotifier extends StateNotifier<AnalyticsFilterState> {
     state = state.copyWith(interval: interval);
   }
 
-  (DateTime start, DateTime end) _currentHalfBounds() {
+  ({DateTime start, DateTime end}) _currentHalfBounds() {
     final now = DateTime.now();
     final period = periodRefForDate(now, _anchor1, _anchor2);
     final bounds = period.bounds(_anchor1, _anchor2);
     final endInclusive = bounds.endExclusive.subtract(const Duration(days: 1));
-    return (bounds.start, endInclusive.isBefore(bounds.start) ? bounds.start : endInclusive);
+    return (
+      start: bounds.start,
+      end: endInclusive.isBefore(bounds.start) ? bounds.start : endInclusive,
+    );
   }
 
-  (DateTime start, DateTime end) _monthBounds(DateTime monthSeed) {
+  ({DateTime start, DateTime end}) _monthBounds(DateTime monthSeed) {
     final normalized = DateTime(monthSeed.year, monthSeed.month, 1);
     final start = normalized;
     final endExclusive = DateTime(normalized.year, normalized.month + 1, 1);
     final endInclusive = endExclusive.subtract(const Duration(days: 1));
-    return (start, endInclusive);
+    return (start: start, end: endInclusive);
   }
 
   void _applyBounds(
-    (DateTime start, DateTime end) bounds,
+    ({DateTime start, DateTime end}) bounds,
     AnalyticsRangePreset preset,
   ) {
     state = state.copyWith(

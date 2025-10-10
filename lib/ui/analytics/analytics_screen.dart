@@ -614,7 +614,6 @@ class _AnalyticsSeriesChart extends StatelessWidget {
         maxY: maxY == 0 ? 1 : maxY * 1.2,
         lineTouchData: LineTouchData(
           touchTooltipData: LineTouchTooltipData(
-            tooltipBgColor: theme.colorScheme.surfaceVariant.withOpacity(0.9),
             getTooltipItems: (items) {
               return items
                   .map(
