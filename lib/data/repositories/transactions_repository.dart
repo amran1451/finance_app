@@ -236,17 +236,39 @@ class SqliteTransactionsRepository implements TransactionsRepository {
     DatabaseExecutor executor, {
     required int planId,
     required String periodId,
+    bool? included,
   }) async {
     if (periodId.isEmpty) {
       return;
     }
+    final values = <String, Object?>{
+      'plan_id': planId,
+      'period_id': periodId,
+    };
+    final algorithm = included == null
+        ? ConflictAlgorithm.ignore
+        : ConflictAlgorithm.replace;
+    if (included != null) {
+      values['included'] = included ? 1 : 0;
+    }
     await executor.insert(
       'plan_period_links',
-      {
-        'plan_id': planId,
-        'period_id': periodId,
-      },
-      conflictAlgorithm: ConflictAlgorithm.ignore,
+      values,
+      conflictAlgorithm: algorithm,
+    );
+  }
+
+  Future<void> _setPlanPeriodLinkIncluded(
+    DatabaseExecutor executor, {
+    required int planId,
+    required String periodId,
+    required bool included,
+  }) async {
+    await _ensurePlanPeriodLink(
+      executor,
+      planId: planId,
+      periodId: periodId,
+      included: included,
     );
   }
 
@@ -337,6 +359,7 @@ class SqliteTransactionsRepository implements TransactionsRepository {
             db,
             planId: planId,
             periodId: linkPeriodId,
+            included: true,
           );
         }
 
@@ -361,24 +384,61 @@ class SqliteTransactionsRepository implements TransactionsRepository {
           return;
         }
         final record = TransactionRecord.fromMap(rows.first);
-        final planInstanceId = record.planInstanceId;
-        final source = record.source?.trim().toLowerCase();
+        final plannedId = record.plannedId;
+        final periodId = record.periodId;
 
         if (record.isPlanned && record.id != null) {
           await deletePlannedInstance(record.id!, executor: db);
           return;
         }
 
-        if (planInstanceId != null && (source == null || source == 'plan')) {
-          await setPlannedIncluded(
-            planInstanceId,
-            false,
-            executor: db,
-          );
-          return;
-        }
-
         await db.delete('transactions', where: 'id = ?', whereArgs: [id]);
+
+        if (plannedId != null && periodId != null && periodId.isNotEmpty) {
+          final remainingResult = await db.rawQuery(
+            'SELECT COUNT(*) AS total '
+            'FROM transactions '
+            'WHERE planned_id = ? AND period_id = ? AND is_planned = 0',
+            [plannedId, periodId],
+          );
+          final remaining = remainingResult.isNotEmpty
+              ? _readInt(remainingResult.first['total'])
+              : 0;
+          final nowIso = DateTime.now().toIso8601String();
+          if (remaining == 0) {
+            await db.update(
+              'transactions',
+              {
+                'included_in_period': 0,
+                'updated_at': nowIso,
+              },
+              where: 'is_planned = 1 AND planned_id = ? AND period_id = ?',
+              whereArgs: [plannedId, periodId],
+            );
+            await _setPlanPeriodLinkIncluded(
+              db,
+              planId: plannedId,
+              periodId: periodId,
+              included: false,
+            );
+          } else {
+            await db.update(
+              'transactions',
+              {
+                'included_in_period': 1,
+                'updated_at': nowIso,
+              },
+              where: 'is_planned = 1 AND planned_id = ? AND period_id = ?',
+              whereArgs: [plannedId, periodId],
+            );
+            await _setPlanPeriodLinkIncluded(
+              db,
+              planId: plannedId,
+              periodId: periodId,
+              included: true,
+            );
+          }
+        }
       },
       executor: executor,
       debugContext: 'transactions.delete',
@@ -390,6 +450,16 @@ class SqliteTransactionsRepository implements TransactionsRepository {
       {DatabaseExecutor? executor}) async {
     await _runWrite<void>(
       (db) async {
+        final plannedRows = await db.query(
+          'transactions',
+          where: 'is_planned = 1 AND id = ?',
+          whereArgs: [plannedId],
+          limit: 1,
+        );
+        TransactionRecord? plannedRecord;
+        if (plannedRows.isNotEmpty) {
+          plannedRecord = TransactionRecord.fromMap(plannedRows.first);
+        }
         await db.delete(
           'transactions',
           where: 'plan_instance_id = ? AND source = ?',
@@ -400,6 +470,16 @@ class SqliteTransactionsRepository implements TransactionsRepository {
           where: 'id = ? AND is_planned = 1',
           whereArgs: [plannedId],
         );
+        final planMasterId = plannedRecord?.plannedId;
+        final periodId = plannedRecord?.periodId;
+        if (planMasterId != null && periodId != null && periodId.isNotEmpty) {
+          await _setPlanPeriodLinkIncluded(
+            db,
+            planId: planMasterId,
+            periodId: periodId,
+            included: false,
+          );
+        }
       },
       executor: executor,
       debugContext: 'transactions.deletePlannedInstance',
@@ -565,6 +645,7 @@ class SqliteTransactionsRepository implements TransactionsRepository {
             db,
             planId: planId,
             periodId: periodId,
+            included: true,
           );
         }
       },
@@ -646,6 +727,7 @@ class SqliteTransactionsRepository implements TransactionsRepository {
           db,
           planId: plannedId,
           periodId: resolvedPeriodId,
+          included: includedInPeriod,
         );
         return insertedId;
       },
@@ -710,6 +792,7 @@ class SqliteTransactionsRepository implements TransactionsRepository {
           db,
           planId: masterId,
           periodId: period.id,
+          included: included,
         );
       },
       executor: executor,
@@ -861,6 +944,8 @@ class SqliteTransactionsRepository implements TransactionsRepository {
           return;
         }
         final planned = TransactionRecord.fromMap(plannedRows.first);
+        final planMasterId = planned.plannedId;
+        final planPeriodId = planned.periodId;
         await db.update(
           'transactions',
           {
@@ -870,6 +955,14 @@ class SqliteTransactionsRepository implements TransactionsRepository {
           where: 'id = ?',
           whereArgs: [plannedId],
         );
+        if (planMasterId != null && planPeriodId != null) {
+          await _setPlanPeriodLinkIncluded(
+            db,
+            planId: planMasterId,
+            periodId: planPeriodId,
+            included: included,
+          );
+        }
         if (included) {
           final existing = await db.query(
             'transactions',
@@ -895,15 +988,6 @@ class SqliteTransactionsRepository implements TransactionsRepository {
           final values = Map<String, Object?>.from(operation.toMap())
             ..remove('id');
           await db.insert('transactions', values);
-          final planMasterId = planned.plannedId;
-          final planPeriodId = planned.periodId;
-          if (planMasterId != null && planPeriodId != null) {
-            await _ensurePlanPeriodLink(
-              db,
-              planId: planMasterId,
-              periodId: planPeriodId,
-            );
-          }
         } else {
           await db.delete(
             'transactions',
@@ -1237,6 +1321,19 @@ class SqliteTransactionsRepository implements TransactionsRepository {
       }
     }
     return result;
+  }
+
+  int _readInt(Object? value) {
+    if (value is int) {
+      return value;
+    }
+    if (value is num) {
+      return value.toInt();
+    }
+    if (value is String) {
+      return int.tryParse(value) ?? 0;
+    }
+    return 0;
   }
 
   String _savingPairKey(TransactionRecord record) {
