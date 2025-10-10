@@ -5,9 +5,12 @@ import '../../data/models/category.dart';
 import '../../data/models/transaction_record.dart';
 import '../../data/repositories/necessity_repository.dart';
 import '../../state/app_providers.dart';
+import '../../state/budget_providers.dart';
 import '../../state/db_refresh.dart';
 import '../../state/planned_master_providers.dart';
 import '../../state/planned_providers.dart';
+import '../../utils/formatting.dart';
+import '../../utils/period_utils.dart';
 import '../widgets/necessity_choice_chip.dart';
 
 CategoryType _categoryTypeFor(PlannedType type) {
@@ -106,6 +109,7 @@ class _PlannedAddFormState extends ConsumerState<_PlannedAddForm> {
   bool _legacyLabelResolved = false;
   bool _defaultLabelApplied = false;
   String? _categoryError;
+  late DateTime _selectedDate;
 
   @override
   void initState() {
@@ -126,9 +130,25 @@ class _PlannedAddFormState extends ConsumerState<_PlannedAddForm> {
       _legacyLabelResolved =
           _selectedNecessityId != null || _legacyNecessityLabel == null;
       _defaultLabelApplied = _selectedNecessityId != null;
+      _selectedDate = DateTime(
+        initial.date.year,
+        initial.date.month,
+        initial.date.day,
+      );
     } else {
       _nameController.text = fallbackTitle ?? '';
       _legacyLabelResolved = true;
+      final bounds = ref.read(periodBoundsProvider);
+      final today = DateUtils.dateOnly(DateTime.now());
+      final start = DateUtils.dateOnly(bounds.$1);
+      final endExclusive = DateUtils.dateOnly(bounds.$2);
+      if (today.isBefore(start)) {
+        _selectedDate = start;
+      } else if (!today.isBefore(endExclusive)) {
+        _selectedDate = endExclusive.subtract(const Duration(days: 1));
+      } else {
+        _selectedDate = today;
+      }
     }
 
     if (widget.type == PlannedType.income) {
@@ -137,6 +157,8 @@ class _PlannedAddFormState extends ConsumerState<_PlannedAddForm> {
       _legacyLabelResolved = true;
       _defaultLabelApplied = true;
     }
+
+    _ensureDateWithinBounds();
   }
 
   @override
@@ -346,6 +368,36 @@ class _PlannedAddFormState extends ConsumerState<_PlannedAddForm> {
                       ),
                     ),
                 ],
+                const SizedBox(height: 16),
+                Builder(builder: (context) {
+                  final bounds = ref.watch(periodBoundsProvider);
+                  final firstDate = DateUtils.dateOnly(bounds.$1);
+                  final rawLastDate = DateUtils.dateOnly(
+                    bounds.$2.subtract(const Duration(days: 1)),
+                  );
+                  final lastDate = rawLastDate.isBefore(firstDate)
+                      ? firstDate
+                      : rawLastDate;
+                  return ListTile(
+                    contentPadding: EdgeInsets.zero,
+                    leading: const Icon(Icons.event_outlined),
+                    title: const Text('Дата'),
+                    subtitle: Text(formatDate(_selectedDate)),
+                    onTap: () async {
+                      final picked = await showDatePicker(
+                        context: context,
+                        initialDate: _selectedDate,
+                        firstDate: firstDate,
+                        lastDate: lastDate,
+                      );
+                      if (picked != null && mounted) {
+                        setState(() {
+                          _selectedDate = DateUtils.dateOnly(picked);
+                        });
+                      }
+                    },
+                  );
+                }),
                 const SizedBox(height: 24),
                 Row(
                   children: [
@@ -427,13 +479,17 @@ class _PlannedAddFormState extends ConsumerState<_PlannedAddForm> {
       final master = await ref.read(plannedMasterRepoProvider).getById(masterId);
       originalMasterTitle = master?.title.trim();
     }
+
+    final normalizedDate = DateUtils.dateOnly(_selectedDate);
+    final (anchor1, anchor2) = ref.read(anchorDaysProvider);
+    final targetPeriod = periodRefForDate(normalizedDate, anchor1, anchor2);
     final record = TransactionRecord(
       id: existing?.id,
       accountId: existing?.accountId ?? accountId,
       categoryId: categoryId,
       type: _transactionTypeFor(widget.type),
       amountMinor: amountMinor,
-      date: existing?.date ?? DateTime.now(),
+      date: normalizedDate,
       note: title,
       plannedId: existing?.plannedId,
       isPlanned: true,
@@ -441,6 +497,7 @@ class _PlannedAddFormState extends ConsumerState<_PlannedAddForm> {
       criticality: criticality,
       necessityId: necessityId,
       necessityLabel: necessityLabel,
+      periodId: targetPeriod.id,
     );
 
     if (existing == null) {
@@ -508,5 +565,18 @@ class _PlannedAddFormState extends ConsumerState<_PlannedAddForm> {
     return _editingId == null
         ? 'Добавить $base'
         : 'Редактировать $base';
+  }
+
+  void _ensureDateWithinBounds() {
+    final bounds = ref.read(periodBoundsProvider);
+    final start = DateUtils.dateOnly(bounds.$1);
+    final endExclusive = DateUtils.dateOnly(bounds.$2);
+    if (_selectedDate.isBefore(start)) {
+      _selectedDate = start;
+      return;
+    }
+    if (!_selectedDate.isBefore(endExclusive)) {
+      _selectedDate = endExclusive.subtract(const Duration(days: 1));
+    }
   }
 }
