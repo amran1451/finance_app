@@ -136,10 +136,33 @@ class SqliteAccountsRepository implements AccountsRepository {
     final expenseSum = _readInt(row['expense_sum']);
     final savingSum = _readInt(row['saving_sum']);
 
+    final plannedExpenseRows = await db.rawQuery(
+      '''
+      SELECT COALESCE(SUM(amount_minor), 0) AS total
+      FROM transactions plan
+      WHERE plan.account_id = ?
+        AND COALESCE(plan.is_planned, 0) = 1
+        AND plan.type = 'expense'
+        AND plan.included_in_period = 1
+        AND NOT EXISTS (
+          SELECT 1
+          FROM transactions actual
+          WHERE actual.plan_instance_id = plan.id
+            AND COALESCE(actual.is_planned, 0) = 0
+        )
+      ''',
+      [accountId],
+    );
+    final plannedExpenseSum = plannedExpenseRows.isNotEmpty
+        ? _readInt(plannedExpenseRows.first['total'])
+        : 0;
+
     final incomingSaving = isSavingsAccount ? savingSum : 0;
     final outgoingSaving = isSavingsAccount ? 0 : savingSum;
 
-    return startBalance + incomeSum - expenseSum + incomingSaving - outgoingSaving;
+    final totalExpenses = expenseSum + plannedExpenseSum;
+
+    return startBalance + incomeSum - totalExpenses + incomingSaving - outgoingSaving;
   }
 
   @override

@@ -57,9 +57,6 @@ class HomeScreen extends ConsumerWidget {
         ? (transactionsAsync as AsyncError).error
         : null;
     final hasOperations = transactions.isNotEmpty;
-    final periodExpenseMinor = transactions
-        .where((record) => record.type == TransactionType.expense)
-        .fold<int>(0, (sum, record) => sum + record.amountMinor);
     final periodIncomeMinor = transactions
         .where((record) => record.type == TransactionType.income)
         .fold<int>(0, (sum, record) => sum + record.amountMinor);
@@ -89,11 +86,11 @@ class HomeScreen extends ConsumerWidget {
       );
     }
 
-    final periodExpenseLabel = isTransactionsLoading
-        ? 'Загрузка…'
-        : transactionsError != null
-            ? 'Ошибка'
-            : formatCurrencyMinor(periodExpenseMinor);
+    final todayExpenseLabel = metricsAsync.when(
+      data: (metrics) => formatCurrencyMinor(metrics.todaySpent),
+      loading: () => 'Загрузка…',
+      error: (_, __) => 'Ошибка',
+    );
     final periodIncomeLabel = isTransactionsLoading
         ? 'Загрузка…'
         : transactionsError != null
@@ -330,7 +327,9 @@ class HomeScreen extends ConsumerWidget {
                 FilledButton.tonalIcon(
                   onPressed: () => context.pushNamed(RouteNames.operations),
                   icon: const Icon(Icons.receipt_long),
-                  label: Text('Открыть операции периода · $periodExpenseLabel'),
+                  label: Text(
+                    'Открыть операции периода · $todayExpenseLabel',
+                  ),
                 ),
               const SizedBox(height: 8),
               Text(
