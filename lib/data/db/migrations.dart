@@ -8,7 +8,7 @@ class AppMigrations {
   AppMigrations._();
 
   /// Latest schema version supported by the application.
-  static const int latestVersion = 20;
+  static const int latestVersion = 21;
 
   static final Map<int, List<String>> _migrationScripts = {
     1: [
@@ -174,6 +174,7 @@ class AppMigrations {
           ')',
     ],
     20: [],
+    21: [],
   };
 
   /// Applies migrations from [oldVersion] (exclusive) up to [newVersion] (inclusive).
@@ -314,6 +315,9 @@ class AppMigrations {
                 'ALTER TABLE plan_period_links ADD COLUMN included INTEGER NOT NULL DEFAULT 1',
           );
           break;
+        case 21:
+          await _synchronizePlannedFlags(db);
+          break;
         default:
           break;
       }
@@ -376,6 +380,25 @@ class AppMigrations {
     }
 
     await batch.commit(noResult: true);
+  }
+
+  static Future<void> _synchronizePlannedFlags(Database db) async {
+    await db.execute(
+      'UPDATE transactions SET is_planned = 0 WHERE is_planned IS NULL',
+    );
+    await db.execute(
+      'UPDATE transactions SET is_planned = 1 WHERE planned_id IS NOT NULL',
+    );
+    await db.execute(
+      'UPDATE transactions SET is_planned = 0 WHERE planned_id IS NULL',
+    );
+    try {
+      await db.execute(
+        'ALTER TABLE transactions ALTER COLUMN is_planned SET DEFAULT 0',
+      );
+    } catch (_) {
+      // Ignored: SQLite versions prior to 3.35 do not support ALTER COLUMN.
+    }
   }
 
   static Future<(int, int)> _loadAnchorDays(Database db) async {

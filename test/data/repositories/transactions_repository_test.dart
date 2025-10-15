@@ -123,7 +123,7 @@ void main() {
 
     final actualRows = await db.query(
       'transactions',
-      where: 'plan_instance_id = ? AND is_planned = 0',
+      where: 'plan_instance_id = ? AND COALESCE(is_planned, 0) = 0',
       whereArgs: [plannedId],
       limit: 1,
     );
@@ -161,7 +161,7 @@ void main() {
 
     final plannedRows = await db.query(
       'transactions',
-      where: 'is_planned = 1 AND planned_id = ?',
+      where: 'COALESCE(is_planned, 0) = 1 AND planned_id = ?',
       whereArgs: [masterId],
       limit: 1,
     );
@@ -241,7 +241,7 @@ void main() {
 
     final actualRows = await db.query(
       'transactions',
-      where: 'plan_instance_id = ? AND is_planned = 0',
+      where: 'plan_instance_id = ? AND COALESCE(is_planned, 0) = 0',
       whereArgs: [plannedId],
       limit: 1,
     );
@@ -315,7 +315,7 @@ void main() {
 
     final actualRows = await db.query(
       'transactions',
-      where: 'plan_instance_id = ? AND is_planned = 0',
+      where: 'plan_instance_id = ? AND COALESCE(is_planned, 0) = 0',
       whereArgs: [plannedId],
       limit: 1,
     );
@@ -379,7 +379,7 @@ void main() {
 
     final actualRows = await db.query(
       'transactions',
-      where: 'plan_instance_id = ? AND is_planned = 0',
+      where: 'plan_instance_id = ? AND COALESCE(is_planned, 0) = 0',
       whereArgs: [plannedId],
       limit: 1,
     );

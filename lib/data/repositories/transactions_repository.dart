@@ -145,7 +145,7 @@ abstract class TransactionsRepository {
     String? periodId,
   });
 
-  /// Сумма фактических расходов (type = 'expense', is_planned = 0)
+  /// Сумма фактических расходов (type = 'expense', COALESCE(is_planned, 0) = 0)
   /// на конкретную дату с защитой от выхода за границы периода.
   Future<int> sumExpensesOnDateWithinPeriod({
     required DateTime date,
@@ -154,7 +154,7 @@ abstract class TransactionsRepository {
     String? periodId,
   });
 
-  /// Сумма фактических расходов (type = 'expense', is_planned = 0)
+  /// Сумма фактических расходов (type = 'expense', COALESCE(is_planned, 0) = 0)
   /// в пределах периода [start, endExclusive).
   Future<int> sumActualExpenses({
     required PeriodRef period,
@@ -398,7 +398,8 @@ class SqliteTransactionsRepository implements TransactionsRepository {
           final remainingResult = await db.rawQuery(
             'SELECT COUNT(*) AS total '
             'FROM transactions '
-            'WHERE planned_id = ? AND period_id = ? AND is_planned = 0',
+            'WHERE planned_id = ? AND period_id = ? '
+            'AND COALESCE(is_planned, 0) = 0',
             [plannedId, periodId],
           );
           final remaining = remainingResult.isNotEmpty
@@ -412,7 +413,8 @@ class SqliteTransactionsRepository implements TransactionsRepository {
                 'included_in_period': 0,
                 'updated_at': nowIso,
               },
-              where: 'is_planned = 1 AND planned_id = ? AND period_id = ?',
+              where:
+                  'COALESCE(is_planned, 0) = 1 AND planned_id = ? AND period_id = ?',
               whereArgs: [plannedId, periodId],
             );
             await _setPlanPeriodLinkIncluded(
@@ -428,7 +430,8 @@ class SqliteTransactionsRepository implements TransactionsRepository {
                 'included_in_period': 1,
                 'updated_at': nowIso,
               },
-              where: 'is_planned = 1 AND planned_id = ? AND period_id = ?',
+              where:
+                  'COALESCE(is_planned, 0) = 1 AND planned_id = ? AND period_id = ?',
               whereArgs: [plannedId, periodId],
             );
             await _setPlanPeriodLinkIncluded(
@@ -452,7 +455,7 @@ class SqliteTransactionsRepository implements TransactionsRepository {
       (db) async {
         final plannedRows = await db.query(
           'transactions',
-          where: 'is_planned = 1 AND id = ?',
+          where: 'COALESCE(is_planned, 0) = 1 AND id = ?',
           whereArgs: [plannedId],
           limit: 1,
         );
@@ -467,7 +470,7 @@ class SqliteTransactionsRepository implements TransactionsRepository {
         );
         await db.delete(
           'transactions',
-          where: 'id = ? AND is_planned = 1',
+          where: 'id = ? AND COALESCE(is_planned, 0) = 1',
           whereArgs: [plannedId],
         );
         final planMasterId = plannedRecord?.plannedId;
@@ -546,7 +549,7 @@ class SqliteTransactionsRepository implements TransactionsRepository {
       args.add(_typeToString(type));
     }
     if (isPlanned != null) {
-      where.write(' AND is_planned = ?');
+      where.write(' AND COALESCE(is_planned, 0) = ?');
       args.add(isPlanned ? 1 : 0);
     }
     if (includedInPeriod != null) {
@@ -660,7 +663,7 @@ class SqliteTransactionsRepository implements TransactionsRepository {
     bool onlyIncluded = false,
   }) async {
     final db = await _db;
-    final where = StringBuffer('is_planned = 1');
+    final where = StringBuffer('COALESCE(is_planned, 0) = 1');
     final args = <Object?>[];
     if (type != null) {
       where.write(' AND type = ?');
@@ -809,7 +812,7 @@ class SqliteTransactionsRepository implements TransactionsRepository {
     String? periodId,
   }) async {
     final db = await _db;
-    final where = StringBuffer('is_planned = 1');
+    final where = StringBuffer('COALESCE(is_planned, 0) = 1');
     final args = <Object?>[];
     if (periodId != null) {
       where.write(' AND period_id = ?');
@@ -917,7 +920,7 @@ class SqliteTransactionsRepository implements TransactionsRepository {
           LEFT JOIN transactions plan_tx
             ON plan_tx.planned_id = ppl.plan_id
            AND plan_tx.period_id = ppl.period_id
-           AND plan_tx.is_planned = 1
+           AND COALESCE(plan_tx.is_planned, 0) = 1
            AND plan_tx.type = 'expense'
           WHERE ppl.period_id = ?
             AND ppl.included = 1
@@ -937,7 +940,7 @@ class SqliteTransactionsRepository implements TransactionsRepository {
     final query = StringBuffer(
       'SELECT COALESCE(SUM(amount_minor), 0) AS total '
       'FROM transactions '
-      "WHERE is_planned = 1 "
+      "WHERE COALESCE(is_planned, 0) = 1 "
       "AND type = 'expense' "
       'AND included_in_period = 1 '
       'AND date >= ? AND date < ?',
@@ -960,7 +963,7 @@ class SqliteTransactionsRepository implements TransactionsRepository {
       (db) async {
         final plannedRows = await db.query(
           'transactions',
-          where: 'is_planned = 1 AND id = ?',
+          where: 'COALESCE(is_planned, 0) = 1 AND id = ?',
           whereArgs: [plannedId],
           limit: 1,
         );
@@ -1060,7 +1063,7 @@ class SqliteTransactionsRepository implements TransactionsRepository {
     final query = StringBuffer(
       'SELECT COALESCE(SUM(amount_minor), 0) AS total '
       'FROM transactions '
-      "WHERE type = 'expense' AND is_planned = 0 "
+      "WHERE type = 'expense' AND COALESCE(is_planned, 0) = 0 "
       'AND included_in_period = 1 '
       'AND planned_id IS NULL '
       'AND date = ? AND date >= ? AND date < ?',
@@ -1101,7 +1104,7 @@ class SqliteTransactionsRepository implements TransactionsRepository {
       final rows = await db.rawQuery(
         'SELECT COALESCE(SUM(amount_minor), 0) AS total '
         'FROM transactions '
-        "WHERE type = 'expense' AND is_planned = 0 "
+        "WHERE type = 'expense' AND COALESCE(is_planned, 0) = 0 "
         'AND included_in_period = 1 AND planned_id IS NULL '
         'AND period_id = ?',
         [periodId],
@@ -1134,7 +1137,7 @@ class SqliteTransactionsRepository implements TransactionsRepository {
     final rows = await db.rawQuery(
       'SELECT SUM(amount_minor) AS total '
       'FROM transactions '
-      "WHERE type = 'expense' AND is_planned = 0 "
+      "WHERE type = 'expense' AND COALESCE(is_planned, 0) = 0 "
       "AND included_in_period = 1 AND planned_id IS NULL "
       "AND date BETWEEN ? AND ?",
       [_formatDate(normalizedFrom), _formatDate(endInclusive)],
@@ -1167,7 +1170,7 @@ class SqliteTransactionsRepository implements TransactionsRepository {
     final query = StringBuffer(
       'SELECT COALESCE(SUM(amount_minor), 0) AS total '
       'FROM transactions '
-      "WHERE type = 'expense' AND is_planned = 0 "
+      "WHERE type = 'expense' AND COALESCE(is_planned, 0) = 0 "
       'AND included_in_period = 1 '
       'AND planned_id IS NULL ',
     );
