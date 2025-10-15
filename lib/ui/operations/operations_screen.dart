@@ -100,8 +100,9 @@ class OperationsScreen extends ConsumerWidget {
           ),
         ),
         data: (transactions) {
-          final categories = categoriesAsync.asData?.value ?? const <int, Category>{};
-          final grouped = <DateTime, List<TransactionListItem>>{};
+          final categories =
+              categoriesAsync.asData?.value ?? const <int, Category>{};
+          final grouped = <DateTime, _DailyOperationsGroup>{};
           final dates = <DateTime>[];
 
           if (transactions.isNotEmpty) {
@@ -183,10 +184,11 @@ class OperationsScreen extends ConsumerWidget {
                         itemCount: dates.length,
                         itemBuilder: (context, index) {
                           final date = dates[index];
-                          final items = grouped[date]!;
+                          final group = grouped[date]!;
                           return _OperationsSection(
                             title: formatDate(date),
-                            transactions: items,
+                            group: group,
+                            filter: filter,
                             categories: categories,
                           );
                         },
@@ -219,12 +221,14 @@ class _SegmentLabel extends StatelessWidget {
 class _OperationsSection extends ConsumerWidget {
   const _OperationsSection({
     required this.title,
-    required this.transactions,
+    required this.group,
+    required this.filter,
     required this.categories,
   });
 
   final String title;
-  final List<TransactionListItem> transactions;
+  final _DailyOperationsGroup group;
+  final OpTypeFilter filter;
   final Map<int, Category> categories;
 
   @override
@@ -234,9 +238,9 @@ class _OperationsSection extends ConsumerWidget {
     final necessityMap = necessityMapAsync.value ?? const <int, necessity_repo.NecessityLabel>{};
     final reasonMapAsync = ref.watch(reasonMapProvider);
     final reasonMap = reasonMapAsync.value ?? const <int, reason_repo.ReasonLabel>{};
-    final dailyTotalMinor = _calculateDailyTotalMinor(transactions);
-    final dailySummaryLabel = _formatDailyTotalLabel(dailyTotalMinor);
-    final dailySummaryColor = _colorForDailyTotal(dailyTotalMinor);
+    final transactions = group.transactions;
+    final dailySummaryLabel = _formatDailyTotalLabel(filter, group);
+    final dailySummaryColor = _colorForDailyTotal(filter, group);
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -500,53 +504,85 @@ class _OperationActionsSheet extends StatelessWidget {
   }
 }
 
-Map<DateTime, List<TransactionListItem>> _groupByDate(
+Map<DateTime, _DailyOperationsGroup> _groupByDate(
   List<TransactionListItem> transactions,
 ) {
-  final grouped = <DateTime, List<TransactionListItem>>{};
+  final grouped = <DateTime, _DailyOperationsGroup>{};
   for (final item in transactions) {
     final record = item.record;
     final date = DateTime(record.date.year, record.date.month, record.date.day);
-    grouped.putIfAbsent(date, () => []).add(item);
+    final group = grouped.putIfAbsent(date, () => _DailyOperationsGroup());
+    group.transactions.add(item);
+    switch (record.type) {
+      case TransactionType.expense:
+        group.expenseTotalMinor += record.amountMinor;
+        break;
+      case TransactionType.income:
+        group.incomeTotalMinor += record.amountMinor;
+        break;
+      case TransactionType.saving:
+        group.savingTotalMinor += record.amountMinor;
+        break;
+    }
   }
   return grouped;
 }
 
-int _calculateDailyTotalMinor(List<TransactionListItem> transactions) {
-  var total = 0;
-  for (final item in transactions) {
-    total += _signedAmountMinor(item.record);
+String _formatDailyTotalLabel(
+  OpTypeFilter filter,
+  _DailyOperationsGroup group,
+) {
+  switch (filter) {
+    case OpTypeFilter.all:
+    case OpTypeFilter.expense:
+      final amount = group.expenseTotalMinor;
+      if (amount == 0) {
+        return formatCurrencyMinor(0);
+      }
+      return '−${formatCurrencyMinor(amount)}';
+    case OpTypeFilter.income:
+      final amount = group.incomeTotalMinor;
+      if (amount == 0) {
+        return formatCurrencyMinor(0);
+      }
+      return formatCurrencyMinor(amount);
+    case OpTypeFilter.saving:
+      final amount = group.savingTotalMinor;
+      if (amount == 0) {
+        return formatCurrencyMinor(0);
+      }
+      return formatCurrencyMinor(amount);
   }
-  return total;
 }
 
-String _formatDailyTotalLabel(int totalMinor) {
-  if (totalMinor == 0) {
-    return formatCurrencyMinor(0);
+Color? _colorForDailyTotal(
+  OpTypeFilter filter,
+  _DailyOperationsGroup group,
+) {
+  switch (filter) {
+    case OpTypeFilter.all:
+    case OpTypeFilter.expense:
+      return group.expenseTotalMinor > 0
+          ? _colorForType(TransactionType.expense)
+          : null;
+    case OpTypeFilter.income:
+      return group.incomeTotalMinor > 0
+          ? _colorForType(TransactionType.income)
+          : null;
+    case OpTypeFilter.saving:
+      return group.savingTotalMinor > 0
+          ? _colorForType(TransactionType.saving)
+          : null;
   }
-  final sign = totalMinor > 0 ? '+' : '−';
-  return '$sign${formatCurrencyMinor(totalMinor.abs())}';
 }
 
-Color? _colorForDailyTotal(int totalMinor) {
-  if (totalMinor > 0) {
-    return _colorForType(TransactionType.income);
-  }
-  if (totalMinor < 0) {
-    return _colorForType(TransactionType.expense);
-  }
-  return null;
-}
+class _DailyOperationsGroup {
+  _DailyOperationsGroup();
 
-int _signedAmountMinor(TransactionRecord record) {
-  switch (record.type) {
-    case TransactionType.income:
-      return record.amountMinor;
-    case TransactionType.expense:
-      return -record.amountMinor;
-    case TransactionType.saving:
-      return record.amountMinor;
-  }
+  final List<TransactionListItem> transactions = [];
+  int expenseTotalMinor = 0;
+  int incomeTotalMinor = 0;
+  int savingTotalMinor = 0;
 }
 
 Color _colorForType(TransactionType type) {
