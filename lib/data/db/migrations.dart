@@ -8,7 +8,7 @@ class AppMigrations {
   AppMigrations._();
 
   /// Latest schema version supported by the application.
-  static const int latestVersion = 21;
+  static const int latestVersion = 22;
 
   static final Map<int, List<String>> _migrationScripts = {
     1: [
@@ -175,6 +175,7 @@ class AppMigrations {
     ],
     20: [],
     21: [],
+    22: [],
   };
 
   /// Applies migrations from [oldVersion] (exclusive) up to [newVersion] (inclusive).
@@ -318,6 +319,9 @@ class AppMigrations {
         case 21:
           await _synchronizePlannedFlags(db);
           break;
+        case 22:
+          await _migrateDailyLimitSettingsToPayouts(db);
+          break;
         default:
           break;
       }
@@ -399,6 +403,64 @@ class AppMigrations {
     } catch (_) {
       // Ignored: SQLite versions prior to 3.35 do not support ALTER COLUMN.
     }
+  }
+
+  static Future<void> _migrateDailyLimitSettingsToPayouts(Database db) async {
+    const dailyLimitKey = 'daily_limit_minor';
+    const fromTodayKey = 'daily_limit_from_today';
+
+    final rows = await db.query(
+      'settings',
+      columns: ['key', 'value'],
+      where: 'key IN (?, ?)',
+      whereArgs: [dailyLimitKey, fromTodayKey],
+    );
+
+    int? dailyLimitMinor;
+    bool? fromToday;
+    for (final row in rows) {
+      final key = row['key'] as String?;
+      if (key == null) {
+        continue;
+      }
+      if (key == dailyLimitKey) {
+        final value = _readInt(row['value']);
+        if (value > 0) {
+          dailyLimitMinor = value;
+        }
+      } else if (key == fromTodayKey) {
+        final value = _readInt(row['value']);
+        fromToday = value != 0;
+      }
+    }
+
+    final updates = <String, Object?>{};
+    if (dailyLimitMinor != null) {
+      updates['daily_limit_minor'] = dailyLimitMinor;
+    }
+    if (fromToday == true) {
+      updates['daily_limit_from_today'] = 1;
+    }
+
+    if (updates.isEmpty) {
+      return;
+    }
+
+    final clauses = <String>[];
+    if (updates.containsKey('daily_limit_minor')) {
+      clauses.add('(daily_limit_minor IS NULL OR daily_limit_minor = 0)');
+    }
+    if (updates.containsKey('daily_limit_from_today')) {
+      clauses.add('(daily_limit_from_today IS NULL OR daily_limit_from_today = 0)');
+    }
+
+    final whereClause = clauses.isEmpty ? null : clauses.join(' OR ');
+
+    await db.update(
+      'payouts',
+      updates,
+      where: whereClause,
+    );
   }
 
   static Future<(int, int)> _loadAnchorDays(Database db) async {
