@@ -33,6 +33,7 @@ void main() {
     required bool included,
     bool planned = false,
     PeriodRef? period,
+    int? planId,
   }) async {
     final resolvedPeriod =
         period ?? periodRefForDate(date, anchors.$1, anchors.$2);
@@ -45,6 +46,7 @@ void main() {
       'is_planned': planned ? 1 : 0,
       'included_in_period': included ? 1 : 0,
       'period_id': resolvedPeriod.id,
+      'planned_id': planId,
     });
   }
 
@@ -439,6 +441,12 @@ void main() {
       included: true,
     );
     await insertTransaction(
+      date: start.add(const Duration(days: 2)),
+      amountMinor: 650,
+      included: true,
+      planId: 42,
+    );
+    await insertTransaction(
       date: start.add(const Duration(days: 5)),
       amountMinor: 900,
       included: true,
@@ -512,6 +520,12 @@ void main() {
       amountMinor: 3_000,
       included: true,
     );
+    await insertTransaction(
+      date: targetDate,
+      amountMinor: 2_500,
+      included: true,
+      planId: 77,
+    );
 
     const period = PeriodRef(year: 2024, month: 1, half: HalfPeriod.first);
     final total = await repository.sumExpensesOnDateWithinPeriod(
@@ -549,6 +563,12 @@ void main() {
       date: DateTime(2024, 1, 25),
       amountMinor: 500,
       included: true,
+    );
+    await insertTransaction(
+      date: DateTime(2024, 1, 18),
+      amountMinor: 400,
+      included: true,
+      planId: 108,
     );
     await insertTransaction(
       date: DateTime(2024, 2, 1),
