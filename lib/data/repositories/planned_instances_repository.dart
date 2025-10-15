@@ -132,7 +132,7 @@ class SqlitePlannedInstancesRepository implements PlannedInstancesRepository {
         final existing = await db.query(
           'transactions',
           where:
-              'is_planned = 1 AND planned_id = ? AND date >= ? AND date < ?',
+              'COALESCE(is_planned, 0) = 1 AND planned_id = ? AND date >= ? AND date < ?',
           whereArgs: [masterId, startDate, endDate],
           orderBy: 'date ASC, id ASC',
           limit: 1,

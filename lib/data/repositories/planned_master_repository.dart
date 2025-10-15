@@ -363,7 +363,7 @@ class SqlitePlannedMasterRepository implements PlannedMasterRepository {
   static const String _assignedNowExpression = '''
     EXISTS(
       SELECT 1 FROM transactions t
-      WHERE t.is_planned = 1
+      WHERE COALESCE(t.is_planned, 0) = 1
         AND t.planned_id = pm.id
         AND t.date >= ?
         AND t.date < ?
@@ -427,7 +427,7 @@ class SqlitePlannedMasterRepository implements PlannedMasterRepository {
         await db.update(
           'transactions',
           plannedUpdateValues,
-          where: 'is_planned = 1 AND planned_id = ?',
+          where: 'COALESCE(is_planned, 0) = 1 AND planned_id = ?',
           whereArgs: [id],
         );
         final actualUpdateValues = <String, Object?>{
@@ -609,7 +609,7 @@ class SqlitePlannedMasterRepository implements PlannedMasterRepository {
         AND NOT EXISTS (
           SELECT 1
           FROM transactions t
-          WHERE t.is_planned = 1
+          WHERE COALESCE(t.is_planned, 0) = 1
             AND t.planned_id = pm.id
             AND t.date >= ?2
             AND t.date < ?3
@@ -657,7 +657,7 @@ class SqlitePlannedMasterRepository implements PlannedMasterRepository {
       ..writeln('  JOIN periods p')
       ..writeln('    ON t.date >= p.start')
       ..writeln('   AND t.date < p.end_exclusive')
-      ..writeln('  WHERE t.is_planned = 1')
+      ..writeln('  WHERE COALESCE(t.is_planned, 0) = 1')
       ..writeln('    AND t.date >= ?')
       ..writeln('    AND t.date < ?')
       ..writeln('  GROUP BY t.planned_id')
@@ -733,7 +733,7 @@ class SqlitePlannedMasterRepository implements PlannedMasterRepository {
       ..writeln("  AND pm.type = 'expense'")
       ..writeln('  AND NOT EXISTS (')
       ..writeln('    SELECT 1 FROM transactions t')
-      ..writeln('    WHERE t.is_planned = 1')
+      ..writeln('    WHERE COALESCE(t.is_planned, 0) = 1')
       ..writeln('      AND t.planned_id = pm.id')
       ..writeln('      AND t.date >= ?')
       ..writeln('      AND t.date < ?')
