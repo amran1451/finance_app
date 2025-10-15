@@ -49,6 +49,12 @@ class TransactionRecord {
   final String? payoutPeriodId;
   final String? periodId;
 
+  /// Возвращает `true`, если операция связана с планом.
+  ///
+  /// Для фактических расходов, созданных на основе плана, поле [plannedId]
+  /// указывает на исходный план, поэтому достаточно проверить его наличие.
+  bool get isPlanOperation => plannedId != null;
+
   TransactionRecord copyWith({
     int? id,
     int? accountId,
