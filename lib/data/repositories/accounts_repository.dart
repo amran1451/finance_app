@@ -117,13 +117,20 @@ class SqliteAccountsRepository implements AccountsRepository {
   Future<int> calcAccountBalance(DatabaseExecutor db, int accountId) async {
     final rows = await db.rawQuery(
       '''
-      SELECT 
+      SELECT
         COALESCE(a.start_balance_minor, 0)
         + COALESCE(SUM(
-           CASE t.type
-             WHEN 'income' THEN t.amount_minor
-             WHEN 'expense' THEN -t.amount_minor
-             WHEN 'saving' THEN CASE
+           CASE
+             WHEN t.id IS NULL THEN 0
+             WHEN t.is_planned = 1 AND EXISTS (
+               SELECT 1
+               FROM transactions actual
+               WHERE actual.plan_instance_id = t.id
+                 AND actual.is_planned = 0
+             ) THEN 0
+             WHEN t.type = 'income' THEN t.amount_minor
+             WHEN t.type = 'expense' THEN -t.amount_minor
+             WHEN t.type = 'saving' THEN CASE
                WHEN LOWER(a.name) = ? THEN t.amount_minor
                ELSE -t.amount_minor
              END
