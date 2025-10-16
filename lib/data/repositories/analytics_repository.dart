@@ -24,7 +24,8 @@ class AnalyticsRepository {
         'plannedOnly and unplannedOnly cannot be true at the same time');
 
     final db = await _db;
-    final where = StringBuffer('t.type = ? AND t.is_planned = 0');
+    final where = StringBuffer(
+        't.type = ? AND t.is_planned = 0 AND t.plan_instance_id IS NULL');
     final args = <Object?>[_typeToString(type)];
     where.write(' AND date(t.date) >= ? AND date(t.date) <= ?');
     args..add(_formatDate(from))..add(_formatDate(to));
@@ -111,7 +112,8 @@ class AnalyticsRepository {
         'plannedOnly and unplannedOnly cannot be true at the same time');
     final db = await _db;
     final args = <Object?>[_typeToString(type)];
-    final where = StringBuffer('t.type = ? AND t.is_planned = 0');
+    final where = StringBuffer(
+        't.type = ? AND t.is_planned = 0 AND t.plan_instance_id IS NULL');
     where.write(' AND date(t.date) >= ? AND date(t.date) <= ?');
     args..add(_formatDate(from))..add(_formatDate(to));
     if (plannedOnly) {
