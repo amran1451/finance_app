@@ -77,6 +77,25 @@ void main() {
   });
 
   test(
+      'getComputedBalanceMinor includes planned operations when checkbox is set',
+      () async {
+    final period = periodRefForDate(DateTime(2024, 1, 10), anchors.$1, anchors.$2);
+    await db.insert('transactions', {
+      'account_id': accountId,
+      'category_id': categoryId,
+      'type': 'expense',
+      'amount_minor': 4200,
+      'date': formatDate(DateTime(2024, 1, 10)),
+      'is_planned': 1,
+      'included_in_period': 1,
+      'period_id': period.id,
+    });
+
+    final balance = await accountsRepository.getComputedBalanceMinor(accountId);
+    expect(balance, -4200);
+  });
+
+  test(
       'assignMasterToPeriod stores account id and inclusion updates account balance',
       () async {
     final masterId = await db.insert('planned_master', {

@@ -120,18 +120,7 @@ class SqliteAccountsRepository implements AccountsRepository {
     final isSavingsAccount =
         name.trim().toLowerCase() == savingsAccountName.toLowerCase();
 
-    final result = await db.rawQuery(
-      '''
-      SELECT
-        COALESCE(SUM(CASE WHEN type = 'income' THEN amount_minor END), 0) AS income_sum,
-        COALESCE(SUM(CASE WHEN type = 'expense' THEN amount_minor END), 0) AS expense_sum,
-        COALESCE(SUM(CASE WHEN type = 'saving' THEN amount_minor END), 0) AS saving_sum
-      FROM transactions
-      WHERE account_id = ? AND is_planned = 0
-      ''',
-      [accountId],
-    );
-    final row = result.first;
+    final row = await _calcAccountBalance(db, accountId);
     final incomeSum = _readInt(row['income_sum']);
     final expenseSum = _readInt(row['expense_sum']);
     final savingSum = _readInt(row['saving_sum']);
@@ -140,6 +129,44 @@ class SqliteAccountsRepository implements AccountsRepository {
     final outgoingSaving = isSavingsAccount ? 0 : savingSum;
 
     return startBalance + incomeSum - expenseSum + incomingSaving - outgoingSaving;
+  }
+
+  Future<Map<String, Object?>> _calcAccountBalance(
+    DatabaseExecutor db,
+    int accountId,
+  ) async {
+    final result = await db.rawQuery(
+      '''
+      SELECT
+        COALESCE(SUM(CASE WHEN t.type = 'income' THEN t.amount_minor END), 0) AS income_sum,
+        COALESCE(SUM(CASE WHEN t.type = 'expense' THEN t.amount_minor END), 0) AS expense_sum,
+        COALESCE(SUM(CASE WHEN t.type = 'saving' THEN t.amount_minor END), 0) AS saving_sum
+      FROM transactions t
+      WHERE t.account_id = ?
+        AND (
+          t.is_planned = 0
+          OR (
+            t.is_planned = 1
+            AND t.included_in_period = 1
+            AND NOT EXISTS (
+              SELECT 1
+              FROM transactions actual
+              WHERE actual.plan_instance_id = t.id
+                AND actual.account_id = t.account_id
+            )
+          )
+        )
+      ''',
+      [accountId],
+    );
+    if (result.isEmpty) {
+      return const {
+        'income_sum': 0,
+        'expense_sum': 0,
+        'saving_sum': 0,
+      };
+    }
+    return Map<String, Object?>.from(result.first);
   }
 
   @override
