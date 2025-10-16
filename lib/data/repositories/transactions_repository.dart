@@ -145,7 +145,8 @@ abstract class TransactionsRepository {
     String? periodId,
   });
 
-  /// Сумма фактических расходов (type = 'expense', is_planned = 0)
+  /// Сумма фактических расходов (type = 'expense', is_planned = 0,
+  /// plan_instance_id IS NULL, included_in_period = 1)
   /// на конкретную дату с защитой от выхода за границы периода.
   Future<int> sumExpensesOnDateWithinPeriod({
     required DateTime date,
@@ -1155,7 +1156,9 @@ class SqliteTransactionsRepository implements TransactionsRepository {
       'FROM transactions '
       "WHERE date = ? "
       "AND type = 'expense' "
-      'AND is_planned = 0 ',
+      'AND is_planned = 0 '
+      'AND plan_instance_id IS NULL '
+      'AND included_in_period = 1 ',
     );
     if (hasDeletedColumn) {
       query.write('AND deleted = 0 ');
