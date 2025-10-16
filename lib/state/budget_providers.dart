@@ -542,6 +542,77 @@ class MetricsSnapshot {
   bool get hasDailyLimit => dailyLimit > 0;
 }
 
+@immutable
+class CurrentPeriodAggregates {
+  const CurrentPeriodAggregates({
+    required this.todaySpentNonPlan,
+    required this.periodSpentNonPlan,
+    required this.initialPeriodBudget,
+  });
+
+  final int todaySpentNonPlan;
+  final int periodSpentNonPlan;
+  final int initialPeriodBudget;
+}
+
+final currentPeriodAggregatesProvider =
+    FutureProvider<CurrentPeriodAggregates>((ref) async {
+  ref.watch(dbTickProvider);
+  ref.watch(syncTickProvider);
+  final repository = ref.watch(transactionsRepoProvider);
+  final period = ref.watch(selectedPeriodRefProvider);
+  final (start, endExclusive) = ref.watch(periodBoundsProvider);
+  final today = DateUtils.dateOnly(ref.watch(todayDateProvider));
+  final normalizedStart = DateUtils.dateOnly(start);
+  final normalizedEndExclusive = DateUtils.dateOnly(endExclusive);
+  final fromToday = ref.watch(periodDailyLimitFromTodayFlagProvider);
+  final initialPeriodBudget = ref.watch(periodBudgetBaseProvider);
+
+  var todaySpent = 0;
+  final isTodayWithinPeriod = !today.isBefore(normalizedStart) &&
+      today.isBefore(normalizedEndExclusive);
+  if (isTodayWithinPeriod) {
+    todaySpent = await repository.sumExpensesOnDateWithinPeriod(
+      date: today,
+      periodStart: normalizedStart,
+      periodEndExclusive: normalizedEndExclusive,
+      periodId: period.id,
+    );
+  }
+
+  DateTime spendingStart = normalizedStart;
+  if (fromToday) {
+    spendingStart = today;
+    if (spendingStart.isBefore(normalizedStart)) {
+      spendingStart = normalizedStart;
+    }
+  }
+
+  var periodSpent = 0;
+  if (spendingStart.isBefore(normalizedEndExclusive)) {
+    if (fromToday) {
+      periodSpent = await repository.sumUnplannedExpensesInRange(
+        spendingStart,
+        normalizedEndExclusive,
+        periodId: period.id,
+      );
+    } else {
+      periodSpent = await repository.sumActualExpenses(
+        period: period,
+        start: normalizedStart,
+        endExclusive: normalizedEndExclusive,
+        periodId: period.id,
+      );
+    }
+  }
+
+  return CurrentPeriodAggregates(
+    todaySpentNonPlan: todaySpent,
+    periodSpentNonPlan: periodSpent,
+    initialPeriodBudget: initialPeriodBudget,
+  );
+});
+
 class MetricsController extends AsyncNotifier<MetricsSnapshot> {
   @override
   Future<MetricsSnapshot> build() {
@@ -557,33 +628,15 @@ class MetricsController extends AsyncNotifier<MetricsSnapshot> {
     ref.watch(syncTickProvider);
     final period = ref.watch(selectedPeriodRefProvider);
     final (start, endExclusive) = ref.watch(periodBoundsProvider);
-    final repository = ref.watch(transactionsRepoProvider);
-    final today = DateUtils.dateOnly(ref.watch(todayDateProvider));
     final dailyLimit = ref.watch(periodDailyLimitProvider);
-    final periodBudgetBase = ref.watch(periodBudgetBaseProvider);
 
-    final normalizedStart = DateUtils.dateOnly(start);
-    final normalizedEndExclusive = DateUtils.dateOnly(endExclusive);
-
-    final todaySpent = await repository.sumExpensesOnDateWithinPeriod(
-      date: today,
-      periodStart: normalizedStart,
-      periodEndExclusive: normalizedEndExclusive,
-      periodId: period.id,
-    );
-
+    final aggregates = await ref.watch(currentPeriodAggregatesProvider.future);
+    final todaySpent = aggregates.todaySpentNonPlan;
     final dailyLeft = math.max(0, dailyLimit - todaySpent);
-
-    var periodBudgetLeft = math.max(0, periodBudgetBase);
-    if (periodBudgetBase > 0) {
-      final spent = await repository.sumActualExpenses(
-        period: period,
-        start: normalizedStart,
-        endExclusive: normalizedEndExclusive,
-        periodId: period.id,
-      );
-      periodBudgetLeft = math.max(0, periodBudgetBase - spent);
-    }
+    final periodBudgetLeft = math.max(
+      0,
+      aggregates.initialPeriodBudget - aggregates.periodSpentNonPlan,
+    );
 
     final todayProgress = dailyLimit > 0
         ? (todaySpent / math.max(1, dailyLimit)).clamp(0.0, 1.0)
