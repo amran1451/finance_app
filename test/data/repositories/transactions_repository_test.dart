@@ -732,6 +732,54 @@ void main() {
     expect(total, 1_500);
   });
 
+  test('sumExpensesOnDateWithinPeriod ignores plan instance expenses', () async {
+    final periodStart = DateTime(2024, 3, 1);
+    final periodEndExclusive = DateTime(2024, 4, 1);
+    final targetDate = DateTime(2024, 3, 10);
+    final period = periodRefForDate(targetDate, anchors.$1, anchors.$2);
+
+    final plannedId = await db.insert('transactions', {
+      'account_id': accountId,
+      'category_id': categoryId,
+      'type': 'expense',
+      'amount_minor': 2_000,
+      'date': formatDate(targetDate),
+      'is_planned': 1,
+      'included_in_period': 1,
+      'planned_id': 99,
+      'period_id': period.id,
+    });
+
+    await db.insert('transactions', {
+      'account_id': accountId,
+      'category_id': categoryId,
+      'type': 'expense',
+      'amount_minor': 2_500,
+      'date': formatDate(targetDate),
+      'is_planned': 0,
+      'included_in_period': 1,
+      'plan_instance_id': plannedId,
+      'planned_id': 99,
+      'source': 'plan',
+      'period_id': period.id,
+    });
+
+    await insertTransaction(
+      date: targetDate,
+      amountMinor: 1_250,
+      included: true,
+    );
+
+    final total = await repository.sumExpensesOnDateWithinPeriod(
+      date: targetDate,
+      periodStart: periodStart,
+      periodEndExclusive: periodEndExclusive,
+      periodId: period.id,
+    );
+
+    expect(total, 1_250);
+  });
+
   test('sumActualExpenses excludes transactions not included in period', () async {
     const period = PeriodRef(year: 2024, month: 1, half: HalfPeriod.first);
     final periodStart = DateTime(2024, 1, 1);
