@@ -96,6 +96,40 @@ void main() {
   });
 
   test(
+      'computed balance ignores planned amount when matching actual operation exists',
+      () async {
+    final period = periodRefForDate(DateTime(2024, 2, 5), anchors.$1, anchors.$2);
+    final plannedId = await db.insert('transactions', {
+      'account_id': accountId,
+      'category_id': categoryId,
+      'type': 'expense',
+      'amount_minor': 1500,
+      'date': formatDate(DateTime(2024, 2, 5)),
+      'is_planned': 1,
+      'included_in_period': 1,
+      'planned_id': 42,
+      'period_id': period.id,
+    });
+
+    await db.insert('transactions', {
+      'account_id': accountId,
+      'category_id': categoryId,
+      'type': 'expense',
+      'amount_minor': 1500,
+      'date': formatDate(DateTime(2024, 2, 6)),
+      'is_planned': 0,
+      'included_in_period': 1,
+      'plan_instance_id': plannedId,
+      'planned_id': 42,
+      'source': 'plan',
+      'period_id': period.id,
+    });
+
+    final balance = await accountsRepository.getComputedBalanceMinor(accountId);
+    expect(balance, -1500);
+  });
+
+  test(
       'assignMasterToPeriod stores account id and inclusion updates account balance',
       () async {
     final masterId = await db.insert('planned_master', {
