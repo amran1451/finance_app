@@ -967,7 +967,8 @@ class SqliteTransactionsRepository implements TransactionsRepository {
         if (plannedRows.isEmpty) {
           return;
         }
-        final planned = TransactionRecord.fromMap(plannedRows.first);
+        final plannedRow = plannedRows.first;
+        final planned = TransactionRecord.fromMap(plannedRow);
         final planMasterId = planned.plannedId;
         final planPeriodId = planned.periodId;
         await db.update(
@@ -999,9 +1000,24 @@ class SqliteTransactionsRepository implements TransactionsRepository {
           }
           final now = DateTime.now();
           final plannedDate = DateTime(now.year, now.month, now.day);
+          final resolvedAccountId =
+              await _resolvePlanOperationAccountId(db, plannedRow);
+          final effectiveAccountId = resolvedAccountId ?? planned.accountId;
+          if (resolvedAccountId != null &&
+              resolvedAccountId != (plannedRow['account_id'] as int?)) {
+            await db.update(
+              'transactions',
+              {
+                'account_id': effectiveAccountId,
+                'updated_at': now.toIso8601String(),
+              },
+              where: 'id = ?',
+              whereArgs: [plannedId],
+            );
+          }
           final operation = planned.copyWith(
             id: null,
-            accountId: planned.accountId,
+            accountId: effectiveAccountId,
             isPlanned: false,
             includedInPeriod: true,
             planInstanceId: plannedId,
@@ -1223,6 +1239,66 @@ class SqliteTransactionsRepository implements TransactionsRepository {
       return null;
     }
     return rows.first['id'] as int?;
+  }
+
+  Future<int?> _resolvePlanOperationAccountId(
+    DatabaseExecutor executor,
+    Map<String, Object?> plannedRow,
+  ) async {
+    final rawAccountId = plannedRow['account_id'];
+    if (rawAccountId is int && rawAccountId > 0) {
+      return rawAccountId;
+    }
+    return _getDefaultAccountId(executor);
+  }
+
+  Future<int?> _getDefaultAccountId(DatabaseExecutor executor) async {
+    final rows = await executor.query(
+      'settings',
+      columns: ['value'],
+      where: 'key = ?',
+      whereArgs: ['default_account_id'],
+      limit: 1,
+    );
+    if (rows.isNotEmpty) {
+      final raw = rows.first['value'] as String?;
+      final parsed = int.tryParse(raw ?? '');
+      if (parsed != null) {
+        final accountRows = await executor.query(
+          'accounts',
+          columns: ['id'],
+          where: 'id = ?',
+          whereArgs: [parsed],
+          limit: 1,
+        );
+        if (accountRows.isNotEmpty) {
+          return parsed;
+        }
+      }
+    }
+
+    final activeAccounts = await executor.query(
+      'accounts',
+      columns: ['id'],
+      where: 'is_archived = 0',
+      orderBy: 'id ASC',
+      limit: 1,
+    );
+    if (activeAccounts.isNotEmpty) {
+      return activeAccounts.first['id'] as int?;
+    }
+
+    final anyAccount = await executor.query(
+      'accounts',
+      columns: ['id'],
+      orderBy: 'id ASC',
+      limit: 1,
+    );
+    if (anyAccount.isNotEmpty) {
+      return anyAccount.first['id'] as int?;
+    }
+
+    return null;
   }
 
   String _formatDate(DateTime date) {
