@@ -1061,6 +1061,7 @@ class SqliteTransactionsRepository implements TransactionsRepository {
       'SELECT COALESCE(SUM(amount_minor), 0) AS total '
       'FROM transactions '
       "WHERE type = 'expense' AND is_planned = 0 "
+      'AND plan_instance_id IS NULL '
       'AND included_in_period = 1 '
       'AND date = ? AND date >= ? AND date < ?',
     );
@@ -1101,6 +1102,7 @@ class SqliteTransactionsRepository implements TransactionsRepository {
         'SELECT COALESCE(SUM(amount_minor), 0) AS total '
         'FROM transactions '
         "WHERE type = 'expense' AND is_planned = 0 "
+        'AND plan_instance_id IS NULL '
         'AND included_in_period = 1 AND period_id = ?',
         [periodId],
       );
@@ -1133,6 +1135,7 @@ class SqliteTransactionsRepository implements TransactionsRepository {
       'SELECT SUM(amount_minor) AS total '
       'FROM transactions '
       "WHERE type = 'expense' AND is_planned = 0 "
+      'AND plan_instance_id IS NULL '
       "AND included_in_period = 1 AND date BETWEEN ? AND ?",
       [_formatDate(normalizedFrom), _formatDate(endInclusive)],
     );
@@ -1165,6 +1168,7 @@ class SqliteTransactionsRepository implements TransactionsRepository {
       'SELECT COALESCE(SUM(amount_minor), 0) AS total '
       'FROM transactions '
       "WHERE type = 'expense' AND is_planned = 0 "
+      'AND plan_instance_id IS NULL '
       'AND included_in_period = 1 ',
     );
     final args = <Object?>[];

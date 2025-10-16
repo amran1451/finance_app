@@ -132,6 +132,33 @@ void main() {
     expect(balanceAfter, -1500);
   });
 
+  test('sumUnplannedExpensesOnDate ignores plan checkbox operations', () async {
+    final targetDate = DateTime(2024, 1, 10);
+
+    await insertTransaction(
+      date: targetDate,
+      amountMinor: 2000,
+      included: true,
+    );
+
+    await db.insert('transactions', {
+      'account_id': accountId,
+      'category_id': categoryId,
+      'type': 'expense',
+      'amount_minor': 4500,
+      'date': formatDate(targetDate),
+      'is_planned': 0,
+      'included_in_period': 1,
+      'plan_instance_id': 999,
+      'source': 'plan',
+      'period_id':
+          periodRefForDate(targetDate, anchors.$1, anchors.$2).id,
+    });
+
+    final total = await repository.sumUnplannedExpensesOnDate(targetDate);
+    expect(total, 2000);
+  });
+
   test('sumPlannedExpenses counts only plans marked as included', () async {
     final period = const PeriodRef(year: 2024, month: 1, half: HalfPeriod.first);
     final start = DateTime(2024, 1, 1);

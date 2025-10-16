@@ -130,6 +130,47 @@ void main() {
     expect(slices.first.operationCount, 2);
   });
 
+  test('loadExpenseBreakdown excludes plan checkbox operations from totals', () async {
+    final from = DateTime(2024, 1, 1);
+    final to = DateTime(2024, 1, 31);
+
+    await db.insert('transactions', {
+      'account_id': accountId,
+      'category_id': groceriesCategoryId,
+      'type': 'expense',
+      'amount_minor': 4200,
+      'date': _formatDate(DateTime(2024, 1, 5)),
+      'is_planned': 0,
+      'planned_id': plannedMasterId,
+      'included_in_period': 1,
+    });
+
+    await db.insert('transactions', {
+      'account_id': accountId,
+      'category_id': groceriesCategoryId,
+      'type': 'expense',
+      'amount_minor': 3100,
+      'date': _formatDate(DateTime(2024, 1, 6)),
+      'is_planned': 0,
+      'planned_id': plannedMasterId,
+      'plan_instance_id': 777,
+      'source': 'plan',
+      'included_in_period': 1,
+    });
+
+    final slices = await repository.loadExpenseBreakdown(
+      breakdown: AnalyticsBreakdown.plannedCategory,
+      from: from,
+      to: to,
+      type: TransactionType.expense,
+      plannedOnly: true,
+    );
+
+    expect(slices, hasLength(1));
+    expect(slices.first.valueMinor, 4200);
+    expect(slices.first.operationCount, 1);
+  });
+
   test('loadExpenseBreakdown groups unplanned by reason', () async {
     final from = DateTime(2024, 2, 1);
     final to = DateTime(2024, 2, 28);
@@ -170,6 +211,45 @@ void main() {
     expect(reasonSlice.label, 'Эмоции');
     expect(reasonSlice.valueMinor, 4000);
     expect(reasonSlice.operationCount, 2);
+  });
+
+  test('loadExpenseSeries ignores plan checkbox operations in totals', () async {
+    final from = DateTime(2024, 3, 1);
+    final to = DateTime(2024, 3, 5);
+
+    await db.insert('transactions', {
+      'account_id': accountId,
+      'category_id': transportCategoryId,
+      'type': 'expense',
+      'amount_minor': 1500,
+      'date': _formatDate(DateTime(2024, 3, 2)),
+      'is_planned': 0,
+      'planned_id': null,
+      'included_in_period': 1,
+    });
+
+    await db.insert('transactions', {
+      'account_id': accountId,
+      'category_id': transportCategoryId,
+      'type': 'expense',
+      'amount_minor': 2750,
+      'date': _formatDate(DateTime(2024, 3, 2)),
+      'is_planned': 0,
+      'planned_id': null,
+      'plan_instance_id': 333,
+      'source': 'plan',
+      'included_in_period': 1,
+    });
+
+    final series = await repository.loadExpenseSeries(
+      breakdown: AnalyticsInterval.days,
+      from: from,
+      to: to,
+      type: TransactionType.expense,
+    );
+
+    expect(series, hasLength(1));
+    expect(series.first.valueMinor, 1500);
   });
 
   test('loadExpenseSeries aggregates by days respecting filters', () async {
