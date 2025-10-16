@@ -78,7 +78,7 @@ void main() {
   });
 
   test(
-      'getComputedBalanceMinor includes planned operations when checkbox is set',
+      'getComputedBalanceMinor ignores planned operations before checkbox is set',
       () async {
     final period = periodRefForDate(DateTime(2024, 1, 10), anchors.$1, anchors.$2);
     await db.insert('transactions', {
@@ -93,7 +93,7 @@ void main() {
     });
 
     final balance = await accountsRepository.getComputedBalanceMinor(accountId);
-    expect(balance, -4200);
+    expect(balance, 0);
   });
 
   test(
@@ -175,7 +175,7 @@ void main() {
 
     final actualRows = await db.query(
       'transactions',
-      where: 'plan_instance_id = ? AND is_planned = 0',
+      where: 'plan_instance_id = ? AND is_planned = 0 AND deleted = 0',
       whereArgs: [plannedId],
       limit: 1,
     );
@@ -212,7 +212,7 @@ void main() {
 
     final actualRows = await db.query(
       'transactions',
-      where: 'plan_instance_id = ? AND is_planned = 0',
+      where: 'plan_instance_id = ? AND is_planned = 0 AND deleted = 0',
       whereArgs: [plannedId],
       limit: 1,
     );
@@ -329,6 +329,73 @@ void main() {
     expect(afterAmountChange, 2000);
   });
 
+  test('setPlannedIncluded soft deletes and restores plan operations', () async {
+    final masterId = await db.insert('planned_master', {
+      'type': 'expense',
+      'title': 'Utilities',
+      'default_amount_minor': 1800,
+      'category_id': categoryId,
+      'note': null,
+      'archived': 0,
+    });
+    final period = periodRefForDate(DateTime(2024, 4, 10), anchors.$1, anchors.$2);
+
+    await repository.assignMasterToPeriod(
+      masterId: masterId,
+      period: period,
+      start: DateTime(2024, 4, 1),
+      endExclusive: DateTime(2024, 5, 1),
+      categoryId: categoryId,
+      amountMinor: 2000,
+      included: false,
+      accountId: accountId,
+    );
+
+    final plannedRows = await db.query(
+      'transactions',
+      where: 'planned_id = ?',
+      whereArgs: [masterId],
+      limit: 1,
+    );
+    expect(plannedRows, hasLength(1));
+    final plannedId = plannedRows.first['id'] as int;
+
+    await repository.setPlannedIncluded(plannedId, true);
+
+    final actualRows = await db.query(
+      'transactions',
+      where: 'plan_instance_id = ?',
+      whereArgs: [plannedId],
+      limit: 1,
+    );
+    expect(actualRows, hasLength(1));
+    final actualId = actualRows.first['id'] as int;
+    expect(actualRows.first['deleted'], 0);
+
+    await repository.setPlannedIncluded(plannedId, false);
+
+    final archivedRows = await db.query(
+      'transactions',
+      where: 'plan_instance_id = ?',
+      whereArgs: [plannedId],
+      limit: 1,
+    );
+    expect(archivedRows, hasLength(1));
+    expect(archivedRows.first['deleted'], 1);
+
+    await repository.setPlannedIncluded(plannedId, true);
+
+    final restoredRows = await db.query(
+      'transactions',
+      where: 'plan_instance_id = ?',
+      whereArgs: [plannedId],
+      limit: 1,
+    );
+    expect(restoredRows, hasLength(1));
+    expect(restoredRows.first['id'], actualId);
+    expect(restoredRows.first['deleted'], 0);
+  });
+
   test('updating actual plan instance keeps it linked to original planned item',
       () async {
     final masterId = await db.insert('planned_master', {
@@ -366,7 +433,7 @@ void main() {
 
     final actualRows = await db.query(
       'transactions',
-      where: 'plan_instance_id = ? AND is_planned = 0',
+      where: 'plan_instance_id = ? AND is_planned = 0 AND deleted = 0',
       whereArgs: [plannedId],
       limit: 1,
     );
@@ -440,7 +507,7 @@ void main() {
 
     final actualRows = await db.query(
       'transactions',
-      where: 'plan_instance_id = ? AND is_planned = 0',
+      where: 'plan_instance_id = ? AND is_planned = 0 AND deleted = 0',
       whereArgs: [plannedId],
       limit: 1,
     );
@@ -504,7 +571,7 @@ void main() {
 
     final actualRows = await db.query(
       'transactions',
-      where: 'plan_instance_id = ? AND is_planned = 0',
+      where: 'plan_instance_id = ? AND is_planned = 0 AND deleted = 0',
       whereArgs: [plannedId],
       limit: 1,
     );
@@ -532,7 +599,7 @@ void main() {
 
     final actualAfterDeletion = await db.query(
       'transactions',
-      where: 'plan_instance_id = ?',
+      where: 'plan_instance_id = ? AND deleted = 0',
       whereArgs: [plannedId],
     );
     expect(actualAfterDeletion, isEmpty);

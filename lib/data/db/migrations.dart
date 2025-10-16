@@ -8,7 +8,7 @@ class AppMigrations {
   AppMigrations._();
 
   /// Latest schema version supported by the application.
-  static const int latestVersion = 21;
+  static const int latestVersion = 22;
 
   static final Map<int, List<String>> _migrationScripts = {
     1: [
@@ -178,6 +178,7 @@ class AppMigrations {
       'CREATE INDEX IF NOT EXISTS idx_transactions_account ON transactions(account_id)',
       'CREATE INDEX IF NOT EXISTS idx_transactions_plan_period ON transactions(planned_id, period_id)',
     ],
+    22: [],
   };
 
   /// Applies migrations from [oldVersion] (exclusive) up to [newVersion] (inclusive).
@@ -316,6 +317,23 @@ class AppMigrations {
             columnName: 'included',
             alterStatement:
                 'ALTER TABLE plan_period_links ADD COLUMN included INTEGER NOT NULL DEFAULT 1',
+          );
+          break;
+        case 22:
+          await _ensureColumnExists(
+            db,
+            tableName: 'transactions',
+            columnName: 'deleted',
+            alterStatement:
+                'ALTER TABLE transactions ADD COLUMN deleted INTEGER NOT NULL DEFAULT 0',
+          );
+          await db.execute(
+            'DROP INDEX IF EXISTS idx_transactions_plan_instance_account',
+          );
+          await db.execute(
+            'CREATE UNIQUE INDEX IF NOT EXISTS uniq_transactions_plan_instance_active '
+            'ON transactions(plan_instance_id) '
+            'WHERE plan_instance_id IS NOT NULL AND deleted = 0',
           );
           break;
         default:

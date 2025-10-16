@@ -1005,16 +1005,23 @@ class SqliteTransactionsRepository implements TransactionsRepository {
           );
         }
         if (included) {
+          final hasDeletedColumn = await _supportsDeletedFlag(db);
+          final whereActive = StringBuffer('plan_instance_id = ?');
+          final whereArgs = <Object?>[plannedId];
+          if (hasDeletedColumn) {
+            whereActive.write(' AND deleted = 0');
+          }
           final existing = await db.query(
             'transactions',
-            where: 'plan_instance_id = ?',
-            whereArgs: [plannedId],
+            where: whereActive.toString(),
+            whereArgs: whereArgs,
             limit: 1,
           );
           if (existing.isNotEmpty) {
             return;
           }
           final now = DateTime.now();
+          final nowIso = now.toIso8601String();
           final plannedDate = DateTime(now.year, now.month, now.day);
           final resolvedAccountId =
               await _resolvePlanOperationAccountId(db, plannedRow);
@@ -1025,12 +1032,49 @@ class SqliteTransactionsRepository implements TransactionsRepository {
               'transactions',
               {
                 'account_id': effectiveAccountId,
-                'updated_at': now.toIso8601String(),
+                'updated_at': nowIso,
               },
               where: 'id = ?',
               whereArgs: [plannedId],
             );
           }
+
+          if (hasDeletedColumn) {
+            final archived = await db.query(
+              'transactions',
+              where: 'plan_instance_id = ? AND deleted = 1',
+              whereArgs: [plannedId],
+              orderBy: 'updated_at DESC, id DESC',
+              limit: 1,
+            );
+            if (archived.isNotEmpty) {
+              final archivedId = archived.first['id'] as int?;
+              if (archivedId != null) {
+                final restored = planned.copyWith(
+                  id: archivedId,
+                  accountId: effectiveAccountId,
+                  isPlanned: false,
+                  includedInPeriod: true,
+                  planInstanceId: plannedId,
+                  plannedId: planned.plannedId,
+                  date: plannedDate,
+                  source: 'plan',
+                  deleted: false,
+                );
+                final values = Map<String, Object?>.from(restored.toMap());
+                values.remove('id');
+                values['updated_at'] = nowIso;
+                await db.update(
+                  'transactions',
+                  values,
+                  where: 'id = ?',
+                  whereArgs: [archivedId],
+                );
+                return;
+              }
+            }
+          }
+
           final operation = planned.copyWith(
             id: null,
             accountId: effectiveAccountId,
@@ -1040,16 +1084,32 @@ class SqliteTransactionsRepository implements TransactionsRepository {
             plannedId: planned.plannedId,
             date: plannedDate,
             source: 'plan',
+            deleted: false,
           );
-          final values = Map<String, Object?>.from(operation.toMap())
-            ..remove('id');
+          final values = Map<String, Object?>.from(operation.toMap());
+          values.remove('id');
+          values['updated_at'] = nowIso;
           await db.insert('transactions', values);
         } else {
-          await db.delete(
-            'transactions',
-            where: 'plan_instance_id = ? AND source = ?',
-            whereArgs: [plannedId, 'plan'],
-          );
+          final hasDeletedColumn = await _supportsDeletedFlag(db);
+          if (hasDeletedColumn) {
+            final nowIso = DateTime.now().toIso8601String();
+            await db.update(
+              'transactions',
+              {
+                'deleted': 1,
+                'updated_at': nowIso,
+              },
+              where: 'plan_instance_id = ? AND deleted = 0',
+              whereArgs: [plannedId],
+            );
+          } else {
+            await db.delete(
+              'transactions',
+              where: 'plan_instance_id = ? AND source = ?',
+              whereArgs: [plannedId, 'plan'],
+            );
+          }
         }
       },
       executor: executor,
@@ -1126,16 +1186,22 @@ class SqliteTransactionsRepository implements TransactionsRepository {
     DateTime toExclusive, {
     String? periodId,
   }) async {
+    final db = await _db;
+    final hasDeletedColumn = await _supportsDeletedFlag(db);
+
     if (periodId != null) {
-      final db = await _db;
-      final rows = await db.rawQuery(
+      final query = StringBuffer(
         'SELECT COALESCE(SUM(amount_minor), 0) AS total '
         'FROM transactions '
         "WHERE type = 'expense' AND is_planned = 0 "
         'AND plan_instance_id IS NULL '
-        'AND included_in_period = 1 AND period_id = ?',
-        [periodId],
+        'AND included_in_period = 1 '
+        'AND period_id = ? ',
       );
+      if (hasDeletedColumn) {
+        query.write('AND deleted = 0 ');
+      }
+      final rows = await db.rawQuery(query.toString(), [periodId]);
       if (rows.isEmpty) {
         return 0;
       }
@@ -1155,18 +1221,23 @@ class SqliteTransactionsRepository implements TransactionsRepository {
       return 0;
     }
 
-    final db = await _db;
     final endInclusive = normalizedTo.subtract(const Duration(days: 1));
     if (endInclusive.isBefore(normalizedFrom)) {
       return 0;
     }
 
-    final rows = await db.rawQuery(
+    final query = StringBuffer(
       'SELECT SUM(amount_minor) AS total '
       'FROM transactions '
       "WHERE type = 'expense' AND is_planned = 0 "
       'AND plan_instance_id IS NULL '
-      "AND included_in_period = 1 AND date BETWEEN ? AND ?",
+      "AND included_in_period = 1 AND date BETWEEN ? AND ? ",
+    );
+    if (hasDeletedColumn) {
+      query.write('AND deleted = 0 ');
+    }
+    final rows = await db.rawQuery(
+      query.toString(),
       [_formatDate(normalizedFrom), _formatDate(endInclusive)],
     );
 
@@ -1202,6 +1273,7 @@ class SqliteTransactionsRepository implements TransactionsRepository {
       'AND included_in_period = 1 ',
     );
     final args = <Object?>[];
+    final hasDeletedColumn = await _supportsDeletedFlag(db);
     if (periodId != null) {
       query.write('AND period_id = ?');
       args.add(periodId);
@@ -1210,6 +1282,9 @@ class SqliteTransactionsRepository implements TransactionsRepository {
       args
         ..add(_formatDate(start))
         ..add(_formatDate(endExclusive));
+    }
+    if (hasDeletedColumn) {
+      query.write(' AND deleted = 0');
     }
     final rows = await db.rawQuery(query.toString(), args);
 

@@ -121,13 +121,6 @@ class SqliteAccountsRepository implements AccountsRepository {
         COALESCE(a.start_balance_minor, 0)
         + COALESCE(SUM(
            CASE
-             WHEN t.id IS NULL THEN 0
-             WHEN t.is_planned = 1 AND EXISTS (
-               SELECT 1
-               FROM transactions actual
-               WHERE actual.plan_instance_id = t.id
-                 AND actual.is_planned = 0
-             ) THEN 0
              WHEN t.type = 'income' THEN t.amount_minor
              WHEN t.type = 'expense' THEN -t.amount_minor
              WHEN t.type = 'saving' THEN CASE
@@ -139,6 +132,8 @@ class SqliteAccountsRepository implements AccountsRepository {
         ), 0) AS balance
       FROM accounts a
       LEFT JOIN transactions t ON t.account_id = a.id
+        AND (t.is_planned = 0 OR t.plan_instance_id IS NOT NULL)
+        AND t.deleted = 0
       WHERE a.id = ?
       GROUP BY a.id
       ''',
