@@ -666,6 +666,10 @@ class _ReviewScreenState extends ConsumerState<ReviewScreen> {
       final resetAccountId = newState.accountId ?? _kUnselectedAccountId;
       selectedAccountId.value = resetAccountId;
       _accountInitialized = newState.accountId != null;
+      _accountSelectedManually = false;
+      if (newState.accountId == null) {
+        _applyDefaultAccountIfAvailable();
+      }
       if (isEditingOperation) {
         context.pop();
         ScaffoldMessenger.of(context).showSnackBar(
