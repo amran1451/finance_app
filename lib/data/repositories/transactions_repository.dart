@@ -173,7 +173,7 @@ class SqliteTransactionsRepository implements TransactionsRepository {
 
   Future<Database> get _db async => _database.database;
 
-  Future<bool> _supportsDeletedFlag(Database db) async {
+  Future<bool> _supportsDeletedFlag(DatabaseExecutor db) async {
     final cached = _hasDeletedFlagColumn;
     if (cached != null) {
       return cached;
