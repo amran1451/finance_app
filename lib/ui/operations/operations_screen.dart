@@ -271,9 +271,7 @@ class _OperationsSection extends ConsumerWidget {
           (item) {
             final record = item.record;
             final category = categories[record.categoryId];
-            final isPlanOperation = record.isPlanned ||
-                (record.planInstanceId != null &&
-                    (record.source?.toLowerCase() == 'plan'));
+            final isPlanOperation = _isPlanOperation(record);
             return Card(
               margin: const EdgeInsets.only(bottom: 12),
               child: ListTile(
@@ -513,15 +511,18 @@ Map<DateTime, _DailyOperationsGroup> _groupByDate(
     final date = DateTime(record.date.year, record.date.month, record.date.day);
     final group = grouped.putIfAbsent(date, () => _DailyOperationsGroup());
     group.transactions.add(item);
+    if (_isPlanOperation(record)) {
+      continue;
+    }
     switch (record.type) {
       case TransactionType.expense:
-        group.expenseTotalMinor += record.amountMinor;
+        group.expenseNonPlanTotalMinor += record.amountMinor;
         break;
       case TransactionType.income:
-        group.incomeTotalMinor += record.amountMinor;
+        group.incomeNonPlanTotalMinor += record.amountMinor;
         break;
       case TransactionType.saving:
-        group.savingTotalMinor += record.amountMinor;
+        group.savingNonPlanTotalMinor += record.amountMinor;
         break;
     }
   }
@@ -534,20 +535,27 @@ String _formatDailyTotalLabel(
 ) {
   switch (filter) {
     case OpTypeFilter.all:
+      final net =
+          group.expenseNonPlanTotalMinor - group.incomeNonPlanTotalMinor;
+      if (net == 0) {
+        return formatCurrencyMinor(0);
+      }
+      final formatted = formatCurrencyMinor(net.abs());
+      return net > 0 ? '−$formatted' : formatted;
     case OpTypeFilter.expense:
-      final amount = group.expenseTotalMinor;
+      final amount = group.expenseNonPlanTotalMinor;
       if (amount == 0) {
         return formatCurrencyMinor(0);
       }
       return '−${formatCurrencyMinor(amount)}';
     case OpTypeFilter.income:
-      final amount = group.incomeTotalMinor;
+      final amount = group.incomeNonPlanTotalMinor;
       if (amount == 0) {
         return formatCurrencyMinor(0);
       }
       return formatCurrencyMinor(amount);
     case OpTypeFilter.saving:
-      final amount = group.savingTotalMinor;
+      final amount = group.savingNonPlanTotalMinor;
       if (amount == 0) {
         return formatCurrencyMinor(0);
       }
@@ -561,16 +569,25 @@ Color? _colorForDailyTotal(
 ) {
   switch (filter) {
     case OpTypeFilter.all:
+      final net =
+          group.expenseNonPlanTotalMinor - group.incomeNonPlanTotalMinor;
+      if (net > 0) {
+        return _colorForType(TransactionType.expense);
+      }
+      if (net < 0) {
+        return _colorForType(TransactionType.income);
+      }
+      return null;
     case OpTypeFilter.expense:
-      return group.expenseTotalMinor > 0
+      return group.expenseNonPlanTotalMinor > 0
           ? _colorForType(TransactionType.expense)
           : null;
     case OpTypeFilter.income:
-      return group.incomeTotalMinor > 0
+      return group.incomeNonPlanTotalMinor > 0
           ? _colorForType(TransactionType.income)
           : null;
     case OpTypeFilter.saving:
-      return group.savingTotalMinor > 0
+      return group.savingNonPlanTotalMinor > 0
           ? _colorForType(TransactionType.saving)
           : null;
   }
@@ -580,9 +597,26 @@ class _DailyOperationsGroup {
   _DailyOperationsGroup();
 
   final List<TransactionListItem> transactions = [];
-  int expenseTotalMinor = 0;
-  int incomeTotalMinor = 0;
-  int savingTotalMinor = 0;
+  int expenseNonPlanTotalMinor = 0;
+  int incomeNonPlanTotalMinor = 0;
+  int savingNonPlanTotalMinor = 0;
+}
+
+bool _isPlanOperation(TransactionRecord record) {
+  if (record.isPlanned) {
+    return true;
+  }
+  if (record.plannedId != null) {
+    return true;
+  }
+  if (record.planInstanceId != null) {
+    return true;
+  }
+  final source = record.source;
+  if (source != null && source.toLowerCase() == 'plan') {
+    return true;
+  }
+  return false;
 }
 
 Color _colorForType(TransactionType type) {
@@ -623,9 +657,7 @@ String _subtitleForRecord(
   Map<int, necessity_repo.NecessityLabel> necessityMap,
   Map<int, reason_repo.ReasonLabel> reasonMap,
 ) {
-  final isPlanOperation = record.isPlanned ||
-      (record.planInstanceId != null &&
-          (record.source?.toLowerCase() == 'plan'));
+  final isPlanOperation = _isPlanOperation(record);
 
   if (isPlanOperation) {
     return record.necessityLabel ??

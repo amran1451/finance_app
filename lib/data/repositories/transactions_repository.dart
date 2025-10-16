@@ -1158,6 +1158,7 @@ class SqliteTransactionsRepository implements TransactionsRepository {
       "AND type = 'expense' "
       'AND is_planned = 0 '
       'AND plan_instance_id IS NULL '
+      'AND planned_id IS NULL '
       'AND included_in_period = 1 ',
     );
     if (hasDeletedColumn) {
@@ -1198,13 +1199,27 @@ class SqliteTransactionsRepository implements TransactionsRepository {
         'FROM transactions '
         "WHERE type = 'expense' AND is_planned = 0 "
         'AND plan_instance_id IS NULL '
+        'AND planned_id IS NULL '
         'AND included_in_period = 1 '
-        'AND period_id = ? ',
+        'AND period_id = ? '
+        'AND date >= ? AND date <= ? ',
       );
       if (hasDeletedColumn) {
         query.write('AND deleted = 0 ');
       }
-      final rows = await db.rawQuery(query.toString(), [periodId]);
+      final normalizedFrom = DateTime(from.year, from.month, from.day);
+      final normalizedTo = DateTime(toExclusive.year, toExclusive.month, toExclusive.day);
+      if (!normalizedFrom.isBefore(normalizedTo)) {
+        return 0;
+      }
+      final endInclusive = normalizedTo.subtract(const Duration(days: 1));
+      if (endInclusive.isBefore(normalizedFrom)) {
+        return 0;
+      }
+      final rows = await db.rawQuery(
+        query.toString(),
+        [periodId, _formatDate(normalizedFrom), _formatDate(endInclusive)],
+      );
       if (rows.isEmpty) {
         return 0;
       }
@@ -1234,6 +1249,7 @@ class SqliteTransactionsRepository implements TransactionsRepository {
       'FROM transactions '
       "WHERE type = 'expense' AND is_planned = 0 "
       'AND plan_instance_id IS NULL '
+      'AND planned_id IS NULL '
       "AND included_in_period = 1 AND date BETWEEN ? AND ? ",
     );
     if (hasDeletedColumn) {
@@ -1273,6 +1289,7 @@ class SqliteTransactionsRepository implements TransactionsRepository {
       'FROM transactions '
       "WHERE type = 'expense' AND is_planned = 0 "
       'AND plan_instance_id IS NULL '
+      'AND planned_id IS NULL '
       'AND included_in_period = 1 ',
     );
     final args = <Object?>[];
