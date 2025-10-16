@@ -185,6 +185,52 @@ void main() {
     expect(balanceAfter, -1500);
   });
 
+  test('setPlannedIncluded uses default account when planned account missing', () async {
+    final period = periodRefForDate(DateTime(2024, 3, 5), anchors.$1, anchors.$2);
+    await db.insert('settings', {
+      'key': 'default_account_id',
+      'value': '$accountId',
+    });
+
+    final plannedId = await db.insert('transactions', {
+      'account_id': 0,
+      'category_id': categoryId,
+      'type': 'expense',
+      'amount_minor': 2500,
+      'date': formatDate(DateTime(2024, 3, 5)),
+      'is_planned': 1,
+      'included_in_period': 0,
+      'planned_id': 101,
+      'period_id': period.id,
+    });
+
+    final balanceBefore = await accountsRepository.getComputedBalanceMinor(accountId);
+    expect(balanceBefore, 0);
+
+    await repository.setPlannedIncluded(plannedId, true);
+
+    final actualRows = await db.query(
+      'transactions',
+      where: 'plan_instance_id = ? AND is_planned = 0',
+      whereArgs: [plannedId],
+      limit: 1,
+    );
+    expect(actualRows, hasLength(1));
+    expect(actualRows.first['account_id'], accountId);
+
+    final plannedRows = await db.query(
+      'transactions',
+      where: 'id = ?',
+      whereArgs: [plannedId],
+      limit: 1,
+    );
+    expect(plannedRows, hasLength(1));
+    expect(plannedRows.first['account_id'], accountId);
+
+    final balanceAfter = await accountsRepository.getComputedBalanceMinor(accountId);
+    expect(balanceAfter, -2500);
+  });
+
   test('sumUnplannedExpensesOnDate ignores plan checkbox operations', () async {
     final targetDate = DateTime(2024, 1, 10);
 
