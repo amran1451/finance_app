@@ -650,6 +650,7 @@ class _ReviewScreenState extends ConsumerState<ReviewScreen> {
       }
       await _maybePromptToClosePeriod(targetPeriod);
       bumpDbTick(ref);
+      await ref.read(metricsProvider.notifier).refresh();
       controller.reset();
       if (!mounted) {
         return;
