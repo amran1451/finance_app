@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:sqflite/sqflite.dart';
 
 import '../db/app_database.dart';
@@ -19,17 +21,21 @@ abstract class AccountsRepository {
   Future<int> getComputedBalanceMinor(int accountId,
       {DatabaseExecutor? executor});
 
+  Stream<int> watchAccountBalance(int accountId);
+
   Future<void> reconcileToComputed(int accountId,
       {DatabaseExecutor? executor});
 }
 
 class SqliteAccountsRepository implements AccountsRepository {
-  SqliteAccountsRepository({AppDatabase? database})
-      : _database = database ?? AppDatabase.instance;
+  SqliteAccountsRepository({AppDatabase? database, Stream<void>? dbTickStream})
+      : _database = database ?? AppDatabase.instance,
+        _dbTickStream = dbTickStream ?? const Stream<void>.empty();
 
   static const String savingsAccountName = 'Сберегательный';
 
   final AppDatabase _database;
+  final Stream<void> _dbTickStream;
 
   Future<Database> get _db async => _database.database;
 
@@ -105,68 +111,37 @@ class SqliteAccountsRepository implements AccountsRepository {
   Future<int> getComputedBalanceMinor(int accountId,
       {DatabaseExecutor? executor}) async {
     final db = executor ?? await _db;
-    final accountRow = await db.query(
-      'accounts',
-      columns: ['start_balance_minor', 'name'],
-      where: 'id = ?',
-      whereArgs: [accountId],
-      limit: 1,
-    );
-    if (accountRow.isEmpty) {
-      throw ArgumentError.value(accountId, 'accountId', 'Account not found');
-    }
-    final startBalance = (accountRow.first['start_balance_minor'] as int?) ?? 0;
-    final name = accountRow.first['name'] as String? ?? '';
-    final isSavingsAccount =
-        name.trim().toLowerCase() == savingsAccountName.toLowerCase();
-
-    final row = await _calcAccountBalance(db, accountId);
-    final incomeSum = _readInt(row['income_sum']);
-    final expenseSum = _readInt(row['expense_sum']);
-    final savingSum = _readInt(row['saving_sum']);
-
-    final incomingSaving = isSavingsAccount ? savingSum : 0;
-    final outgoingSaving = isSavingsAccount ? 0 : savingSum;
-
-    return startBalance + incomeSum - expenseSum + incomingSaving - outgoingSaving;
+    return calcAccountBalance(db, accountId);
   }
 
-  Future<Map<String, Object?>> _calcAccountBalance(
-    DatabaseExecutor db,
-    int accountId,
-  ) async {
-    final result = await db.rawQuery(
+  Future<int> calcAccountBalance(DatabaseExecutor db, int accountId) async {
+    final rows = await db.rawQuery(
       '''
-      SELECT
-        COALESCE(SUM(CASE WHEN t.type = 'income' THEN t.amount_minor END), 0) AS income_sum,
-        COALESCE(SUM(CASE WHEN t.type = 'expense' THEN t.amount_minor END), 0) AS expense_sum,
-        COALESCE(SUM(CASE WHEN t.type = 'saving' THEN t.amount_minor END), 0) AS saving_sum
-      FROM transactions t
-      WHERE t.account_id = ?
-        AND (
-          t.is_planned = 0
-          OR (
-            t.is_planned = 1
-            AND t.included_in_period = 1
-            AND NOT EXISTS (
-              SELECT 1
-              FROM transactions actual
-              WHERE actual.plan_instance_id = t.id
-                AND actual.account_id = t.account_id
-            )
-          )
-        )
+      SELECT 
+        COALESCE(a.start_balance_minor, 0)
+        + COALESCE(SUM(
+           CASE t.type
+             WHEN 'income' THEN t.amount_minor
+             WHEN 'expense' THEN -t.amount_minor
+             WHEN 'saving' THEN CASE
+               WHEN LOWER(a.name) = ? THEN t.amount_minor
+               ELSE -t.amount_minor
+             END
+             ELSE 0
+           END
+        ), 0) AS balance
+      FROM accounts a
+      LEFT JOIN transactions t ON t.account_id = a.id
+      WHERE a.id = ?
+      GROUP BY a.id
       ''',
-      [accountId],
+      [savingsAccountName.toLowerCase(), accountId],
     );
-    if (result.isEmpty) {
-      return const {
-        'income_sum': 0,
-        'expense_sum': 0,
-        'saving_sum': 0,
-      };
+    if (rows.isEmpty) {
+      throw ArgumentError.value(accountId, 'accountId', 'Account not found');
     }
-    return Map<String, Object?>.from(result.first);
+    final value = rows.first['balance'] as num?;
+    return value?.toInt() ?? 0;
   }
 
   @override
@@ -191,6 +166,22 @@ class SqliteAccountsRepository implements AccountsRepository {
   }
 
   @override
+  Stream<int> watchAccountBalance(int accountId) async* {
+    Future<int> load() async {
+      try {
+        return await getComputedBalanceMinor(accountId);
+      } on ArgumentError {
+        return 0;
+      }
+    }
+
+    yield await load();
+    await for (final _ in _dbTickStream) {
+      yield await load();
+    }
+  }
+
+  @override
   Future<void> update(Account account, {DatabaseExecutor? executor}) async {
     final id = account.id;
     if (id == null) {
@@ -210,10 +201,4 @@ class SqliteAccountsRepository implements AccountsRepository {
     );
   }
 
-  int _readInt(Object? value) {
-    if (value is num) {
-      return value.toInt();
-    }
-    return 0;
-  }
 }

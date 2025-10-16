@@ -46,7 +46,11 @@ final appBootstrapProvider = FutureProvider<void>((ref) async {
 final accountsRepoProvider =
     Provider<accounts_repo.AccountsRepository>((ref) {
   final database = ref.watch(appDatabaseProvider);
-  return accounts_repo.SqliteAccountsRepository(database: database);
+  final tickStream = ref.watch(dbTickStreamProvider);
+  return accounts_repo.SqliteAccountsRepository(
+    database: database,
+    dbTickStream: tickStream,
+  );
 });
 
 final analyticsRepoProvider =
@@ -700,11 +704,15 @@ class _PayoutsRepositoryWithDbTick implements payouts_repo.PayoutsRepository {
   }
 }
 
-final computedBalanceProvider =
-    FutureProvider.family<int, int>((ref, accountId) async {
-  ref.watch(dbTickProvider);
+final accountBalanceStreamProvider =
+    Provider.family<Stream<int>, int>((ref, accountId) {
   final repository = ref.watch(accountsRepoProvider);
-  return repository.getComputedBalanceMinor(accountId);
+  return repository.watchAccountBalance(accountId);
+});
+
+final computedBalanceProvider =
+    StreamProvider.family<int, int>((ref, accountId) {
+  return ref.watch(accountBalanceStreamProvider(accountId));
 });
 
 final reconcileAccountProvider =
