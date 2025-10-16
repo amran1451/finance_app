@@ -25,7 +25,7 @@ class AnalyticsRepository {
 
     final db = await _db;
     final where = StringBuffer(
-        't.type = ? AND t.is_planned = 0 AND t.plan_instance_id IS NULL');
+        't.type = ? AND t.is_planned = 0 AND t.plan_instance_id IS NULL AND t.deleted = 0');
     final args = <Object?>[_typeToString(type)];
     where.write(' AND date(t.date) >= ? AND date(t.date) <= ?');
     args..add(_formatDate(from))..add(_formatDate(to));
@@ -113,7 +113,7 @@ class AnalyticsRepository {
     final db = await _db;
     final args = <Object?>[_typeToString(type)];
     final where = StringBuffer(
-        't.type = ? AND t.is_planned = 0 AND t.plan_instance_id IS NULL');
+        't.type = ? AND t.is_planned = 0 AND t.plan_instance_id IS NULL AND t.deleted = 0');
     where.write(' AND date(t.date) >= ? AND date(t.date) <= ?');
     args..add(_formatDate(from))..add(_formatDate(to));
     if (plannedOnly) {

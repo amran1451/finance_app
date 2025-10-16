@@ -50,6 +50,7 @@
 - `payout_period_id TEXT NULL`
 - `criticality INTEGER NOT NULL DEFAULT 0`
 - `updated_at TEXT NOT NULL DEFAULT (datetime('now'))`
+- `deleted INTEGER NOT NULL DEFAULT 0`
 
 ### `payouts`
 - `id INTEGER PRIMARY KEY`
