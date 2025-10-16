@@ -169,8 +169,24 @@ class SqliteTransactionsRepository implements TransactionsRepository {
       : _database = database ?? AppDatabase.instance;
 
   final AppDatabase _database;
+  bool? _hasDeletedFlagColumn;
 
   Future<Database> get _db async => _database.database;
+
+  Future<bool> _supportsDeletedFlag(Database db) async {
+    final cached = _hasDeletedFlagColumn;
+    if (cached != null) {
+      return cached;
+    }
+
+    final columns = await db.rawQuery('PRAGMA table_info(transactions)');
+    final hasColumn = columns.any((column) {
+      final name = column['name'];
+      return name is String && name.toLowerCase() == 'deleted';
+    });
+    _hasDeletedFlagColumn = hasColumn;
+    return hasColumn;
+  }
 
   Future<T> _runWrite<T>(
     Future<T> Function(DatabaseExecutor executor) action, {
@@ -1073,30 +1089,28 @@ class SqliteTransactionsRepository implements TransactionsRepository {
     }
 
     final db = await _db;
+    final hasDeletedColumn = await _supportsDeletedFlag(db);
     final query = StringBuffer(
-      'SELECT COALESCE(SUM(amount_minor), 0) AS total '
+      'SELECT COALESCE(SUM(amount_minor), 0) AS spent_minor '
       'FROM transactions '
-      "WHERE type = 'expense' AND is_planned = 0 "
-      'AND plan_instance_id IS NULL '
-      'AND included_in_period = 1 '
-      'AND date = ? AND date >= ? AND date < ?',
+      "WHERE date = ? "
+      "AND type = 'expense' "
+      'AND is_planned = 0 ',
     );
-    final args = <Object?>[
-      _formatDate(normalizedDate),
-      _formatDate(normalizedStart),
-      _formatDate(normalizedEndExclusive),
-    ];
-    if (periodId != null) {
-      query.write(' AND period_id = ?');
-      args.add(periodId);
+    if (hasDeletedColumn) {
+      query.write('AND deleted = 0 ');
     }
-    final rows = await db.rawQuery(query.toString(), args);
+
+    final rows = await db.rawQuery(
+      query.toString(),
+      [_formatDate(normalizedDate)],
+    );
 
     if (rows.isEmpty) {
       return 0;
     }
 
-    final value = rows.first['total'];
+    final value = rows.first['spent_minor'];
     if (value is int) {
       return value;
     }

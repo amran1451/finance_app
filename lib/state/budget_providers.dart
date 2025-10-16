@@ -554,6 +554,7 @@ class MetricsController extends AsyncNotifier<MetricsSnapshot> {
 
   Future<MetricsSnapshot> _computeSnapshot() async {
     ref.watch(dbTickProvider);
+    ref.watch(syncTickProvider);
     final period = ref.watch(selectedPeriodRefProvider);
     final (start, endExclusive) = ref.watch(periodBoundsProvider);
     final repository = ref.watch(transactionsRepoProvider);

@@ -33,13 +33,14 @@ void main() {
     required bool included,
     bool planned = false,
     PeriodRef? period,
+    String type = 'expense',
   }) async {
     final resolvedPeriod =
         period ?? periodRefForDate(date, anchors.$1, anchors.$2);
     await db.insert('transactions', {
       'account_id': accountId,
       'category_id': categoryId,
-      'type': 'expense',
+      'type': type,
       'amount_minor': amountMinor,
       'date': formatDate(date),
       'is_planned': planned ? 1 : 0,
@@ -618,7 +619,8 @@ void main() {
     expect(records.map((record) => record.amountMinor).toList(), [450, 250]);
   });
 
-  test('sumExpensesOnDateWithinPeriod counts only included operations', () async {
+  test('sumExpensesOnDateWithinPeriod sums only unplanned expenses for date',
+      () async {
     final periodStart = DateTime(2024, 1, 1);
     final periodEndExclusive = DateTime(2024, 2, 1);
     final targetDate = DateTime(2024, 1, 15);
@@ -631,7 +633,20 @@ void main() {
     await insertTransaction(
       date: targetDate,
       amountMinor: 2_000,
-      included: false,
+      included: true,
+      planned: true,
+    );
+    await insertTransaction(
+      date: targetDate,
+      amountMinor: 3_000,
+      included: true,
+      type: 'income',
+    );
+    await insertTransaction(
+      date: targetDate,
+      amountMinor: 4_000,
+      included: true,
+      type: 'saving',
     );
     await insertTransaction(
       date: targetDate.add(const Duration(days: 1)),
