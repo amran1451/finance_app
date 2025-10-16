@@ -705,10 +705,9 @@ class _PayoutsRepositoryWithDbTick implements payouts_repo.PayoutsRepository {
 }
 
 final computedBalanceProvider =
-    FutureProvider.family<int, int>((ref, accountId) async {
-  ref.watch(dbTickProvider);
+    StreamProvider.family<int, int>((ref, accountId) {
   final repository = ref.watch(accountsRepoProvider);
-  return repository.getComputedBalanceMinor(accountId);
+  return repository.watchAccountBalance(accountId);
 });
 
 final reconcileAccountProvider =

@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -38,8 +39,12 @@ void main() {
     expect(accounts, isNotEmpty);
     final accountId = accounts.first.id!;
 
-    final initial = await container.read(computedBalanceProvider(accountId).future);
-    expect(initial, 0);
+    final iterator = StreamIterator(
+      container.read(computedBalanceProvider(accountId).stream),
+    );
+
+    expect(await iterator.moveNext(), isTrue);
+    expect(iterator.current, 0);
 
     final db = await AppDatabase.instance.database;
 
@@ -63,7 +68,9 @@ void main() {
 
     bumpDbTick(container);
 
-    final updated = await container.read(computedBalanceProvider(accountId).future);
-    expect(updated, -2500);
+    expect(await iterator.moveNext(), isTrue);
+    expect(iterator.current, -2500);
+
+    await iterator.cancel();
   });
 }
