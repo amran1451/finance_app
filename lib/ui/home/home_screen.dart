@@ -956,27 +956,35 @@ class _HomeAccountTile extends ConsumerWidget {
     if (accountId == null) {
       return const SizedBox.shrink();
     }
-    final computedAsync = ref.watch(computedBalanceProvider(accountId));
+    final balanceStream = ref.watch(accountBalanceStreamProvider(accountId));
 
-    return ListTile(
-      contentPadding: EdgeInsets.zero,
-      leading: const CircleAvatar(
-        child: Icon(Icons.account_balance_wallet),
-      ),
-      title: Text(account.name),
-      subtitle: computedAsync.when(
-        data: (computed) => Text(
-          'Баланс: ${formatCurrencyMinor(computed)}',
-        ),
-        loading: () => const Text('Загрузка баланса…'),
-        error: (error, _) => Text('Ошибка расчёта: $error'),
-      ),
-      trailing: const Icon(Icons.chevron_right),
-      onTap: () => context.pushNamed(
-        RouteNames.accountEdit,
-        queryParameters: {'id': accountId.toString()},
-        extra: account.name,
-      ),
+    return StreamBuilder<int>(
+      stream: balanceStream,
+      builder: (context, snapshot) {
+        Widget subtitle;
+        if (snapshot.hasError) {
+          subtitle = Text('Ошибка расчёта: ${snapshot.error}');
+        } else if (!snapshot.hasData) {
+          subtitle = const Text('Загрузка баланса…');
+        } else {
+          subtitle = Text('Баланс: ${formatCurrencyMinor(snapshot.data!)}');
+        }
+
+        return ListTile(
+          contentPadding: EdgeInsets.zero,
+          leading: const CircleAvatar(
+            child: Icon(Icons.account_balance_wallet),
+          ),
+          title: Text(account.name),
+          subtitle: subtitle,
+          trailing: const Icon(Icons.chevron_right),
+          onTap: () => context.pushNamed(
+            RouteNames.accountEdit,
+            queryParameters: {'id': accountId.toString()},
+            extra: account.name,
+          ),
+        );
+      },
     );
   }
 }
