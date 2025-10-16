@@ -535,13 +535,11 @@ String _formatDailyTotalLabel(
 ) {
   switch (filter) {
     case OpTypeFilter.all:
-      final net =
-          group.expenseNonPlanTotalMinor - group.incomeNonPlanTotalMinor;
-      if (net == 0) {
+      final expense = group.expenseNonPlanTotalMinor;
+      if (expense == 0) {
         return formatCurrencyMinor(0);
       }
-      final formatted = formatCurrencyMinor(net.abs());
-      return net > 0 ? '−$formatted' : formatted;
+      return '−${formatCurrencyMinor(expense)}';
     case OpTypeFilter.expense:
       final amount = group.expenseNonPlanTotalMinor;
       if (amount == 0) {
@@ -569,13 +567,9 @@ Color? _colorForDailyTotal(
 ) {
   switch (filter) {
     case OpTypeFilter.all:
-      final net =
-          group.expenseNonPlanTotalMinor - group.incomeNonPlanTotalMinor;
-      if (net > 0) {
+      final expense = group.expenseNonPlanTotalMinor;
+      if (expense > 0) {
         return _colorForType(TransactionType.expense);
-      }
-      if (net < 0) {
-        return _colorForType(TransactionType.income);
       }
       return null;
     case OpTypeFilter.expense:
