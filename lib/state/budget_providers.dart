@@ -555,29 +555,27 @@ class CurrentPeriodAggregates {
   final int initialPeriodBudget;
 }
 
-final currentPeriodAggregatesProvider =
-    FutureProvider<CurrentPeriodAggregates>((ref) async {
+final todaySpentNonPlanProvider = FutureProvider<int>((ref) async {
+  ref.watch(dbTickProvider);
+  ref.watch(syncTickProvider);
+  final repository = ref.watch(transactionsRepoProvider);
+  final today = DateUtils.dateOnly(ref.watch(todayDateProvider));
+  return repository.sumExpensesNonPlanByDate(today);
+});
+
+final periodSpentNonPlanProvider = FutureProvider<int>((ref) async {
   ref.watch(dbTickProvider);
   ref.watch(syncTickProvider);
   final repository = ref.watch(transactionsRepoProvider);
   final period = ref.watch(selectedPeriodRefProvider);
   final (start, endExclusive) = ref.watch(periodBoundsProvider);
-  final today = DateUtils.dateOnly(ref.watch(todayDateProvider));
   final normalizedStart = DateUtils.dateOnly(start);
   final normalizedEndExclusive = DateUtils.dateOnly(endExclusive);
   final fromToday = ref.watch(periodDailyLimitFromTodayFlagProvider);
-  final initialPeriodBudget = ref.watch(periodBudgetBaseProvider);
+  final today = DateUtils.dateOnly(ref.watch(todayDateProvider));
 
-  var todaySpent = 0;
-  final isTodayWithinPeriod = !today.isBefore(normalizedStart) &&
-      today.isBefore(normalizedEndExclusive);
-  if (isTodayWithinPeriod) {
-    todaySpent = await repository.sumExpensesOnDateWithinPeriod(
-      date: today,
-      periodStart: normalizedStart,
-      periodEndExclusive: normalizedEndExclusive,
-      periodId: period.id,
-    );
+  if (!normalizedStart.isBefore(normalizedEndExclusive)) {
+    return 0;
   }
 
   DateTime spendingStart = normalizedStart;
@@ -588,23 +586,41 @@ final currentPeriodAggregatesProvider =
     }
   }
 
-  var periodSpent = 0;
-  if (spendingStart.isBefore(normalizedEndExclusive)) {
-    if (fromToday) {
-      periodSpent = await repository.sumUnplannedExpensesInRange(
-        spendingStart,
-        normalizedEndExclusive,
-        periodId: period.id,
-      );
-    } else {
-      periodSpent = await repository.sumActualExpenses(
-        period: period,
-        start: normalizedStart,
-        endExclusive: normalizedEndExclusive,
-        periodId: period.id,
-      );
-    }
+  if (!spendingStart.isBefore(normalizedEndExclusive)) {
+    return 0;
   }
+
+  if (fromToday) {
+    return repository.sumUnplannedExpensesInRange(
+      spendingStart,
+      normalizedEndExclusive,
+      periodId: period.id,
+    );
+  }
+
+  return repository.sumActualExpenses(
+    period: period,
+    start: normalizedStart,
+    endExclusive: normalizedEndExclusive,
+    periodId: period.id,
+  );
+});
+
+final currentPeriodAggregatesProvider =
+    FutureProvider<CurrentPeriodAggregates>((ref) async {
+  final period = ref.watch(selectedPeriodRefProvider);
+  final (start, endExclusive) = ref.watch(periodBoundsProvider);
+  final today = DateUtils.dateOnly(ref.watch(todayDateProvider));
+  final normalizedStart = DateUtils.dateOnly(start);
+  final normalizedEndExclusive = DateUtils.dateOnly(endExclusive);
+  final initialPeriodBudget = ref.watch(periodBudgetBaseProvider);
+
+  final isTodayWithinPeriod = !today.isBefore(normalizedStart) &&
+      today.isBefore(normalizedEndExclusive);
+  final todaySpent = isTodayWithinPeriod
+      ? await ref.watch(todaySpentNonPlanProvider.future)
+      : 0;
+  final periodSpent = await ref.watch(periodSpentNonPlanProvider.future);
 
   return CurrentPeriodAggregates(
     todaySpentNonPlan: todaySpent,

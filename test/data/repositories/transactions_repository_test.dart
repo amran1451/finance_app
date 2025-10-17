@@ -654,6 +654,62 @@ void main() {
     expect(total, 1200);
   });
 
+  test('sumExpensesNonPlanByDate returns only included unplanned expenses',
+      () async {
+    final targetDate = DateTime(2024, 1, 15);
+    final period = periodRefForDate(targetDate, anchors.$1, anchors.$2);
+
+    await insertTransaction(
+      date: targetDate,
+      amountMinor: 1_100,
+      included: true,
+    );
+    await insertTransaction(
+      date: targetDate,
+      amountMinor: 2_200,
+      included: true,
+      planned: true,
+    );
+    await insertTransaction(
+      date: targetDate,
+      amountMinor: 3_300,
+      included: false,
+    );
+    await insertTransaction(
+      date: targetDate.add(const Duration(days: 1)),
+      amountMinor: 4_400,
+      included: true,
+    );
+    await db.insert('transactions', {
+      'account_id': accountId,
+      'category_id': categoryId,
+      'type': 'expense',
+      'amount_minor': 750,
+      'date': formatDate(targetDate),
+      'is_planned': 0,
+      'included_in_period': 1,
+      'plan_instance_id': 77,
+      'planned_id': 55,
+      'source': 'plan',
+      'period_id': period.id,
+    });
+    await db.insert('transactions', {
+      'account_id': accountId,
+      'category_id': categoryId,
+      'type': 'expense',
+      'amount_minor': 650,
+      'date': formatDate(targetDate),
+      'is_planned': 0,
+      'included_in_period': 1,
+      'period_id': period.id,
+      'deleted': 1,
+    });
+
+    final total = await repository.sumExpensesNonPlanByDate(targetDate);
+
+    expect(total, 1_100);
+  });
+
   test('getByPeriod with includedInPeriod filter returns only included records',
       () async {
     final start = DateTime(2024, 1, 10);
