@@ -191,6 +191,9 @@ class _RecordingTransactionsRepository implements TransactionsRepository {
   Future<int> sumUnplannedExpensesOnDate(DateTime date) => _unsupported();
 
   @override
+  Future<int> sumExpensesNonPlanByDate(DateTime date) => _unsupported();
+
+  @override
   Future<void> update(
     TransactionRecord record, {
     bool? includedInPeriod,

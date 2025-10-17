@@ -138,6 +138,9 @@ abstract class TransactionsRepository {
   /// Сумма внеплановых расходов в [date] (учитывая границы активного периода)
   Future<int> sumUnplannedExpensesOnDate(DateTime date);
 
+  /// Сумма внеплановых расходов за конкретную дату без привязки к периоду.
+  Future<int> sumExpensesNonPlanByDate(DateTime date);
+
   /// Сумма внеплановых расходов в интервале [from, toExclusive)
   Future<int> sumUnplannedExpensesInRange(
     DateTime from,
@@ -1123,6 +1126,44 @@ class SqliteTransactionsRepository implements TransactionsRepository {
     final dayStart = DateTime(date.year, date.month, date.day);
     final dayEnd = dayStart.add(const Duration(days: 1));
     return sumUnplannedExpensesInRange(dayStart, dayEnd);
+  }
+
+  @override
+  Future<int> sumExpensesNonPlanByDate(DateTime date) async {
+    final normalizedDate = DateTime(date.year, date.month, date.day);
+    final db = await _db;
+    final hasDeletedColumn = await _supportsDeletedFlag(db);
+
+    final query = StringBuffer(
+      'SELECT COALESCE(SUM(amount_minor), 0) AS total '
+      'FROM transactions '
+      'WHERE date = ? '
+      "AND type = 'expense' "
+      'AND is_planned = 0 '
+      'AND plan_instance_id IS NULL '
+      'AND planned_id IS NULL '
+      'AND included_in_period = 1 ',
+    );
+    if (hasDeletedColumn) {
+      query.write('AND deleted = 0 ');
+    }
+
+    final rows = await db.rawQuery(
+      query.toString(),
+      [_formatDate(normalizedDate)],
+    );
+
+    if (rows.isEmpty) {
+      return 0;
+    }
+    final value = rows.first['total'];
+    if (value is int) {
+      return value;
+    }
+    if (value is num) {
+      return value.toInt();
+    }
+    return 0;
   }
 
   @override
