@@ -414,7 +414,10 @@ class EntryFlowController extends StateNotifier<EntryFlowState> {
 
 extension EntryFlowQuickReset on EntryFlowController {
   void resetForQuickAdd(OperationKind kind) {
-    state = EntryFlowState(type: operationTypeFromKind(kind));
+    state = EntryFlowState(
+      type: operationTypeFromKind(kind),
+      includeInPeriod: true,
+    );
   }
 }
 

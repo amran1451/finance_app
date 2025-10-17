@@ -8,7 +8,7 @@ class AppMigrations {
   AppMigrations._();
 
   /// Latest schema version supported by the application.
-  static const int latestVersion = 22;
+  static const int latestVersion = 23;
 
   static final Map<int, List<String>> _migrationScripts = {
     1: [
@@ -179,6 +179,7 @@ class AppMigrations {
       'CREATE INDEX IF NOT EXISTS idx_transactions_plan_period ON transactions(planned_id, period_id)',
     ],
     22: [],
+    23: [],
   };
 
   /// Applies migrations from [oldVersion] (exclusive) up to [newVersion] (inclusive).
@@ -334,6 +335,15 @@ class AppMigrations {
             'CREATE UNIQUE INDEX IF NOT EXISTS uniq_transactions_plan_instance_active '
             'ON transactions(plan_instance_id) '
             'WHERE plan_instance_id IS NOT NULL AND deleted = 0',
+          );
+          break;
+        case 23:
+          await db.execute(
+            'UPDATE transactions '
+            'SET included_in_period = 1 '
+            'WHERE included_in_period = 0 '
+            'AND deleted = 0 '
+            'AND is_planned = 0',
           );
           break;
         default:
