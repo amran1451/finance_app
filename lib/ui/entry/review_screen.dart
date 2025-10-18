@@ -734,7 +734,7 @@ class _ReviewScreenState extends ConsumerState<ReviewScreen> {
                 context,
                 listen: false,
               );
-          final quickAddOriginPeriod = originPeriodRef ??
+          final PeriodRef quickAddOriginPeriod = originPeriodRef ??
               container.read(selectedPeriodRefProvider);
           final quickAddOriginLabel = originPeriodLabel ??
               container.read(
