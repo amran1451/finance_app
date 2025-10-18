@@ -430,12 +430,27 @@ class _OperationsSection extends ConsumerWidget {
                       );
                       return;
                     }
+                    final selectedPeriodRef =
+                        ref.read(selectedPeriodRefProvider);
+                    final originLabel = ref.read(
+                      periodLabelForRefProvider(selectedPeriodRef),
+                    );
+                    final entryAsync =
+                        ref.read(periodEntryProvider(selectedPeriodRef));
+                    final originEntryId = record.effectivePeriodRefId ??
+                        entryAsync.maybeWhen(
+                          data: (value) => value.id,
+                          orElse: () => null,
+                        );
                     ref
                         .read(entryFlowControllerProvider.notifier)
                         .loadFromTransaction(
                           record: record,
                           category: category,
                           savingCounterpart: item.savingCounterpart,
+                          originPeriod: selectedPeriodRef,
+                          originPeriodEntryId: originEntryId,
+                          originPeriodLabel: originLabel,
                         );
                     if (!context.mounted) {
                       return;

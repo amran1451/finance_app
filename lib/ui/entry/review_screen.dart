@@ -32,7 +32,7 @@ class ReviewScreen extends ConsumerStatefulWidget {
   ConsumerState<ReviewScreen> createState() => _ReviewScreenState();
 }
 
-enum _ClosedPeriodAction { reopen, chooseOther }
+enum _ClosedPeriodAction { reopen, addAnyway, cancel }
 
 class _ReviewScreenState extends ConsumerState<ReviewScreen> {
   static const int _kUnselectedAccountId = -1;
@@ -230,6 +230,30 @@ class _ReviewScreenState extends ConsumerState<ReviewScreen> {
     });
   }
 
+  String? _buildOriginAnchorMessage(
+    EntryFlowState state,
+    DateTime date,
+    (int, int) anchors,
+  ) {
+    final originPeriod = state.originPeriod;
+    final originLabel = state.originPeriodLabel;
+    if (originPeriod == null || originLabel == null) {
+      return null;
+    }
+    final bounds = originPeriod.bounds(anchors.$1, anchors.$2);
+    final normalizedDate = DateUtils.dateOnly(date);
+    final start = DateUtils.dateOnly(bounds.start);
+    final endExclusive = DateUtils.dateOnly(bounds.endExclusive);
+    final isOutside =
+        normalizedDate.isBefore(start) || !normalizedDate.isBefore(endExclusive);
+    if (!isOutside) {
+      return null;
+    }
+    final formattedDate = formatDayMonth(normalizedDate);
+    return 'Будет учтено в периоде: $originLabel '
+        '(дата операции: $formattedDate)';
+  }
+
   String _formatDateLabel(DateTime date) {
     return _formatReviewDate(date);
   }
@@ -267,6 +291,7 @@ class _ReviewScreenState extends ConsumerState<ReviewScreen> {
     final entryState = ref.watch(entryFlowControllerProvider);
     final controller = ref.read(entryFlowControllerProvider.notifier);
     final (periodStart, periodEndExclusive) = ref.watch(periodBoundsProvider);
+    final anchorDays = ref.watch(anchorDaysProvider);
     final accountsAsync = ref.watch(activeAccountsProvider);
     final editingRecord = entryState.editingRecord;
     final editingCounterpart = entryState.editingCounterpart;
@@ -481,28 +506,35 @@ class _ReviewScreenState extends ConsumerState<ReviewScreen> {
           builder: (context) {
             return AlertDialog(
               content: const Text(
-                'Период закрыт. Откройте период или выберите другой.',
+                'Период закрыт. Добавить операцию в выбранный период?',
               ),
               actions: [
                 TextButton(
                   onPressed: () => Navigator.of(context)
-                      .pop(_ClosedPeriodAction.chooseOther),
-                  child: const Text('Выбрать другой период'),
+                      .pop(_ClosedPeriodAction.cancel),
+                  child: const Text('Отмена'),
+                ),
+                TextButton(
+                  onPressed: () => Navigator.of(context)
+                      .pop(_ClosedPeriodAction.addAnyway),
+                  child: const Text('Добавить в закрытый период'),
                 ),
                 FilledButton(
                   onPressed: () => Navigator.of(context)
                       .pop(_ClosedPeriodAction.reopen),
-                  child: const Text('Открыть период'),
+                  child: const Text('Открыть период и добавить'),
                 ),
               ],
             );
           },
         );
-        if (action != _ClosedPeriodAction.reopen) {
+        if (action == null || action == _ClosedPeriodAction.cancel) {
           return;
         }
-        await ref.read(periodsRepoProvider).reopen(selectedPeriod);
-        bumpDbTick(ref);
+        if (action == _ClosedPeriodAction.reopen) {
+          await ref.read(periodsRepoProvider).reopen(selectedPeriod);
+          bumpDbTick(ref);
+        }
       }
       final bounds = ref.read(periodBoundsProvider);
       final normalizedStart = DateUtils.dateOnly(bounds.$1);
@@ -559,6 +591,7 @@ class _ReviewScreenState extends ConsumerState<ReviewScreen> {
               reasonId: reasonId,
               reasonLabel: reasonLabel,
               periodId: targetPeriod.id,
+              effectivePeriodRefId: entryState.originPeriodEntryId,
             )
           : TransactionRecord(
               accountId: accountId,
@@ -576,6 +609,7 @@ class _ReviewScreenState extends ConsumerState<ReviewScreen> {
               reasonId: reasonId,
               reasonLabel: reasonLabel,
               periodId: targetPeriod.id,
+              effectivePeriodRefId: entryState.originPeriodEntryId,
             );
 
       final shouldConfirmUpdate = isEditingOperation &&
@@ -610,6 +644,9 @@ class _ReviewScreenState extends ConsumerState<ReviewScreen> {
       }
 
       final transactionsRepository = ref.read(transactionsRepoProvider);
+      final originPeriodRef = entryState.originPeriod;
+      final originPeriodEntryId = entryState.originPeriodEntryId;
+      final originPeriodLabel = entryState.originPeriodLabel;
       if (isEditingOperation) {
         await transactionsRepository.update(
           record,
@@ -631,6 +668,7 @@ class _ReviewScreenState extends ConsumerState<ReviewScreen> {
             reasonId: reasonId,
             reasonLabel: reasonLabel,
             periodId: targetPeriod.id,
+            effectivePeriodRefId: entryState.originPeriodEntryId,
           );
           await transactionsRepository.update(
             updatedCounterpart,
@@ -696,12 +734,30 @@ class _ReviewScreenState extends ConsumerState<ReviewScreen> {
                 context,
                 listen: false,
               );
+          final quickAddOriginPeriod = originPeriodRef ??
+              container.read(selectedPeriodRefProvider);
+          final quickAddOriginLabel = originPeriodLabel ??
+              container.read(
+                periodLabelForRefProvider(quickAddOriginPeriod),
+              );
+          final quickAddEntryAsync =
+              container.read(periodEntryProvider(quickAddOriginPeriod));
+          final quickAddOriginEntryId = originPeriodEntryId ??
+              quickAddEntryAsync.maybeWhen(
+                data: (value) => value.id,
+                orElse: () => null,
+              );
           showAddAnotherSnackGlobal(
             seconds: 5,
             onTap: (ctx) {
               container
                   .read(entryFlowControllerProvider.notifier)
-                  .resetForQuickAdd(operationKind);
+                  .resetForQuickAdd(
+                    operationKind,
+                    originPeriod: quickAddOriginPeriod,
+                    originPeriodEntryId: quickAddOriginEntryId,
+                    originPeriodLabel: quickAddOriginLabel,
+                  );
               GoRouter.of(ctx).goNamed(RouteNames.entryAmount);
             },
           );
@@ -787,9 +843,33 @@ class _ReviewScreenState extends ConsumerState<ReviewScreen> {
                               ValueListenableBuilder<DateTime>(
                                 valueListenable: selectedDate,
                                 builder: (context, value, _) {
-                                  return _SummaryRow(
-                                    label: 'Дата',
-                                    value: _formatDateLabel(value),
+                                  final message = _buildOriginAnchorMessage(
+                                    entryState,
+                                    value,
+                                    anchorDays,
+                                  );
+                                  return Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      _SummaryRow(
+                                        label: 'Дата',
+                                        value: _formatDateLabel(value),
+                                      ),
+                                      if (message != null) ...[
+                                        const SizedBox(height: 8),
+                                        Text(
+                                          message,
+                                          style: Theme.of(context)
+                                              .textTheme
+                                              .bodySmall
+                                              ?.copyWith(
+                                                color: Theme.of(context)
+                                                    .colorScheme
+                                                    .onSurfaceVariant,
+                                              ),
+                                        ),
+                                      ],
+                                    ],
                                   );
                                 },
                               ),

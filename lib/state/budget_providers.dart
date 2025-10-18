@@ -560,7 +560,16 @@ final todaySpentNonPlanProvider = FutureProvider<int>((ref) async {
   ref.watch(syncTickProvider);
   final repository = ref.watch(transactionsRepoProvider);
   final today = DateUtils.dateOnly(ref.watch(todayDateProvider));
-  return repository.sumExpensesNonPlanByDate(today);
+  final period = ref.watch(selectedPeriodRefProvider);
+  final (start, endExclusive) = ref.watch(periodBoundsProvider);
+  final normalizedStart = DateUtils.dateOnly(start);
+  final normalizedEndExclusive = DateUtils.dateOnly(endExclusive);
+  return repository.sumExpensesNonPlanByDate(
+    today,
+    periodId: period.id,
+    periodStart: normalizedStart,
+    periodEndExclusive: normalizedEndExclusive,
+  );
 });
 
 final periodSpentNonPlanProvider = FutureProvider<int>((ref) async {

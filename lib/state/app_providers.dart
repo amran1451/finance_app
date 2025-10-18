@@ -439,8 +439,18 @@ class _TransactionsRepositoryWithDbTick
   }
 
   @override
-  Future<int> sumExpensesNonPlanByDate(DateTime date) {
-    return _delegate.sumExpensesNonPlanByDate(date);
+  Future<int> sumExpensesNonPlanByDate(
+    DateTime date, {
+    String? periodId,
+    DateTime? periodStart,
+    DateTime? periodEndExclusive,
+  }) {
+    return _delegate.sumExpensesNonPlanByDate(
+      date,
+      periodId: periodId,
+      periodStart: periodStart,
+      periodEndExclusive: periodEndExclusive,
+    );
   }
 
   @override
