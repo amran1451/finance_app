@@ -25,6 +25,7 @@ class TransactionRecord {
     this.source,
     this.payoutPeriodId,
     this.periodId,
+    this.effectivePeriodRefId,
     this.deleted = false,
   });
 
@@ -49,6 +50,7 @@ class TransactionRecord {
   final String? source;
   final String? payoutPeriodId;
   final String? periodId;
+  final int? effectivePeriodRefId;
   final bool deleted;
 
   TransactionRecord copyWith({
@@ -73,6 +75,7 @@ class TransactionRecord {
     Object? source = _unset,
     Object? payoutPeriodId = _unset,
     Object? periodId = _unset,
+    Object? effectivePeriodRefId = _unset,
     bool? deleted,
   }) {
     return TransactionRecord(
@@ -109,6 +112,9 @@ class TransactionRecord {
           ? this.payoutPeriodId
           : payoutPeriodId as String?,
       periodId: periodId == _unset ? this.periodId : periodId as String?,
+      effectivePeriodRefId: effectivePeriodRefId == _unset
+          ? this.effectivePeriodRefId
+          : effectivePeriodRefId as int?,
       deleted: deleted ?? this.deleted,
     );
   }
@@ -136,6 +142,7 @@ class TransactionRecord {
       source: map['source'] as String?,
       payoutPeriodId: map['payout_period_id'] as String?,
       periodId: map['period_id'] as String?,
+      effectivePeriodRefId: map['effective_period_ref_id'] as int?,
       deleted: (map['deleted'] as int? ?? 0) != 0,
     );
   }
@@ -163,6 +170,7 @@ class TransactionRecord {
       'source': source,
       'payout_period_id': payoutPeriodId,
       'period_id': periodId,
+      'effective_period_ref_id': effectivePeriodRefId,
       'deleted': deleted ? 1 : 0,
     };
   }

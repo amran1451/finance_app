@@ -8,7 +8,7 @@ class AppMigrations {
   AppMigrations._();
 
   /// Latest schema version supported by the application.
-  static const int latestVersion = 23;
+  static const int latestVersion = 24;
 
   static final Map<int, List<String>> _migrationScripts = {
     1: [
@@ -180,6 +180,11 @@ class AppMigrations {
     ],
     22: [],
     23: [],
+    24: [
+      'ALTER TABLE transactions ADD COLUMN effective_period_ref_id INTEGER NULL',
+      'CREATE INDEX IF NOT EXISTS idx_transactions_effective_period_date '
+          'ON transactions(type, effective_period_ref_id, date, deleted)',
+    ],
   };
 
   /// Applies migrations from [oldVersion] (exclusive) up to [newVersion] (inclusive).
@@ -346,6 +351,9 @@ class AppMigrations {
             'AND is_planned = 0',
           );
           break;
+        case 24:
+          await _backfillEffectivePeriodRefs(db);
+          break;
         default:
           break;
       }
@@ -410,6 +418,65 @@ class AppMigrations {
     await batch.commit(noResult: true);
   }
 
+  static Future<void> _backfillEffectivePeriodRefs(Database db) async {
+    final hasColumn = await _columnExists(
+      db,
+      tableName: 'transactions',
+      columnName: 'effective_period_ref_id',
+    );
+    if (!hasColumn) {
+      return;
+    }
+
+    final rows = await db.query(
+      'transactions',
+      columns: ['id', 'date', 'effective_period_ref_id'],
+      where: 'effective_period_ref_id IS NULL',
+    );
+
+    if (rows.isEmpty) {
+      return;
+    }
+
+    final anchors = await _loadAnchorDays(db);
+    final cache = <String, int>{};
+    final batch = db.batch();
+
+    for (final row in rows) {
+      final id = row['id'] as int?;
+      final rawDate = row['date'] as String?;
+      if (id == null || rawDate == null || rawDate.isEmpty) {
+        continue;
+      }
+      final parsedDate = DateTime.tryParse(rawDate);
+      if (parsedDate == null) {
+        continue;
+      }
+      final period = periodRefForDate(parsedDate, anchors.$1, anchors.$2);
+      final bounds = period.bounds(anchors.$1, anchors.$2);
+      final normalizedStart = normalizeDate(bounds.start);
+      final normalizedEndExclusive = normalizeDate(bounds.endExclusive);
+      final entryId = await _ensurePeriodEntryForBackfill(
+        db,
+        period,
+        normalizedStart,
+        normalizedEndExclusive,
+        cache,
+      );
+      if (entryId == null) {
+        continue;
+      }
+      batch.update(
+        'transactions',
+        {'effective_period_ref_id': entryId},
+        where: 'id = ?',
+        whereArgs: [id],
+      );
+    }
+
+    await batch.commit(noResult: true);
+  }
+
   static Future<(int, int)> _loadAnchorDays(Database db) async {
     const anchorDay1Key = 'anchor_day_1';
     const anchorDay2Key = 'anchor_day_2';
@@ -436,6 +503,83 @@ class AppMigrations {
     int normalize(int value) => value.clamp(1, 31);
     final sorted = [normalize(day1), normalize(day2)]..sort();
     return (sorted[0], sorted[1]);
+  }
+
+  static Future<int?> _ensurePeriodEntryForBackfill(
+    Database db,
+    PeriodRef period,
+    DateTime normalizedStart,
+    DateTime normalizedEndExclusive,
+    Map<String, int> cache,
+  ) async {
+    final key = '${period.year}-${period.month}-${period.half.name}';
+    final cached = cache[key];
+    if (cached != null) {
+      return cached;
+    }
+
+    final halfLabel = period.half == HalfPeriod.first ? 'H1' : 'H2';
+    final existing = await db.query(
+      'periods',
+      columns: ['id', 'start', 'end_exclusive'],
+      where: 'year = ? AND month = ? AND half = ?',
+      whereArgs: [period.year, period.month, halfLabel],
+      limit: 1,
+    );
+
+    if (existing.isNotEmpty) {
+      final row = existing.first;
+      final id = row['id'] as int?;
+      if (id == null) {
+        return null;
+      }
+      final updates = <String, Object?>{};
+      final storedStartRaw = row['start'] as String?;
+      final storedEndRaw = row['end_exclusive'] as String?;
+      final storedStart = storedStartRaw == null
+          ? null
+          : DateTime.tryParse(storedStartRaw);
+      final storedEnd = storedEndRaw == null
+          ? null
+          : DateTime.tryParse(storedEndRaw);
+      if (storedStart == null ||
+          normalizeDate(storedStart).isAfter(normalizedStart)) {
+        updates['start'] = _formatDate(normalizedStart);
+      }
+      if (storedEnd == null ||
+          normalizeDate(storedEnd).isBefore(normalizedEndExclusive)) {
+        updates['end_exclusive'] = _formatDate(normalizedEndExclusive);
+      }
+      if (updates.isNotEmpty) {
+        await db.update(
+          'periods',
+          updates,
+          where: 'id = ?',
+          whereArgs: [id],
+        );
+      }
+      cache[key] = id;
+      return id;
+    }
+
+    final insertedId = await db.insert('periods', {
+      'year': period.year,
+      'month': period.month,
+      'half': halfLabel,
+      'start': _formatDate(normalizedStart),
+      'end_exclusive': _formatDate(normalizedEndExclusive),
+      'carryover_minor': 0,
+      'closed': 0,
+      'isClosed': 0,
+    });
+    cache[key] = insertedId;
+    return insertedId;
+  }
+
+  static String _formatDate(DateTime date) {
+    final month = date.month.toString().padLeft(2, '0');
+    final day = date.day.toString().padLeft(2, '0');
+    return '${date.year.toString().padLeft(4, '0')}-$month-$day';
   }
 
   static Future<void> _executeStatements(Database db, List<String> statements) async {

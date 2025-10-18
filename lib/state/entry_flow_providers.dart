@@ -2,6 +2,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../data/models/category.dart';
 import '../data/models/transaction_record.dart';
+import '../utils/period_utils.dart';
 
 const bool kReturnToOperationsAfterSave = true;
 
@@ -53,6 +54,9 @@ class EntryFlowState {
     this.reasonId,
     this.reasonLabel,
     this.includeInPeriod = false,
+    this.originPeriod,
+    this.originPeriodEntryId,
+    this.originPeriodLabel,
   }) : selectedDate = selectedDate ?? _today;
 
   final String expression;
@@ -73,6 +77,9 @@ class EntryFlowState {
   final int? reasonId;
   final String? reasonLabel;
   final bool includeInPeriod;
+  final PeriodRef? originPeriod;
+  final int? originPeriodEntryId;
+  final String? originPeriodLabel;
 
   static DateTime get _today {
     final now = DateTime.now();
@@ -104,6 +111,9 @@ class EntryFlowState {
     Object? reasonId = _entryFlowUnset,
     Object? reasonLabel = _entryFlowUnset,
     Object? includeInPeriod = _entryFlowUnset,
+    Object? originPeriod = _entryFlowUnset,
+    Object? originPeriodEntryId = _entryFlowUnset,
+    Object? originPeriodLabel = _entryFlowUnset,
   }) {
     return EntryFlowState(
       expression:
@@ -145,6 +155,15 @@ class EntryFlowState {
       includeInPeriod: includeInPeriod == _entryFlowUnset
           ? this.includeInPeriod
           : includeInPeriod as bool,
+      originPeriod: originPeriod == _entryFlowUnset
+          ? this.originPeriod
+          : originPeriod as PeriodRef?,
+      originPeriodEntryId: originPeriodEntryId == _entryFlowUnset
+          ? this.originPeriodEntryId
+          : originPeriodEntryId as int?,
+      originPeriodLabel: originPeriodLabel == _entryFlowUnset
+          ? this.originPeriodLabel
+          : originPeriodLabel as String?,
     );
   }
 
@@ -159,8 +178,17 @@ class EntryFlowController extends StateNotifier<EntryFlowState> {
   void startNew({
     CategoryType type = CategoryType.expense,
     bool includeInPeriod = false,
+    PeriodRef? originPeriod,
+    int? originPeriodEntryId,
+    String? originPeriodLabel,
   }) {
-    state = EntryFlowState(type: type, includeInPeriod: includeInPeriod);
+    state = EntryFlowState(
+      type: type,
+      includeInPeriod: includeInPeriod,
+      originPeriod: originPeriod,
+      originPeriodEntryId: originPeriodEntryId,
+      originPeriodLabel: originPeriodLabel,
+    );
   }
 
   void appendDigit(String digit) {
@@ -369,6 +397,9 @@ class EntryFlowController extends StateNotifier<EntryFlowState> {
     required TransactionRecord record,
     required Category category,
     TransactionRecord? savingCounterpart,
+    PeriodRef? originPeriod,
+    int? originPeriodEntryId,
+    String? originPeriodLabel,
   }) {
     final amount = record.amountMinor / 100;
     final normalizedExpression = _formatExpressionValue(amount);
@@ -395,6 +426,9 @@ class EntryFlowController extends StateNotifier<EntryFlowState> {
       reasonId: record.reasonId,
       reasonLabel: record.reasonLabel,
       includeInPeriod: record.includedInPeriod,
+      originPeriod: originPeriod,
+      originPeriodEntryId: originPeriodEntryId ?? record.effectivePeriodRefId,
+      originPeriodLabel: originPeriodLabel,
     );
   }
 
@@ -413,10 +447,18 @@ class EntryFlowController extends StateNotifier<EntryFlowState> {
 }
 
 extension EntryFlowQuickReset on EntryFlowController {
-  void resetForQuickAdd(OperationKind kind) {
+  void resetForQuickAdd(
+    OperationKind kind, {
+    PeriodRef? originPeriod,
+    int? originPeriodEntryId,
+    String? originPeriodLabel,
+  }) {
     state = EntryFlowState(
       type: operationTypeFromKind(kind),
       includeInPeriod: true,
+      originPeriod: originPeriod,
+      originPeriodEntryId: originPeriodEntryId,
+      originPeriodLabel: originPeriodLabel,
     );
   }
 }

@@ -139,7 +139,12 @@ abstract class TransactionsRepository {
   Future<int> sumUnplannedExpensesOnDate(DateTime date);
 
   /// Сумма внеплановых расходов за конкретную дату без привязки к периоду.
-  Future<int> sumExpensesNonPlanByDate(DateTime date);
+  Future<int> sumExpensesNonPlanByDate(
+    DateTime date, {
+    String? periodId,
+    DateTime? periodStart,
+    DateTime? periodEndExclusive,
+  });
 
   /// Сумма внеплановых расходов в интервале [from, toExclusive)
   Future<int> sumUnplannedExpensesInRange(
@@ -174,6 +179,7 @@ class SqliteTransactionsRepository implements TransactionsRepository {
 
   final AppDatabase _database;
   bool? _hasDeletedFlagColumn;
+  final Map<String, int?> _periodEntryIdCache = {};
 
   Future<Database> get _db async => _database.database;
 
@@ -540,42 +546,52 @@ class SqliteTransactionsRepository implements TransactionsRepository {
     String? periodId,
   }) async {
     final db = await _db;
-    final where = StringBuffer();
+    final clauses = <String>[];
     final args = <Object?>[];
 
-    if (periodId != null) {
-      where.write('period_id = ?');
-      args.add(periodId);
-    } else {
-      where.write('date >= ? AND date <= ?');
-      args
-        ..add(_formatDate(from))
-        ..add(_formatDate(to));
+    final normalizedFrom = DateTime(from.year, from.month, from.day);
+    final normalizedTo = DateTime(to.year, to.month, to.day);
+    if (normalizedTo.isBefore(normalizedFrom)) {
+      return [];
+    }
+    final effectiveClause = await _buildEffectivePeriodFilter(
+      db,
+      args,
+      periodId: periodId,
+      startInclusive: normalizedFrom,
+      endInclusive: normalizedTo,
+    );
+    if (effectiveClause != null) {
+      clauses.add(effectiveClause);
     }
 
     if (accountId != null) {
-      where.write(' AND account_id = ?');
+      clauses.add('account_id = ?');
       args.add(accountId);
     }
     if (categoryId != null) {
-      where.write(' AND category_id = ?');
+      clauses.add('category_id = ?');
       args.add(categoryId);
     }
     if (type != null) {
-      where.write(' AND type = ?');
+      clauses.add('type = ?');
       args.add(_typeToString(type));
     }
     if (isPlanned != null) {
-      where.write(' AND is_planned = ?');
+      clauses.add('is_planned = ?');
       args.add(isPlanned ? 1 : 0);
     }
     if (includedInPeriod != null) {
-      where.write(' AND included_in_period = ?');
+      clauses.add('included_in_period = ?');
       args.add(includedInPeriod ? 1 : 0);
+    }
+
+    if (clauses.isEmpty) {
+      clauses.add('1 = 1');
     }
     final rows = await db.query(
       'transactions',
-      where: where.toString(),
+      where: clauses.join(' AND '),
       whereArgs: args,
       orderBy: 'date DESC, id DESC',
     );
@@ -1129,15 +1145,70 @@ class SqliteTransactionsRepository implements TransactionsRepository {
   }
 
   @override
-  Future<int> sumExpensesNonPlanByDate(DateTime date) async {
+  Future<int> sumExpensesNonPlanByDate(
+    DateTime date, {
+    String? periodId,
+    DateTime? periodStart,
+    DateTime? periodEndExclusive,
+  }) async {
     final normalizedDate = DateTime(date.year, date.month, date.day);
     final db = await _db;
     final hasDeletedColumn = await _supportsDeletedFlag(db);
 
+    DateTime? normalizedStart;
+    DateTime? normalizedEndExclusive;
+    DateTime? endInclusive;
+    if (periodStart != null && periodEndExclusive != null) {
+      normalizedStart = DateTime(
+        periodStart.year,
+        periodStart.month,
+        periodStart.day,
+      );
+      normalizedEndExclusive = DateTime(
+        periodEndExclusive.year,
+        periodEndExclusive.month,
+        periodEndExclusive.day,
+      );
+      if (!normalizedEndExclusive.isBefore(normalizedStart)) {
+        endInclusive = normalizedEndExclusive
+            .subtract(const Duration(days: 1));
+      }
+    }
+
+    DateTime? fallbackStart = normalizedStart;
+    DateTime? fallbackEndInclusive = endInclusive;
+    if (fallbackStart != null) {
+      fallbackEndInclusive ??= fallbackStart;
+      if (fallbackEndInclusive.isBefore(fallbackStart)) {
+        fallbackEndInclusive = fallbackStart;
+      }
+    }
+
+    final args = <Object?>[];
+    String whereClause;
+    if (periodId != null ||
+        (fallbackStart != null && fallbackEndInclusive != null)) {
+      final clause = await _buildEffectivePeriodFilter(
+        db,
+        args,
+        periodId: periodId,
+        startInclusive: fallbackStart,
+        endInclusive: fallbackEndInclusive,
+      );
+      if (clause == null) {
+        return 0;
+      }
+      whereClause = '$clause AND date = ?';
+    } else {
+      whereClause = 'date = ?';
+    }
+    args.add(_formatDate(normalizedDate));
+
     final query = StringBuffer(
       'SELECT COALESCE(SUM(amount_minor), 0) AS total '
       'FROM transactions '
-      'WHERE date = ? '
+      'WHERE '
+      '$whereClause '
       "AND type = 'expense' "
       'AND is_planned = 0 '
       'AND plan_instance_id IS NULL '
@@ -1150,7 +1221,7 @@ class SqliteTransactionsRepository implements TransactionsRepository {
 
     final rows = await db.rawQuery(
       query.toString(),
-      [_formatDate(normalizedDate)],
+      args,
     );
 
     if (rows.isEmpty) {
@@ -1192,10 +1263,27 @@ class SqliteTransactionsRepository implements TransactionsRepository {
 
     final db = await _db;
     final hasDeletedColumn = await _supportsDeletedFlag(db);
+    final endInclusive =
+        normalizedEndExclusive.subtract(const Duration(days: 1));
+    final args = <Object?>[];
+    final clause = await _buildEffectivePeriodFilter(
+      db,
+      args,
+      periodId: periodId,
+      startInclusive: normalizedStart,
+      endInclusive: endInclusive,
+    );
+    if (clause == null) {
+      return 0;
+    }
+    args.add(_formatDate(normalizedDate));
+
     final query = StringBuffer(
       'SELECT COALESCE(SUM(amount_minor), 0) AS spent_minor '
       'FROM transactions '
-      "WHERE date = ? "
+      'WHERE '
+      '$clause '
+      'AND date = ? '
       "AND type = 'expense' "
       'AND is_planned = 0 '
       'AND plan_instance_id IS NULL '
@@ -1208,7 +1296,7 @@ class SqliteTransactionsRepository implements TransactionsRepository {
 
     final rows = await db.rawQuery(
       query.toString(),
-      [_formatDate(normalizedDate)],
+      args,
     );
 
     if (rows.isEmpty) {
@@ -1231,49 +1319,6 @@ class SqliteTransactionsRepository implements TransactionsRepository {
     DateTime toExclusive, {
     String? periodId,
   }) async {
-    final db = await _db;
-    final hasDeletedColumn = await _supportsDeletedFlag(db);
-
-    if (periodId != null) {
-      final query = StringBuffer(
-        'SELECT COALESCE(SUM(amount_minor), 0) AS total '
-        'FROM transactions '
-        "WHERE type = 'expense' AND is_planned = 0 "
-        'AND plan_instance_id IS NULL '
-        'AND planned_id IS NULL '
-        'AND included_in_period = 1 '
-        'AND period_id = ? '
-        'AND date >= ? AND date <= ? ',
-      );
-      if (hasDeletedColumn) {
-        query.write('AND deleted = 0 ');
-      }
-      final normalizedFrom = DateTime(from.year, from.month, from.day);
-      final normalizedTo = DateTime(toExclusive.year, toExclusive.month, toExclusive.day);
-      if (!normalizedFrom.isBefore(normalizedTo)) {
-        return 0;
-      }
-      final endInclusive = normalizedTo.subtract(const Duration(days: 1));
-      if (endInclusive.isBefore(normalizedFrom)) {
-        return 0;
-      }
-      final rows = await db.rawQuery(
-        query.toString(),
-        [periodId, _formatDate(normalizedFrom), _formatDate(endInclusive)],
-      );
-      if (rows.isEmpty) {
-        return 0;
-      }
-      final value = rows.first['total'];
-      if (value is int) {
-        return value;
-      }
-      if (value is num) {
-        return value.toInt();
-      }
-      return 0;
-    }
-
     final normalizedFrom = DateTime(from.year, from.month, from.day);
     final normalizedTo = DateTime(toExclusive.year, toExclusive.month, toExclusive.day);
     if (!normalizedFrom.isBefore(normalizedTo)) {
@@ -1285,20 +1330,37 @@ class SqliteTransactionsRepository implements TransactionsRepository {
       return 0;
     }
 
+    final db = await _db;
+    final hasDeletedColumn = await _supportsDeletedFlag(db);
+    final args = <Object?>[];
+    final clause = await _buildEffectivePeriodFilter(
+      db,
+      args,
+      periodId: periodId,
+      startInclusive: normalizedFrom,
+      endInclusive: endInclusive,
+    );
+    if (clause == null) {
+      return 0;
+    }
+
     final query = StringBuffer(
-      'SELECT SUM(amount_minor) AS total '
+      'SELECT COALESCE(SUM(amount_minor), 0) AS total '
       'FROM transactions '
       "WHERE type = 'expense' AND is_planned = 0 "
       'AND plan_instance_id IS NULL '
       'AND planned_id IS NULL '
-      "AND included_in_period = 1 AND date BETWEEN ? AND ? ",
-    );
+      'AND included_in_period = 1 '
+      'AND ',
+    )
+      ..write(clause)
+      ..write(' ');
     if (hasDeletedColumn) {
       query.write('AND deleted = 0 ');
     }
     final rows = await db.rawQuery(
       query.toString(),
-      [_formatDate(normalizedFrom), _formatDate(endInclusive)],
+      args,
     );
 
     if (rows.isEmpty) {
@@ -1322,9 +1384,19 @@ class SqliteTransactionsRepository implements TransactionsRepository {
     required DateTime endExclusive,
     String? periodId,
   }) async {
-    assert(start.isBefore(endExclusive), 'Empty period bounds for $period');
-
     final db = await _db;
+    final normalizedStart = DateTime(start.year, start.month, start.day);
+    final normalizedEndExclusive =
+        DateTime(endExclusive.year, endExclusive.month, endExclusive.day);
+    if (!normalizedStart.isBefore(normalizedEndExclusive)) {
+      return 0;
+    }
+    final endInclusive =
+        normalizedEndExclusive.subtract(const Duration(days: 1));
+    if (endInclusive.isBefore(normalizedStart)) {
+      return 0;
+    }
+
     final query = StringBuffer(
       'SELECT COALESCE(SUM(amount_minor), 0) AS total '
       'FROM transactions '
@@ -1334,16 +1406,21 @@ class SqliteTransactionsRepository implements TransactionsRepository {
       'AND included_in_period = 1 ',
     );
     final args = <Object?>[];
-    final hasDeletedColumn = await _supportsDeletedFlag(db);
-    if (periodId != null) {
-      query.write('AND period_id = ?');
-      args.add(periodId);
-    } else {
-      query.write('AND date >= ? AND date < ?');
-      args
-        ..add(_formatDate(start))
-        ..add(_formatDate(endExclusive));
+    final clause = await _buildEffectivePeriodFilter(
+      db,
+      args,
+      periodId: periodId,
+      startInclusive: normalizedStart,
+      endInclusive: endInclusive,
+    );
+    if (clause == null) {
+      return 0;
     }
+    query
+      ..write('AND ')
+      ..write(clause)
+      ..write(' ');
+    final hasDeletedColumn = await _supportsDeletedFlag(db);
     if (hasDeletedColumn) {
       query.write(' AND deleted = 0');
     }
@@ -1389,6 +1466,103 @@ class SqliteTransactionsRepository implements TransactionsRepository {
       return null;
     }
     return rows.first['id'] as int?;
+  }
+
+  Future<int?> _findPeriodEntryId(
+    DatabaseExecutor executor,
+    String periodId,
+  ) async {
+    final cached = _periodEntryIdCache[periodId];
+    if (_periodEntryIdCache.containsKey(periodId)) {
+      return cached;
+    }
+
+    final parts = _parsePeriodId(periodId);
+    if (parts == null) {
+      _periodEntryIdCache[periodId] = null;
+      return null;
+    }
+
+    final rows = await executor.query(
+      'periods',
+      columns: ['id'],
+      where: 'year = ? AND month = ? AND half = ?',
+      whereArgs: [parts.year, parts.month, parts.halfLabel],
+      limit: 1,
+    );
+
+    int? id;
+    if (rows.isNotEmpty) {
+      id = rows.first['id'] as int?;
+    }
+    _periodEntryIdCache[periodId] = id;
+    return id;
+  }
+
+  Future<String?> _buildEffectivePeriodFilter(
+    DatabaseExecutor executor,
+    List<Object?> args, {
+    String? periodId,
+    DateTime? startInclusive,
+    DateTime? endInclusive,
+  }) async {
+    DateTime? effectiveStart = startInclusive;
+    DateTime? effectiveEnd = endInclusive;
+    if (effectiveStart != null && effectiveEnd != null &&
+        effectiveEnd.isBefore(effectiveStart)) {
+      effectiveEnd = effectiveStart;
+    }
+    if (periodId == null || periodId.isEmpty) {
+      if (effectiveStart != null && effectiveEnd != null) {
+        args
+          ..add(_formatDate(effectiveStart))
+          ..add(_formatDate(effectiveEnd));
+        return 'date >= ? AND date <= ?';
+      }
+      return null;
+    }
+
+    final entryId = await _findPeriodEntryId(executor, periodId);
+    if (entryId != null) {
+      if (effectiveStart != null && effectiveEnd != null) {
+        args
+          ..add(entryId)
+          ..add(_formatDate(effectiveStart))
+          ..add(_formatDate(effectiveEnd));
+        return '('
+            'effective_period_ref_id = ? '
+            'OR (effective_period_ref_id IS NULL AND date >= ? AND date <= ?)'
+            ')';
+      }
+      args.add(entryId);
+      return 'effective_period_ref_id = ?';
+    }
+
+    if (effectiveStart != null && effectiveEnd != null) {
+      args
+        ..add(_formatDate(effectiveStart))
+        ..add(_formatDate(effectiveEnd));
+      return 'date >= ? AND date <= ?';
+    }
+
+    return null;
+  }
+
+  _ParsedPeriodId? _parsePeriodId(String periodId) {
+    final parts = periodId.split('-');
+    if (parts.length != 3) {
+      return null;
+    }
+    final year = int.tryParse(parts[0]);
+    final month = int.tryParse(parts[1]);
+    final halfRaw = parts[2].trim().toUpperCase();
+    if (year == null || month == null) {
+      return null;
+    }
+    if (halfRaw != 'H1' && halfRaw != 'H2') {
+      return null;
+    }
+    return _ParsedPeriodId(year: year, month: month, halfLabel: halfRaw);
   }
 
   Future<int?> _resolvePlanOperationAccountId(
@@ -1620,4 +1794,16 @@ class SqliteTransactionsRepository implements TransactionsRepository {
         return 'saving';
     }
   }
+}
+
+class _ParsedPeriodId {
+  const _ParsedPeriodId({
+    required this.year,
+    required this.month,
+    required this.halfLabel,
+  });
+
+  final int year;
+  final int month;
+  final String halfLabel;
 }

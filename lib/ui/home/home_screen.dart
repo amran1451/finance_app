@@ -111,8 +111,19 @@ class HomeScreen extends ConsumerWidget {
       floatingActionButton: hideFab
           ? null
           : _OvalFab(
-              onPressed: () {
-                entryController.startNew(includeInPeriod: true);
+              onPressed: () async {
+                final selectedPeriod = ref.read(selectedPeriodRefProvider);
+                final entry = await ref
+                    .read(periodEntryProvider(selectedPeriod).future);
+                final originLabel = ref.read(
+                  periodLabelForRefProvider(selectedPeriod),
+                );
+                entryController.startNew(
+                  includeInPeriod: true,
+                  originPeriod: selectedPeriod,
+                  originPeriodEntryId: entry.id,
+                  originPeriodLabel: originLabel,
+                );
                 context.pushNamed(RouteNames.entryAmount);
               },
             ),
